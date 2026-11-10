@@ -1,0 +1,5 @@
+@import 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap';
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; overflow: hidden; background: #000; color: #e8e8f0; font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace; font-size: clamp(11px, 0.95vw, 13px); -webkit-font-smoothing: antialiased; }
+canvas { display: block; }
