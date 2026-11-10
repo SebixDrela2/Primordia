@@ -1,0 +1,3 @@
+[console_scripts]
+decompile = decompile_everything.__main__:main
+decompile-everything = decompile_everything.__main__:main

@@ -1,0 +1,76 @@
+# decompile-everything configuration
+
+# Ghidra provider settings
+ghidra_provider: "ghidra"
+
+# Analysis settings
+max_parallel_functions: 8
+decompilation_timeout_ms: 300000
+analysis_batch_size: 10
+
+# Renaming settings
+rename_batch_size: 50
+rename_confidence_threshold: 0.7
+rename_mode: "ai"  # ai, pattern, manual
+only_rename_unknown: true
+
+# Export settings
+export_formats:
+  - c
+  - json
+  - markdown
+  # - rust
+  # - go
+  # - python
+  # - assembly
+
+# Unknown symbol prefixes (auto-generated names to replace)
+track_unknown_prefixes:
+  - "FUN_"
+  - "VAR_"
+  - "DAT_"
+  - "LAB_"
+  - "UNK_"
+  - "sub_"
+  - "loc_"
+  - "off_"
+  - "ptr_"
+  - "stru_"
+  - "enum_"
+  - "type_"
+  - "field_"
+  - "param_"
+  - "local_"
+  - "g_"
+  - "p_"
+  - "v_"
+  - "u_"
+
+# Output settings
+output_structure:
+  decompilation: "decompilation/"      # Raw Ghidra decompilation
+  exports: "export_{{format}}/"        # Per-format exports
+  parity_report: "parity_report.json"  # Progress tracking
+  project_state: "project_state.json"  # Full project state
+  snapshot: "snapshot.ghidra"          # Ghidra analysis snapshot
+
+# AI Renamer settings (if using LLM)
+ai_renamer:
+  provider: "auto"  # auto, openai, anthropic, pattern
+  model: "gpt-4"    # or claude-3-opus-20240229
+  temperature: 0.3
+  max_tokens: 500
+  batch_size: 10
+
+# Binary comparison settings
+comparison:
+  match_threshold: 0.85
+  include_bytes: false
+  include_symbols: true
+  include_functions: true
+
+# Session settings
+session:
+  auto_snapshot: true
+  snapshot_on_error: true
+  keep_temp_files: false

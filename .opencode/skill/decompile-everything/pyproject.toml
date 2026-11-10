@@ -1,0 +1,97 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "decompile-everything"
+version = "1.0.0"
+description = "Comprehensive Ghidra-powered decompilation and symbol recovery tool"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "OpenCode Agent", email = "agent@opencode.local"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Disassemblers",
+    "Topic :: Security :: Vulnerability Assessment",
+    "Topic :: Software Development :: Code Generators",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "asyncio",
+    "pathlib",
+    "dataclasses",
+    "typing-extensions>=4.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "black>=23.0",
+    "ruff>=0.1",
+    "mypy>=1.0",
+]
+ai = [
+    "openai>=1.0",
+    "anthropic>=0.7",
+]
+
+[project.entry-points]
+console_scripts = { "decompile-everything" = "decompile_everything.__main__:main", "decompile" = "decompile_everything.__main__:main" }
+
+[project.urls]
+Homepage = "https://github.com/opencode/skill-decompile-everything"
+Repository = "https://github.com/opencode/skill-decompile-everything"
+Issues = "https://github.com/opencode/skill-decompile-everything/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["decompile_everything*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "T20"]
+ignore = ["S101", "S311", "S603", "S607"]
+per-file-ignores = { "tests/*" = ["S101"] }
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+include = "\\.pyi?$"
+exclude = """
+/(
+    \\.git
+  | \\.hg
+  | \\.mypy_cache
+  | \\.tox
+  | \\.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+"""
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true

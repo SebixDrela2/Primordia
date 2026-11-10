@@ -1,0 +1,24 @@
+#!/bin/bash
+# decompile-everything - Shell wrapper for the decompilation skill
+
+set -euo pipefail
+
+# Get the directory of this script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Default to Python module execution
+PYTHON_CMD="${PYTHON_CMD:-python3}"
+
+# Check if we're in a virtual environment or have the package installed
+if command -v decompile-everything &> /dev/null && [[ "$(command -v decompile-everything)" != "$SCRIPT_DIR/decompile-everything" ]]; then
+    # Use installed version
+    exec decompile-everything "$@"
+elif [[ -f "$SCRIPT_DIR/pyproject.toml" ]]; then
+    # Run from source with proper Python path
+    export PYTHONPATH="$SCRIPT_DIR:${PYTHONPATH:-}"
+    exec "$PYTHON_CMD" -m decompile_everything.commands "$@"
+else
+    echo "Error: decompile-everything not properly installed" >&2
+    echo "Install with: pip install -e $SCRIPT_DIR" >&2
+    exit 1
+fi

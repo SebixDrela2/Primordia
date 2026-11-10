@@ -1,5 +1,7 @@
 node_modules/
 dist/
+.angular/
+public/
 .env
 *.log
 .DS_Store
@@ -9,3 +11,9 @@ dist/
 *.user
 *.sln.docstates
 *.userosscache
+PrimeSpiral/
+llama.cpp/
+models/
+rea-source/
+pipeprimesim.html
+start-glm.ps1
