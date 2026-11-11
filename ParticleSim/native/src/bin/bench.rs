@@ -22,8 +22,8 @@ use std::time::{SystemTime, UNIX_EPOCH, Instant};
 use std::process;
 use world::World;
 
-const W: usize = 960;
-const H: usize = 540;
+const W: usize = 1280;
+const H: usize = 720;
 
 /// Same seed logic as main.rs: time + pid, no persistent counter.
 fn get_random_seed() -> u64 {
@@ -48,7 +48,7 @@ fn main() {
     let mut world = World::new(W, H, seed);
     world.seed();
     let mut creatures = CreatureSystem::new(seed.wrapping_add(0x1234_5678_9ABC_DEF0));
-    creatures.populate(&world, 36);
+    creatures.populate(&world, 64);
 
     // Seed-time census: all elements present right after world generation
     let mut seed_counts = [0u32; Elem::Food as usize + 1];

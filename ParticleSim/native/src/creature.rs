@@ -7,7 +7,7 @@ pub const OUTPUTS: usize = 20;
 const MAX_POP: usize = 500;
 /// Above this population creatures stop reproducing so the world stays lively
 /// without grinding to a halt (the hard cap is still MAX_POP).
-const REPRO_SOFT_CAP: usize = 240;
+const REPRO_SOFT_CAP: usize = 320;
 /// Creatures that reach this age die of old age, driving generational turnover.
 const MAX_AGE: u32 = 3200;
 const BASE_RADIUS: i32 = 40;
@@ -332,6 +332,17 @@ pub struct Structure {
     pub armed: bool,
 }
 
+/// A thrown bomb: arcs towards its target and detonates.
+pub struct Bomb {
+    pub x: f32,
+    pub y: f32,
+    pub vx: f32,
+    pub vy: f32,
+    pub life: u32,
+    pub owner: u32,
+    pub color: [u8; 3],
+}
+
 /// Things that happened, so the renderer can animate them.
 pub enum SimEvent {
     Hit { x: f32, y: f32, color: [u8; 3], damage: f32 },
@@ -341,6 +352,8 @@ pub enum SimEvent {
     Trade { x: f32, y: f32, color: [u8; 3] },
     Birth { x: f32, y: f32, color: [u8; 3] },
     Death { x: f32, y: f32, color: [u8; 3], size: f32 },
+    Heal { x: f32, y: f32, color: [u8; 3] },
+    Explosion { x: f32, y: f32, color: [u8; 3] },
 }
 
 /// A cheap local scan of the world around a creature (radius 8, every other
@@ -508,6 +521,9 @@ pub struct Creature {
     pub target_y: f32,
     // Tech/Tools
     pub tool: Tool,
+    /// Bombs and healing salves the creature has crafted.
+    pub bombs: u8,
+    pub salves: u8,
     pub tool_durability: u16,
     pub tech_level: u8,
     pub inventory: [u16; 16],
@@ -626,6 +642,8 @@ pub struct CreatureSystem {
     pub structures: Vec<Structure>,
     /// Events for the renderer, drained every frame by the UI.
     pub events: Vec<SimEvent>,
+    /// Bombs currently in flight.
+    pub bombs: Vec<Bomb>,
 }
 
 struct Vehicle {
@@ -673,6 +691,7 @@ impl CreatureSystem {
             projectiles: Vec::new(),
             structures: Vec::new(),
             events: Vec::new(),
+            bombs: Vec::new(),
         }
     }
 
@@ -707,7 +726,16 @@ impl CreatureSystem {
 
     pub fn populate(&mut self, world: &World, count: usize) {
         for _ in 0..count {
-            self.spawn_near_surface(world);
+            if !self.spawn_near_surface(world) {
+                continue;
+            }
+            // Every founder gets a partner, so young colonies can defend
+            // themselves instead of being wiped out one by one.
+            let last = self.list.len() - 1;
+            let (px, py) = (self.list[last].x, self.list[last].y);
+            let blueprint = self.list[last].child_blueprint();
+            let bx = (px + 3.0).min(world.w as f32 - 3.0);
+            self.spawn(world, bx, py, CreatureGenesis::Child(&blueprint));
         }
         self.update_stats();
     }
@@ -971,6 +999,8 @@ impl CreatureSystem {
             target_y: y,
             tool: Tool::None,
             tool_durability: 0,
+            bombs: 0,
+            salves: 0,
             tech_level: 0,
             inventory: starting_inv,
             craft_cooldown: 0,
@@ -1033,6 +1063,7 @@ impl CreatureSystem {
         let mut mounts_total: u32 = 0;
         let mut spells_cast_total: u32 = 0;
         let mut spell_targets: Vec<(usize, usize, f32)> = Vec::new();
+        let mut heal_targets: Vec<(u32, f32, f32)> = Vec::new();
         let mut disease_targets: Vec<usize> = Vec::new();
         let mut shots: Vec<Projectile> = Vec::new();
         let mut shots_fired = 0u32;
@@ -1431,6 +1462,10 @@ impl CreatureSystem {
                             Elem::Wood => {
                                 c.inventory[6] = c.inventory[6].saturating_add(3).min(255);
                             }
+                            Elem::Gunpowder => {
+                                c.inventory[9] = c.inventory[9].saturating_add(2).min(255);
+                                c.carried = (c.carried + 10.0).min(CARRY_CAP);
+                            }
                             _ => {}
                         }
                     }
@@ -1690,6 +1725,20 @@ impl CreatureSystem {
                         c.tool_durability = 700;
                         c.craft_cooldown = 70;
                     }
+                    // Bomb: 3 gunpowder + 2 wood - thrown at rivals
+                    else if c.bombs < 3 && c.inventory[9] >= 3 && c.inventory[6] >= 2 {
+                        c.inventory[9] = c.inventory[9].saturating_sub(3);
+                        c.inventory[6] = c.inventory[6].saturating_sub(2);
+                        c.bombs += 1;
+                        c.craft_cooldown = 40;
+                    }
+                    // Salve: 2 plant + 1 crystal - heals a wounded colonymate
+                    else if c.salves < 3 && c.inventory[9] == 0 && c.inventory[6] >= 2 && c.inventory[4] >= 1 {
+                        c.inventory[6] = c.inventory[6].saturating_sub(2);
+                        c.inventory[4] = c.inventory[4].saturating_sub(1);
+                        c.salves += 1;
+                        c.craft_cooldown = 40;
+                    }
                 }
 
                 // Tool durability decay
@@ -1894,6 +1943,64 @@ impl CreatureSystem {
                     wants_child = true;
                 }
 
+                // Throw a bomb at the nearest rival.
+                if c.bombs > 0 && c.craft_cooldown == 0 {
+                    let mut target: Option<(f32, f32, f32)> = None;
+                    for &(id, ox, oy, ospecies, _orole, _ohp) in &agents {
+                        if id == c.id || ospecies == c.species {
+                            continue;
+                        }
+                        let dx = ox - c.x;
+                        let dy = oy - c.y;
+                        let d = (dx * dx + dy * dy).sqrt();
+                        if d < 16.0 && target.map_or(true, |t| d < t.2) {
+                            target = Some((dx, dy, d));
+                        }
+                    }
+                    if let Some((dx, dy, d)) = target {
+                        let ux = dx / d.max(0.1);
+                        let uy = dy / d.max(0.1);
+                        self.bombs.push(Bomb {
+                            x: c.x,
+                            y: c.y,
+                            vx: ux * 2.0,
+                            vy: uy * 2.0,
+                            life: 40,
+                            owner: c.species,
+                            color: c.team_color,
+                        });
+                        c.bombs -= 1;
+                        c.craft_cooldown = 25;
+                        self.events.push(SimEvent::Shoot {
+                            x: c.x,
+                            y: c.y,
+                            color: c.team_color,
+                        });
+                    }
+                }
+
+                // Use a salve on a wounded colonymate.
+                if c.salves > 0 && c.craft_cooldown == 0 {
+                    for &(aid, ax, ay, aspecies, _arole, ahp) in &agents {
+                        if aid == c.id || aspecies != c.species || ahp >= 95.0 {
+                            continue;
+                        }
+                        let dx = ax - c.x;
+                        let dy = ay - c.y;
+                        if dx * dx + dy * dy < 64.0 {
+                            heal_targets.push((aid, ax, ay));
+                            c.salves -= 1;
+                            c.craft_cooldown = 30;
+                            self.events.push(SimEvent::Heal {
+                                x: ax,
+                                y: ay,
+                                color: c.team_color,
+                            });
+                            break;
+                        }
+                    }
+                }
+
                 // Spell casting effects
                 if cast_spell {
                     c.spell_cooldown = 30;
@@ -2092,6 +2199,55 @@ impl CreatureSystem {
             }
         }
 
+        // ---- Bombs in flight ----
+        if !self.bombs.is_empty() {
+            let current = std::mem::take(&mut self.bombs);
+            for mut b in current {
+                b.x += b.vx;
+                b.y += b.vy;
+                b.vy += 0.08; // gravity
+                b.life = b.life.saturating_sub(1);
+                let tx = b.x.round() as i32;
+                let ty = b.y.round() as i32;
+                let hit_wall = b.life == 0 || world.is_blocked(tx, ty);
+                if hit_wall {
+                    // Detonation: everything close by takes damage.
+                    let bx = b.x;
+                    let by = b.y;
+                    for j in 0..self.list.len() {
+                        let (ox, oy, ospecies) = {
+                            let a = &self.list[j];
+                            (a.x, a.y, a.species)
+                        };
+                        if ospecies == b.owner {
+                            continue;
+                        }
+                        let dx = ox - bx;
+                        let dy = oy - by;
+                        if dx * dx + dy * dy < 36.0 {
+                            self.list[j].health -= 55.0;
+                        }
+                    }
+                    // Scorch the ground and release energy.
+                    self.spawn_energy_burst(world, tx, ty, 16, b.color);
+                    for dx in -1..=1 {
+                        for dy in -1..=1 {
+                            if world.get(tx + dx, ty + dy) == Elem::Empty {
+                                world.set_xy(tx + dx, ty + dy, Elem::Fire);
+                            }
+                        }
+                    }
+                    self.events.push(SimEvent::Explosion {
+                        x: bx,
+                        y: by,
+                        color: b.color,
+                    });
+                } else {
+                    self.bombs.push(b);
+                }
+            }
+        }
+
         // ---- Projectiles in flight ----
         let current: Vec<Projectile> = std::mem::take(&mut self.projectiles);
         let mut survivors: Vec<Projectile> = Vec::new();
@@ -2263,6 +2419,14 @@ impl CreatureSystem {
             if let Some(target) = self.list.get_mut(target_idx) {
                 target.disease = Disease::Curse;
                 target.disease_timer = 300;
+            }
+        }
+
+        // Apply healing from salves.
+        for (target_id, _hx, _hy) in heal_targets {
+            if let Some(target) = self.list.iter_mut().find(|t| t.id == target_id) {
+                target.health = (target.health + 35.0).min(100.0);
+                target.energy = (target.energy + 40.0).min(target.max_energy);
             }
         }
 
@@ -2778,6 +2942,8 @@ impl Creature {
             target_y: self.base_y,
             tool: Tool::None,
             tool_durability: 0,
+            bombs: self.bombs,
+            salves: self.salves,
             tech_level: self.tech_level,
             inventory: [0; 16],
             craft_cooldown: 0,

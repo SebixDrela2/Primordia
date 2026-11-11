@@ -1,6 +1,72 @@
 use crate::elements::{Behavior, Elem};
 use crate::rng::Rng;
 
+/// The climate bands that run across the world.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Biome {
+    Tundra,
+    Forest,
+    Grassland,
+    Swamp,
+    Desert,
+}
+
+impl Biome {
+    pub fn name(self) -> &'static str {
+        match self {
+            Biome::Tundra => "Tundra",
+            Biome::Forest => "Forest",
+            Biome::Grassland => "Grassland",
+            Biome::Swamp => "Swamp",
+            Biome::Desert => "Desert",
+        }
+    }
+
+    /// Temperature offset applied to the world temperature.
+    pub fn temperature_offset(self) -> f32 {
+        match self {
+            Biome::Tundra => -14.0,
+            Biome::Forest => -2.0,
+            Biome::Grassland => 2.0,
+            Biome::Swamp => 4.0,
+            Biome::Desert => 12.0,
+        }
+    }
+
+    /// Tint applied to the terrain of this biome.
+    pub fn tint(self) -> [f32; 3] {
+        match self {
+            Biome::Tundra => [0.80, 0.93, 1.14],
+            Biome::Forest => [0.80, 1.05, 0.84],
+            Biome::Grassland => [1.02, 1.04, 0.90],
+            Biome::Swamp => [0.84, 0.98, 0.80],
+            Biome::Desert => [1.16, 1.0, 0.76],
+        }
+    }
+}
+
+/// The weather rolling over the world.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Weather {
+    Clear,
+    Rain,
+    Storm,
+    Snow,
+    Meteor,
+}
+
+impl Weather {
+    pub fn name(self) -> &'static str {
+        match self {
+            Weather::Clear => "Clear",
+            Weather::Rain => "Rain",
+            Weather::Storm => "Storm",
+            Weather::Snow => "Snowfall",
+            Weather::Meteor => "Meteor Shower",
+        }
+    }
+}
+
 pub const DIRS4: [(i32, i32); 4] = [(0, 1), (1, 0), (0, -1), (-1, 0)];
 pub const DIRS8: [(i32, i32); 8] = [
     (0, 1),
@@ -37,12 +103,25 @@ pub struct World {
     pub col: Vec<[u8; 3]>,
     pub heat: Vec<u8>,
     pub age: Vec<u32>,
+    /// Ground level per column (topmost supported solid cell). Cached so the
+    /// renderer does not have to scan every column on every frame.
+    pub ground: Vec<i32>,
     /// Indices of the cells that can still change. Rebuilt each step from a
     /// cheap scan so the simulation never touches the (vast) inert bulk of
     /// the world.
     pub active: Vec<u32>,
+    /// Scratch list of cells that became active while the current step was
+    /// being processed.
+    next_active: Vec<u32>,
+    /// Per-cell flag: is this cell already queued in `next_active`?
+    listed: Vec<bool>,
     /// Lookup: is this element byte completely inert?
     pub inert: [bool; 80],
+    /// Current weather and how long it lasts.
+    pub weather: Weather,
+    pub weather_timer: u32,
+    /// Recent meteor impacts (x, y) so the renderer can flash explosions.
+    pub meteor_events: Vec<(f32, f32)>,
     pub rng: Rng,
     pub frame: u64,
     /// Per-step budget for destructive resource gathering so creatures
@@ -61,8 +140,14 @@ impl World {
             col: vec![[10, 14, 23]; n],
             heat: vec![0; n],
             age: vec![0; n],
+            ground: vec![0; w],
             active: Vec::with_capacity(n / 8),
+            next_active: Vec::with_capacity(n / 8),
+            listed: vec![false; n],
             inert: Elem::inert_table(),
+            weather: Weather::Clear,
+            weather_timer: 900,
+            meteor_events: Vec::new(),
             rng: Rng::new(seed),
             frame: 0,
             mine_budget: 0,
@@ -111,6 +196,7 @@ impl World {
             Elem::Energy => 120,
             _ => 0,
         };
+        self.mark_active(i);
     }
 
     #[inline]
@@ -119,6 +205,8 @@ impl World {
         self.col.swap(a, b);
         self.heat.swap(a, b);
         self.age.swap(a, b);
+        self.mark_active(a);
+        self.mark_active(b);
     }
 
     #[inline]
@@ -164,6 +252,118 @@ impl World {
         (h * 0.66 + wobble).clamp(24.0, h - 26.0) as i32
     }
 
+    /// Queue a cell for processing if it can still change.
+    #[inline]
+    fn mark_active(&mut self, i: usize) {
+        let k = self.kind[i];
+        if k != Elem::Empty as u8 && !self.inert[k as usize] && !self.listed[i] {
+            self.listed[i] = true;
+            self.next_active.push(i as u32);
+        }
+    }
+
+    /// Rebuild the full list of active cells (used after seeding).
+    pub fn rebuild_active(&mut self) {
+        self.active.clear();
+        self.next_active.clear();
+        for i in 0..self.listed.len() {
+            self.listed[i] = false;
+            let k = self.kind[i];
+            if k != Elem::Empty as u8 && !self.inert[k as usize] {
+                self.listed[i] = true;
+                self.active.push(i as u32);
+            }
+        }
+    }
+
+    /// Recompute the cached ground level of every column: the topmost solid
+    /// cell that actually rests on something. Using the real terrain (rather
+    /// than the analytic surface) keeps eroded gaps and crater floors from
+    /// being painted as black voids.
+    pub fn update_ground(&mut self) {
+        let solid = Elem::solid_table();
+        let empty = Elem::Empty as u8;
+        for x in 0..self.w {
+            let mut g = self.h as i32 - 1;
+            let mut found = false;
+            for y in 0..self.h {
+                let k = self.kind[y * self.w + x];
+                if k != empty && solid[k as usize] {
+                    let below = if y + 1 < self.h {
+                        self.kind[(y + 1) * self.w + x]
+                    } else {
+                        k
+                    };
+                    if below != empty && solid[below as usize] {
+                        g = y as i32;
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if !found {
+                for y in 0..self.h {
+                    let k = self.kind[y * self.w + x];
+                    if k != empty && solid[k as usize] {
+                        g = y as i32;
+                        break;
+                    }
+                }
+            }
+            self.ground[x] = g;
+        }
+    }
+
+    /// Which climate band a column belongs to.
+    pub fn biome_at(&self, x: i32) -> Biome {
+        let f = x as f32 / self.w as f32;
+        // A few wide, wavy bands so the map reads as a journey.
+        let v = ((f * 5.0 + (f * 2.3).sin() * 0.7).sin() * 0.5 + 0.5) as f32;
+        if v < 0.20 {
+            Biome::Tundra
+        } else if v < 0.42 {
+            Biome::Forest
+        } else if v < 0.64 {
+            Biome::Grassland
+        } else if v < 0.82 {
+            Biome::Swamp
+        } else {
+            Biome::Desert
+        }
+    }
+
+    /// Smoothly blended biome colour for a column, so the borders between
+    /// climate bands fade instead of snapping.
+    pub fn biome_tint_at(&self, x: i32) -> [f32; 3] {
+        let f = x as f32 / self.w as f32;
+        let v = ((f * 5.0 + (f * 2.3).sin() * 0.7).sin() * 0.5 + 0.5) as f32;
+        // Representative positions of each band, in the same v space.
+        const POS: [f32; 5] = [0.10, 0.31, 0.53, 0.73, 0.91];
+        let tints = [
+            Biome::Tundra.tint(),
+            Biome::Forest.tint(),
+            Biome::Grassland.tint(),
+            Biome::Swamp.tint(),
+            Biome::Desert.tint(),
+        ];
+        if v <= POS[0] {
+            return tints[0];
+        }
+        for i in 0..4 {
+            if v <= POS[i + 1] {
+                let t = (v - POS[i]) / (POS[i + 1] - POS[i]);
+                let a = tints[i];
+                let b = tints[i + 1];
+                return [
+                    a[0] + (b[0] - a[0]) * t,
+                    a[1] + (b[1] - a[1]) * t,
+                    a[2] + (b[2] - a[2]) * t,
+                ];
+            }
+        }
+        tints[4]
+    }
+
     pub fn seed(&mut self) {
         let w = self.w as i32;
         let h = self.h as i32;
@@ -177,18 +377,52 @@ impl World {
 
         for x in 0..w {
             let surface = self.surface_y(x);
+            let biome = self.biome_at(x);
             for y in surface..(h - 3) {
                 let depth = y - surface;
-                let mut e = if depth < 2 {
-                    Elem::Sand
-                } else if depth < 6 {
-                    if self.rng.chance(0.25) {
-                        Elem::Sand
-                    } else {
-                        Elem::Stone
+                // Each biome has its own soil profile.
+                let mut e = match biome {
+                    Biome::Desert => {
+                        if depth < 5 {
+                            Elem::Sand
+                        } else if depth < 9 && self.rng.chance(0.3) {
+                            Elem::Sand
+                        } else {
+                            Elem::Stone
+                        }
                     }
-                } else {
-                    Elem::Stone
+                    Biome::Tundra => {
+                        if depth < 1 {
+                            Elem::Ice
+                        } else if depth < 4 {
+                            if self.rng.chance(0.35) {
+                                Elem::Ice
+                            } else {
+                                Elem::Stone
+                            }
+                        } else {
+                            Elem::Stone
+                        }
+                    }
+                    Biome::Swamp => {
+                        if depth < 3 {
+                            Elem::Mud
+                        } else if depth < 7 && self.rng.chance(0.4) {
+                            Elem::Mud
+                        } else {
+                            Elem::Stone
+                        }
+                    }
+                    Biome::Forest | Biome::Grassland => {
+                        if depth < 3 {
+                            // Soil: solid ground, so grazing never digs holes.
+                            Elem::Mud
+                        } else if depth < 7 && self.rng.chance(0.2) {
+                            Elem::Mud
+                        } else {
+                            Elem::Stone
+                        }
+                    }
                 };
 
                 if depth > 6 {
@@ -204,6 +438,69 @@ impl World {
                     }
                 }
                 self.set_xy(x, y, e);
+            }
+        }
+
+        // Forests grow actual trees, deserts grow dunes of sand.
+        for x in 0..w {
+            let biome = self.biome_at(x);
+            let surface = self.surface_y(x);
+            match biome {
+                Biome::Forest => {
+                    if self.rng.chance(0.35) {
+                        let h = 3 + self.rng.range(6) as i32;
+                        for k in 1..h {
+                            let y = surface - k;
+                            if self.get(x, y) == Elem::Empty {
+                                self.set_xy(x, y, Elem::Wood);
+                            }
+                        }
+                        // Canopy
+                        let top = surface - h;
+                        for dx in -2..=2 {
+                            for dy in 0..3 {
+                                let (cx, cy) = (x + dx, top + dy);
+                                if self.get(cx, cy) == Elem::Empty {
+                                    self.set_xy(cx, cy, Elem::Plant);
+                                }
+                            }
+                        }
+                    }
+                }
+                Biome::Desert => {
+                    if self.rng.chance(0.25) {
+                        let y = surface - 1;
+                        if self.get(x, y) == Elem::Empty {
+                            self.set_xy(x, y, Elem::Sand);
+                        }
+                    }
+                }
+                Biome::Swamp => {
+                    if self.rng.chance(0.3) {
+                        for dx in 0..3 {
+                            let y = surface - 1;
+                            if self.get(x + dx, y) == Elem::Empty {
+                                self.set_xy(x + dx, y, Elem::Water);
+                            }
+                        }
+                    }
+                }
+                Biome::Tundra => {
+                    if self.rng.chance(0.2) {
+                        let y = surface - 1;
+                        if self.get(x, y) == Elem::Empty {
+                            self.set_xy(x, y, Elem::Ice);
+                        }
+                    }
+                }
+                Biome::Grassland => {
+                    if self.rng.chance(0.3) {
+                        let y = surface - 1;
+                        if self.get(x, y) == Elem::Empty {
+                            self.set_xy(x, y, Elem::Plant);
+                        }
+                    }
+                }
             }
         }
 
@@ -326,6 +623,10 @@ impl World {
         self.bury_floating_resources(w, h);
 
         self.census = self.count();
+        // The world is fully built now: cache the ground level and collect
+        // every cell that can still change.
+        self.update_ground();
+        self.rebuild_active();
     }
 
     /// Move solid/resource cells that ended up floating above the terrain down
@@ -466,12 +767,12 @@ impl World {
                 self.set_xy(cx, cy, Elem::Dust);
             }
         }
-        // Gunpowder (rare, underground)
-        for _ in 0..6 {
+        // Gunpowder (underground) - enough of it that colonies can craft bombs
+        for _ in 0..45 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
-            let cy = sy + 1 + self.rng.range(3) as i32;
-            if self.get(cx, cy) == Elem::Empty && self.rng.chance(0.2) {
+            let cy = sy + 1 + self.rng.range(6) as i32;
+            if self.get(cx, cy) == Elem::Empty && self.rng.chance(0.45) {
                 self.set_xy(cx, cy, Elem::Gunpowder);
             }
         }
@@ -2176,27 +2477,25 @@ impl World {
         self.frame += 1;
         self.mine_budget = 3;
 
-        // Rebuild the list of cells that can actually change. The vast bulk of
-        // the world is stone/ore, which never moves and never reacts, so
-        // touching only the live cells is a huge win.
-        self.active.clear();
-        let n = self.w * self.h;
-        for i in 0..n {
-            let k = self.kind[i];
-            if k != Elem::Empty as u8 && !self.inert[k as usize] {
-                self.active.push(i as u32);
-            }
-        }
+        // Process the live cells only. The list is maintained incrementally:
+        // cells that change (or move) during this step are queued for the
+        // next one, so the inert bulk of the world is never touched.
+        self.next_active.clear();
+        let n_active = self.active.len();
+        // Random order keeps the physics fair (falling sand, flowing water).
         self.rng.shuffle(&mut self.active);
-
-        for k in 0..self.active.len() {
-            let i = self.active[k] as usize;
+        for ai in 0..n_active {
+            let i = self.active[ai] as usize;
+            self.listed[i] = false;
             let e = Elem::from_u8(self.kind[i]);
-            if e == Elem::Empty {
+            if e == Elem::Empty || self.inert[e as usize] {
                 continue;
             }
             self.update_cell(i, e);
+            // Re-queue if it is still able to change.
+            self.mark_active(i);
         }
+        std::mem::swap(&mut self.active, &mut self.next_active);
 
         self.maintain();
         if self.frame % 30 == 0 {
@@ -2752,21 +3051,97 @@ impl World {
         let frame = self.frame;
         let w = self.w as i32;
 
-        // Rain (water, occasionally acid rain) - light, so water doesn't take over
-        if frame % 30 == 0 {
-            let mut added = 0;
-            let mut attempts = 0;
-            while added < 2 && attempts < 30 {
-                attempts += 1;
-                let x = self.rng.range(w as u32) as i32;
-                let y = self.rng.range(4) as i32;
-                if self.get(x, y) == Elem::Empty {
-                    let is_acid = self.rng.chance(0.03);
-                    let e = if is_acid { Elem::Acid } else { Elem::Water };
-                    self.set_xy(x, y, e);
-                    added += 1;
+        // Keep the cached ground level fresh (the renderer reads it).
+        if frame % 15 == 0 {
+            self.update_ground();
+        }
+
+        // ---- Weather ----
+        if self.weather_timer == 0 {
+            self.weather = match self.rng.range(100) {
+                0..=39 => Weather::Clear,
+                40..=69 => Weather::Rain,
+                70..=81 => Weather::Storm,
+                82..=91 => Weather::Snow,
+                _ => Weather::Meteor,
+            };
+            self.weather_timer = 500 + self.rng.range(700);
+        }
+        self.weather_timer = self.weather_timer.saturating_sub(1);
+
+        match self.weather {
+            Weather::Rain | Weather::Storm => {
+                // Rain falls from the sky (stormy weather falls harder).
+                let period = if self.weather == Weather::Storm { 15 } else { 30 };
+                let want = if self.weather == Weather::Storm { 3 } else { 2 };
+                if frame % period == 0 {
+                    let mut added = 0;
+                    let mut attempts = 0;
+                    while added < want && attempts < 40 {
+                        attempts += 1;
+                        let x = self.rng.range(w as u32) as i32;
+                        let y = self.rng.range(4) as i32;
+                        if self.get(x, y) == Elem::Empty {
+                            let is_acid = self.weather == Weather::Storm && self.rng.chance(0.05);
+                            let e = if is_acid { Elem::Acid } else { Elem::Water };
+                            self.set_xy(x, y, e);
+                            added += 1;
+                        }
+                    }
+                }
+                // Storms throw lightning bolts that scorch the ground.
+                if self.weather == Weather::Storm && self.rng.chance(0.02) {
+                    let x = self.rng.range(w as u32) as i32;
+                    let surf = self.surface_y(x);
+                    for dy in 0..6 {
+                        let y = surf - dy;
+                        if self.get(x, y) == Elem::Empty {
+                            self.set_xy(x, y, Elem::Fire);
+                        }
+                    }
                 }
             }
+            Weather::Snow => {
+                // A light dusting of snow on the surface.
+                if frame % 60 == 0 {
+                    let mut added = 0;
+                    let mut attempts = 0;
+                    while added < 1 && attempts < 20 {
+                        attempts += 1;
+                        let x = self.rng.range(w as u32) as i32;
+                        let y = self.rng.range(4) as i32;
+                        if self.get(x, y) == Elem::Empty {
+                            self.set_xy(x, y, Elem::Ice);
+                            added += 1;
+                        }
+                    }
+                }
+            }
+            Weather::Meteor => {
+                // Meteors streak down and explode where they land.
+                if self.rng.chance(0.005) {
+                    let x = self.rng.range(w as u32) as i32;
+                    let surf = self.surface_y(x);
+                    let impact_y = surf + self.rng.range(4) as i32;
+                    for dy in 0..10 {
+                        let y = surf - dy;
+                        if self.get(x, y) == Elem::Empty {
+                            self.set_xy(x, y, Elem::Fire);
+                        }
+                    }
+                    // Impact crater + scorched earth.
+                    for dx in -2..=2 {
+                        for dy in -1..=1 {
+                            let (cx, cy) = (x + dx, impact_y + dy);
+                            if self.get(cx, cy) == Elem::Empty {
+                                self.set_xy(cx, cy, Elem::Lava);
+                            }
+                        }
+                    }
+                    self.meteor_events.push((x as f32, impact_y as f32));
+                }
+            }
+            Weather::Clear => {}
         }
 
         // Underground springs - water seeping up from aquifers (rare)
@@ -2793,8 +3168,14 @@ impl World {
 
         // Vegetation regrowth. Slower and pressure-sensitive: plants establish
         // near water, so over-grazing causes real scarcity that then recovers.
-        if frame % 15 == 0 && self.census.plants < 1200 {
-            let batches = if self.census.plants < 400 { 8 } else { 4 };
+        if frame % 15 == 0 && self.census.plants < 4000 {
+            let batches = if self.census.plants < 1200 {
+                24
+            } else if self.census.plants < 3000 {
+                12
+            } else {
+                6
+            };
             for _ in 0..batches {
                 let x = self.rng.range((w - 4) as u32) as i32 + 2;
                 let sy = self.surface_y(x);
@@ -3104,6 +3485,7 @@ impl World {
                         | Elem::Concrete
                         | Elem::Wire
                         | Elem::Circuit
+                        | Elem::Gunpowder
                 );
                 if gatherable && best.map_or(true, |b| d2 < b.2) {
                     best = Some((x + dx, y + dy, d2));

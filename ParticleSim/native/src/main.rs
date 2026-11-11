@@ -10,10 +10,13 @@ use macroquad::prelude::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 use world::World;
 
-const W: usize = 960;
-const H: usize = 540;
+const W: usize = 1280;
+const H: usize = 720;
 const VIEW_W: usize = 480;
 const VIEW_H: usize = 270;
+/// Zoom that fits the whole world on screen.
+const MIN_ZOOM: f32 = VIEW_W as f32 / W as f32;
+const MAX_ZOOM: f32 = 6.0;
 
 fn window_conf() -> Conf {
     Conf {
@@ -357,12 +360,7 @@ async fn main() {
     world.seed();
 
     let mut creatures = CreatureSystem::new(seed.wrapping_add(0x1234_5678_9ABC_DEF0));
-    creatures.populate(&world, 36);
-
-    let mut pixels = vec![0u8; W * H * 4];
-    let mut image = Image::gen_image_color(W as u16, H as u16, WHITE);
-    let texture = Texture2D::from_image(&image);
-    texture.set_filter(FilterMode::Nearest);
+    creatures.populate(&world, 64);
 
     // Camera position (top-left of view in world coordinates)
     let mut cam_x: f32 = 0.0;
@@ -384,7 +382,7 @@ async fn main() {
     let mut paused = false;
     // Scroll wheel zoom (0.5 = whole world visible, 6.0 = close-up).
     // Every run starts fully zoomed out.
-    let mut zoom: f32 = 0.5;
+    let mut zoom: f32 = MIN_ZOOM;
     // Endless "revival" lineage: run 1 is the original population, then each
     // victory seeds a new world from the winning species' genome.
     let mut revival: u32 = 1;
@@ -404,13 +402,22 @@ async fn main() {
     let mut view_y: f32 = 0.0;
 
     // Minimap terrain texture (downsampled world).
-    const MINI_W: usize = 120;
-    const MINI_H: usize = 68;
+    const MINI_W: usize = 160;
+    const MINI_H: usize = 90;
+    const MINI_STEP: usize = 8;
     let mut mini_image = Image::gen_image_color(MINI_W as u16, MINI_H as u16, WHITE);
     let mini_texture = Texture2D::from_image(&mini_image);
     mini_texture.set_filter(FilterMode::Linear);
     let mut mini_dirty = true;
     let mut frame_counter: u32 = 0;
+
+    // Region texture: only the visible slice of the world is rendered.
+    let mut region_pixels: Vec<u8> = Vec::new();
+    let mut region_image = Image::gen_image_color(1, 1, WHITE);
+    let mut region_texture = Texture2D::from_image(&region_image);
+    region_texture.set_filter(FilterMode::Nearest);
+    let mut region_w: i32 = 0;
+    let mut region_h: i32 = 0;
 
     loop {
         let now = get_time() as f32;
@@ -425,12 +432,12 @@ async fn main() {
             world = World::new(W, H, new_seed);
             world.seed();
             creatures = CreatureSystem::new(new_seed.wrapping_add(0x1234_5678_9ABC_DEF0));
-            creatures.populate(&world, 36);
+            creatures.populate(&world, 64);
             cam_x = 0.0;
             cam_y = 0.0;
             view_x = 0.0;
             view_y = 0.0;
-            zoom = 0.5;
+            zoom = MIN_ZOOM;
             // A manual reroll starts a brand new lineage.
             revival = 1;
             champion = None;
@@ -472,7 +479,7 @@ async fn main() {
             let anchor_x = cam_x + mx / old_sx;
             let anchor_y = cam_y + my / old_sy;
 
-            zoom = (zoom * 1.12f32.powf(direction)).clamp(0.5, 6.0);
+            zoom = (zoom * 1.12f32.powf(direction)).clamp(MIN_ZOOM, MAX_ZOOM);
             view_w = VIEW_W as f32 / zoom;
             view_h = VIEW_H as f32 / zoom;
 
@@ -588,6 +595,16 @@ async fn main() {
                     effects.burst(x, y, color, 14, 7.0);
                     effects.text(x, y, [255, 130, 130], "KO".to_string());
                 }
+                SimEvent::Heal { x, y, color } => {
+                    effects.ring(x, y, [120, 255, 160], 12.0, 0.7);
+                    effects.text(x, y, [150, 255, 190], "+HP".to_string());
+                }
+                SimEvent::Explosion { x, y, color } => {
+                    effects.ring(x, y, [255, 200, 80], 34.0, 0.8);
+                    effects.ring(x, y, [255, 120, 40], 20.0, 0.5);
+                    effects.burst(x, y, [255, 190, 90], 20, 11.0);
+                    effects.text(x, y, [255, 210, 120], "BOOM".to_string());
+                }
             }
         }
         effects.update(dt);
@@ -659,7 +676,7 @@ async fn main() {
                 creatures = CreatureSystem::new(next_seed.wrapping_add(0x1234_5678_9ABC_DEF0));
                 match champion.as_ref() {
                     Some(genome) => creatures.populate_revival(&world, 36, genome),
-                    None => creatures.populate(&world, 36),
+                    None => creatures.populate(&world, 64),
                 }
                 if won {
                     revival += 1;
@@ -674,7 +691,7 @@ async fn main() {
                 cam_y = 0.0;
                 view_x = 0.0;
                 view_y = 0.0;
-                zoom = 0.5;
+                zoom = MIN_ZOOM;
                 paused = false;
                 force_render = true;
                 telemetry.reset(revival);
@@ -715,35 +732,69 @@ async fn main() {
             }
         }
 
+        // Render only the visible slice of the world into a region texture.
+        // At high zoom this is a tiny fraction of the world, which keeps the
+        // frame time low no matter how big the world gets.
+        let vis_x0 = (view_x.floor() as i32).max(0);
+        let vis_y0 = (view_y.floor() as i32).max(0);
+        let vis_x1 = ((view_x + view_w).ceil() as i32).min(W as i32);
+        let vis_y1 = ((view_y + view_h).ceil() as i32).min(H as i32);
+        let vis_w = (vis_x1 - vis_x0).max(1);
+        let vis_h = (vis_y1 - vis_y0).max(1);
+
+        if region_w != vis_w || region_h != vis_h {
+            region_w = vis_w;
+            region_h = vis_h;
+            region_pixels = vec![0u8; (region_w * region_h * 4) as usize];
+            region_image = Image::gen_image_color(region_w as u16, region_h as u16, WHITE);
+            region_texture = Texture2D::from_image(&region_image);
+            region_texture.set_filter(FilterMode::Nearest);
+        }
+
         // Re-render the world only when the simulation actually advanced (or
         // after a reroll / revival). Pausing and panning then costs nothing.
         if steps_taken > 0 || force_render {
-            render::render_world(
+            render::render_region(
                 &world,
                 &creatures,
-                &mut pixels,
+                &mut region_pixels,
+                vis_x0,
+                vis_y0,
+                vis_w,
+                vis_h,
                 now,
                 creatures.day_night,
                 creatures.season,
             );
-            image.bytes.copy_from_slice(&pixels);
-            texture.update(&image);
+            region_image
+                .bytes
+                .copy_from_slice(&region_pixels);
+            region_texture.update(&region_image);
             force_render = false;
             mini_dirty = true;
         }
 
-        // Refresh the minimap terrain a few times a second.
+        // Refresh the minimap terrain a few times a second (sampled straight
+        // from the world, so it works no matter what is on screen).
         frame_counter += 1;
         if mini_dirty && frame_counter % 4 == 0 {
             for my in 0..MINI_H {
                 for mx in 0..MINI_W {
-                    let sx = mx * 8;
-                    let sy = my * 8;
-                    let o = (sy * W + sx) * 4;
+                    let sx = (mx * MINI_STEP).min(W - 1);
+                    let sy = (my * MINI_STEP).min(H - 1);
+                    let cell = sy * W + sx;
                     let d = (my * MINI_W + mx) * 4;
-                    mini_image.bytes[d] = pixels[o];
-                    mini_image.bytes[d + 1] = pixels[o + 1];
-                    mini_image.bytes[d + 2] = pixels[o + 2];
+                    let k = world.kind[cell];
+                    if k == Elem::Empty as u8 {
+                        mini_image.bytes[d] = 12;
+                        mini_image.bytes[d + 1] = 18;
+                        mini_image.bytes[d + 2] = 30;
+                    } else {
+                        let c = world.col[cell];
+                        mini_image.bytes[d] = (c[0] as u32 * 3 / 4) as u8;
+                        mini_image.bytes[d + 1] = (c[1] as u32 * 3 / 4) as u8;
+                        mini_image.bytes[d + 2] = (c[2] as u32 * 3 / 4) as u8;
+                    }
                     mini_image.bytes[d + 3] = 255;
                 }
             }
@@ -751,20 +802,19 @@ async fn main() {
             mini_dirty = false;
         }
 
-        // Draw only the camera view portion
-        let src_x = view_x;
-        let src_y = view_y;
-        let src_w = view_w;
-        let src_h = view_h;
-
+        // Draw the rendered region, positioned so it lines up with the camera.
+        let reg_scale_x = screen_width() / view_w;
+        let reg_scale_y = screen_height() / view_h;
         draw_texture_ex(
-            &texture,
-            0.0,
-            0.0,
+            &region_texture,
+            (vis_x0 as f32 - view_x) * reg_scale_x,
+            (vis_y0 as f32 - view_y) * reg_scale_y,
             WHITE,
             DrawTextureParams {
-                source: Some(Rect::new(src_x, src_y, src_w, src_h)),
-                dest_size: Some(vec2(screen_width(), screen_height())),
+                dest_size: Some(vec2(
+                    region_w as f32 * reg_scale_x,
+                    region_h as f32 * reg_scale_y,
+                )),
                 ..Default::default()
             },
         );
@@ -964,6 +1014,32 @@ async fn main() {
             );
         }
 
+        // ---- Bombs in flight ----
+        for b in &creatures.bombs {
+            let sx = (b.x - view_x) * vscale_x;
+            let sy = (b.y - view_y) * vscale_y;
+            draw_circle(sx, sy, 4.0, Color::new(0.12, 0.12, 0.15, 0.95));
+            draw_circle(sx, sy, 2.0, Color::new(0.9, 0.55, 0.15, 0.95));
+            draw_circle(
+                sx,
+                sy,
+                7.0,
+                Color::new(1.0, 0.6, 0.2, 0.18),
+            );
+        }
+
+        // ---- Weather overlay ----
+        draw_weather(world.weather, now);
+
+        // ---- Meteor flashes ----
+        for (mx, my) in &world.meteor_events {
+            let sx = (mx - view_x) * vscale_x;
+            let sy = (my - view_y) * vscale_y;
+            draw_circle(sx, sy, 26.0, Color::new(1.0, 0.75, 0.35, 0.22));
+            draw_circle(sx, sy, 12.0, Color::new(1.0, 0.9, 0.6, 0.5));
+        }
+        world.meteor_events.clear();
+
         // ---- Interaction animations ----
         effects.draw(view_x, view_y, vscale_x, vscale_y);
 
@@ -1012,6 +1088,44 @@ fn draw_vignette() {
         draw_rectangle(0.0, h - t, w, t, c);
         draw_rectangle(0.0, 0.0, t, h, c);
         draw_rectangle(w - t, 0.0, t, h, c);
+    }
+}
+
+/// Screen-space weather: rain streaks, snow and storm flashes.
+fn draw_weather(weather: world::Weather, time: f32) {
+    let w = screen_width();
+    let h = screen_height();
+    match weather {
+        world::Weather::Rain | world::Weather::Storm => {
+            let n = if weather == world::Weather::Storm { 150 } else { 70 };
+            let slant = if weather == world::Weather::Storm { 14.0 } else { 7.0 };
+            for i in 0..n {
+                let fi = i as f32;
+                let ii = i as u32;
+                let x = ((fi * 97.3 + time * 260.0) % w as f32).max(0.0);
+                let y = ((fi * 53.7 + time * (620.0 + fi * 3.0)) % h as f32).max(0.0);
+                let a = 0.16 + (ii % 5) as f32 * 0.03;
+                draw_line(
+                    x,
+                    y,
+                    x - slant,
+                    y + 18.0,
+                    1.0,
+                    Color::new(0.62, 0.72, 0.88, a),
+                );
+            }
+        }
+        world::Weather::Snow => {
+            for i in 0..110 {
+                let fi = i as f32;
+                let ii = i as u32;
+                let x = ((fi * 71.9 + time * 26.0 + (ii % 7) as f32 * 13.0) % w as f32).max(0.0);
+                let y = ((fi * 41.3 + time * (55.0 + (ii % 9) as f32 * 4.0)) % h as f32).max(0.0);
+                let s = 1.0 + (ii % 3) as f32 * 0.5;
+                draw_circle(x, y, s, Color::new(0.95, 0.97, 1.0, 0.5));
+            }
+        }
+        _ => {}
     }
 }
 
@@ -1196,6 +1310,8 @@ fn draw_telemetry(t: &Telemetry, x: f32, y: f32) {
 
 fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f32, seed: u64, sim_speed: f32, paused: bool, zoom: f32, revival: u32) {
     let stats = &creatures.stats;
+    let biome_name = world.biome_at((cam_x as i32).clamp(0, W as i32 - 1)).name();
+    let weather_name = world.weather.name();
 
     draw_text(
         "PRIMORDIA",
@@ -1218,12 +1334,28 @@ fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f32, s
         world.census.particles, stats.avg_energy, stats.avg_fitness
     );
     let line3 = format!(
-        "{}  {}  temp {:.0}C  mana {:.0}  spells {}  trades {}  SIMx{:.1}  zoom {:.1}x",
-        season_name, time_of_day, creatures.temperature, stats.avg_mana, stats.spells_cast, stats.trades, sim_speed, zoom
+        "{}  {}  {}  temp {:.0}C  mana {:.0}  spells {}  trades {}  SIMx{:.1}  zoom {:.1}x",
+        biome_name,
+        season_name,
+        time_of_day,
+        creatures.temperature,
+        stats.avg_mana,
+        stats.spells_cast,
+        stats.trades,
+        sim_speed,
+        zoom
     );
     let line4 = format!(
-        "camera: ({:.0},{:.0})   fps {}   births {}   deaths {}  structs {}  towers {}  shots {}",
-        cam_x, cam_y, get_fps(), stats.births, stats.deaths, stats.structures, stats.towers, stats.shots
+        "camera: ({:.0},{:.0})   fps {}   births {}   deaths {}  structs {}  towers {}  shots {}  {}",
+        cam_x,
+        cam_y,
+        get_fps(),
+        stats.births,
+        stats.deaths,
+        stats.structures,
+        stats.towers,
+        stats.shots,
+        weather_name
     );
     let line5 = format!(
         "hunger {:.0}  thirst {:.0}  stamina {:.0}  diseases {}",
@@ -1420,6 +1552,8 @@ fn draw_knowledge_window(_world: &World, creatures: &CreatureSystem, ui: &UiStat
         ("FORAGE", "collect wood and ore to build with"),
         ("RALLY", "return to the colony base"),
         ("DEFEND", "guard the colony against intruders"),
+        ("BOMB", "craft and throw explosives at rivals"),
+        ("SALVE", "craft and use healing salves on allies"),
     ];
     let mut ay = y + 96.0;
     for (name, desc) in abilities.iter() {
