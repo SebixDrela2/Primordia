@@ -1057,20 +1057,30 @@ impl CreatureSystem {
         self.season_timer += 1;
         if self.season_timer > 7200 { self.season_timer = 0; self.season = (self.season + 1) % 4; }
 
-        // Soldiers that stand together form a squad and fight as one.
+        // Soldiers that stand together form a squad and fight as one. The
+        // anchors are indexed per species so the lookup stays cheap.
         {
-            let mut squads: Vec<(u32, u16, f32, f32)> = Vec::new();
+            let mut anchors: std::collections::HashMap<u32, Vec<(u16, f32, f32)>> =
+                std::collections::HashMap::new();
             let mut next_squad = self.next_squad.max(1);
+            for c in self.list.iter() {
+                if c.role == Role::Soldier && c.squad_id != 0 {
+                    anchors
+                        .entry(c.species)
+                        .or_default()
+                        .push((c.squad_id, c.x, c.y));
+                }
+            }
             for c in self.list.iter_mut() {
-                if c.role != Role::Soldier {
+                if c.role != Role::Soldier || c.squad_id != 0 {
                     continue;
                 }
                 let mut joined = false;
-                for s in squads.iter_mut() {
-                    if s.0 == c.species {
-                        let d = (s.2 - c.x).powi(2) + (s.3 - c.y).powi(2);
+                if let Some(list) = anchors.get(&c.species) {
+                    for (sid, ax, ay) in list.iter() {
+                        let d = (ax - c.x).powi(2) + (ay - c.y).powi(2);
                         if d < 400.0 {
-                            c.squad_id = s.1;
+                            c.squad_id = *sid;
                             joined = true;
                             break;
                         }
@@ -1080,10 +1090,20 @@ impl CreatureSystem {
                     let id = if next_squad > 60 { 1 } else { next_squad };
                     next_squad = next_squad.wrapping_add(1).max(1);
                     c.squad_id = id;
-                    squads.push((c.species, id, c.x, c.y));
+                    anchors
+                        .entry(c.species)
+                        .or_default()
+                        .push((id, c.x, c.y));
                 }
             }
             self.next_squad = next_squad;
+        }
+
+        // Structures indexed by species (temples grant morale, turrets fire).
+        let mut structures_by_species: std::collections::HashMap<u32, Vec<usize>> =
+            std::collections::HashMap::new();
+        for (i, s) in self.structures.iter().enumerate() {
+            structures_by_species.entry(s.species).or_default().push(i);
         }
 
         let mut dead: Vec<usize> = Vec::new();
@@ -1154,11 +1174,18 @@ impl CreatureSystem {
                 c.stamina = (c.stamina - 0.05).clamp(0.0, c.max_stamina);
                 // A temple nearby steadies the colony: less hunger, faster
                 // recovery.
-                let morale = self.structures.iter().any(|s| {
-                    s.kind == 2
-                        && s.species == c.species
-                        && (s.x - c.x).powi(2) + (s.y - c.y).powi(2) < 625.0
-                });
+                let mut morale = false;
+                if let Some(list) = structures_by_species.get(&c.species) {
+                    for &si in list.iter() {
+                        let s = &self.structures[si];
+                        if s.kind == 2
+                            && (s.x - c.x).powi(2) + (s.y - c.y).powi(2) < 625.0
+                        {
+                            morale = true;
+                            break;
+                        }
+                    }
+                }
                 if morale {
                     c.hunger = (c.hunger - 0.03).clamp(0.0, 100.0);
                 }

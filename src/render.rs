@@ -123,8 +123,11 @@ pub fn render_region(
 
     // Per-column biome tint (computed once per frame, not per cell).
     let mut biome_tint = vec![[1.0f32; 3]; w];
+    let mut is_tundra = vec![false; w];
     for x in 0..w {
+        let b = world.biome_at(x as i32);
         biome_tint[x] = world.biome_tint_at(x as i32);
+        is_tundra[x] = b == crate::world::Biome::Tundra;
     }
 
     // Cloud layer: domain-warped fractal noise sampled from a coarse grid.
@@ -206,6 +209,25 @@ pub fn render_region(
                         r += (cr - r) * amt;
                         g += (cg - g) * amt;
                         b += (cb - b) * amt;
+                    }
+
+                    // Aurora over the tundra on cold, clear nights.
+                    if is_tundra[x as usize] && day < 0.32 {
+                        let band = ((x as f32 * 0.021 + time * 0.08).sin() * 34.0
+                            + (x as f32 * 0.007 - time * 0.03).sin() * 22.0
+                            + 90.0)
+                            - y as f32;
+                        if band.abs() < 30.0 {
+                            let amt = (1.0 - band.abs() / 30.0) * 0.5 * (1.0 - day / 0.32);
+                            let (ar, ag, ab) = if band > 0.0 {
+                                (90.0, 255.0, 170.0)
+                            } else {
+                                (150.0, 110.0, 255.0)
+                            };
+                            r += (ar - r) * amt;
+                            g += (ag - g) * amt;
+                            b += (ab - b) * amt;
+                        }
                     }
 
                     // Cloud banks, sampled from the warped noise grid. Only the

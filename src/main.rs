@@ -1031,6 +1031,18 @@ async fn main() {
         // ---- Weather overlay ----
         draw_weather(world.weather, now);
 
+        // ---- Lightning flash ----
+        if world.lightning_flash > 0 {
+            let a = (world.lightning_flash as f32 / 10.0) * 0.35;
+            draw_rectangle(
+                0.0,
+                0.0,
+                screen_width(),
+                screen_height(),
+                Color::new(0.85, 0.9, 1.0, a),
+            );
+        }
+
         // ---- Meteor flashes ----
         for (mx, my) in &world.meteor_events {
             let sx = (mx - view_x) * vscale_x;

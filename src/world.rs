@@ -122,6 +122,8 @@ pub struct World {
     pub weather_timer: u32,
     /// Recent meteor impacts (x, y) so the renderer can flash explosions.
     pub meteor_events: Vec<(f32, f32)>,
+    /// Frames left of a lightning flash (storms only).
+    pub lightning_flash: u32,
     pub rng: Rng,
     pub frame: u64,
     /// Per-step budget for destructive resource gathering so creatures
@@ -148,6 +150,7 @@ impl World {
             weather: Weather::Clear,
             weather_timer: 900,
             meteor_events: Vec::new(),
+            lightning_flash: 0,
             rng: Rng::new(seed),
             frame: 0,
             mine_budget: 0,
@@ -3075,6 +3078,9 @@ impl World {
             self.weather_timer = 500 + self.rng.range(700);
         }
         self.weather_timer = self.weather_timer.saturating_sub(1);
+        if self.lightning_flash > 0 {
+            self.lightning_flash -= 1;
+        }
 
         match self.weather {
             Weather::Rain | Weather::Storm => {
@@ -3098,6 +3104,7 @@ impl World {
                 }
                 // Storms throw lightning bolts that scorch the ground.
                 if self.weather == Weather::Storm && self.rng.chance(0.02) {
+                    self.lightning_flash = 10;
                     let x = self.rng.range(w as u32) as i32;
                     let surf = self.surface_y(x);
                     for dy in 0..6 {
