@@ -379,7 +379,7 @@ async fn main() {
         .ok()
         .and_then(|v| v.parse::<f32>().ok())
         .unwrap_or(1.0)
-        .clamp(0.25, 32.0);
+        .clamp(0.25, 48.0);
     // P toggles pause
     let mut paused = false;
     // Scroll wheel zoom (0.5 = whole world visible, 6.0 = close-up).
@@ -445,7 +445,7 @@ async fn main() {
 
         // + / - : adjust simulation speed
         if is_key_pressed(KeyCode::Equal) || is_key_pressed(KeyCode::KpAdd) {
-            sim_speed = (sim_speed * 2.0).min(32.0);
+            sim_speed = (sim_speed * 2.0).min(48.0);
         }
         if is_key_pressed(KeyCode::Minus) || is_key_pressed(KeyCode::KpSubtract) {
             sim_speed = (sim_speed / 2.0).max(0.25);
@@ -517,7 +517,7 @@ async fn main() {
         let fixed_step = 1.0 / 60.0;
         // Cap the catch-up work per frame so a fast sim speed never stalls
         // the renderer for a whole second.
-        let max_steps = (4.0 * sim_speed).min(32.0) as u32;
+        let max_steps = (4.0 * sim_speed).min(48.0) as u32;
         let mut steps_taken = 0u32;
         if paused {
             unsafe { ACCUM = 0.0; }
@@ -612,7 +612,7 @@ async fn main() {
                     survivors: 0,
                     generation: creatures.stats.max_generation,
                     revival,
-                    timer: 3.0,
+                    timer: 1.0,
                     extinction: true,
                 });
                 paused = true;
@@ -640,7 +640,7 @@ async fn main() {
                         survivors: creatures.list.len() as u32,
                         generation: creatures.stats.max_generation,
                         revival,
-                        timer: 3.0,
+                        timer: 1.0,
                         extinction: false,
                     });
                     paused = true;
