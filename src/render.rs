@@ -124,10 +124,14 @@ pub fn render_region(
     // Per-column biome tint (computed once per frame, not per cell).
     let mut biome_tint = vec![[1.0f32; 3]; w];
     let mut is_tundra = vec![false; w];
+    // Reciprocal of the ground height: turns a per-cell division into a
+    // multiply, which matters because the sky is most of the world.
+    let mut inv_ground = vec![1.0f32; w];
     for x in 0..w {
         let b = world.biome_at(x as i32);
         biome_tint[x] = world.biome_tint_at(x as i32);
         is_tundra[x] = b == crate::world::Biome::Tundra;
+        inv_ground[x] = 1.0 / (world.ground[x].max(1) as f32);
     }
 
     // Cloud layer: domain-warped fractal noise sampled from a coarse grid.
@@ -166,7 +170,7 @@ pub fn render_region(
                 let n = noise(x, y);
                 if (y as f32) < surf {
                     // ---- Sky ----
-                    let t = (y as f32 / surf.max(1.0)).clamp(0.0, 1.0);
+                    let t = (y as f32 * inv_ground[x as usize]).clamp(0.0, 1.0);
                     let mut r = 11.0 + t * 30.0;
                     let mut g = 18.0 + t * 44.0;
                     let mut b = 32.0 + t * 58.0;
@@ -234,7 +238,7 @@ pub fn render_region(
                     // upper sky carries clouds, and the sample is reused for
                     // every second column to keep the cost down.
                     if (y as f32) < surf * 0.6 {
-                        if rx & 1 == 0 {
+                        if rx % 3 == 0 {
                             let fx = x as f32 / GSX;
                             let fy = y as f32 / GSY;
                             let gx0 = (fx.floor() as usize).min(gw - 2);

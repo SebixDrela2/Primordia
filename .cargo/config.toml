@@ -1,0 +1,9 @@
+# Build for the host CPU: the simulation is dominated by tight float loops
+# (neural network matmuls, particle physics) which benefit a lot from
+# native vectorisation and instruction selection.
+#
+# Note: binaries built this way are not portable to other CPUs. For a
+# portable release build use:
+#   cargo build --release --config 'build.rustflags=[]'
+[build]
+rustflags = ["-C", "target-cpu=native"]

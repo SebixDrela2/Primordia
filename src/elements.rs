@@ -285,6 +285,39 @@ impl Elem {
         t
     }
 
+    /// Lookup table: is this element edible?
+    pub fn edible_table() -> [bool; 80] {
+        let mut t = [false; 80];
+        let mut i = 0;
+        while i < 80 {
+            t[i] = Elem::from_u8(i as u8).is_edible();
+            i += 1;
+        }
+        t
+    }
+
+    /// Lookup table: how much nutrition does this element carry?
+    pub fn nutrition_table() -> [f32; 80] {
+        let mut t = [0.0f32; 80];
+        let mut i = 0;
+        while i < 80 {
+            t[i] = Elem::from_u8(i as u8).nutrition();
+            i += 1;
+        }
+        t
+    }
+
+    /// Lookup table: how toxic is this element?
+    pub fn toxicity_table() -> [f32; 80] {
+        let mut t = [0.0f32; 80];
+        let mut i = 0;
+        while i < 80 {
+            t[i] = Elem::from_u8(i as u8).toxicity();
+            i += 1;
+        }
+        t
+    }
+
     pub fn behavior(self) -> Behavior {
         match self {
             Elem::Sand | Elem::Sulfur | Elem::Salt | Elem::Ash | Elem::Dust | Elem::Gunpowder | Elem::Fertilizer => Behavior::Fall,

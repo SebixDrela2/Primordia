@@ -1,0 +1,125 @@
+use super::*;
+
+impl World {
+    pub fn surface_y(&self, x: i32) -> i32 {
+        let h = self.h as f32;
+        let x = x as f32;
+        let wobble = (x * 0.045).sin() * 5.0
+            + (x * 0.013 + 1.7).sin() * 9.0
+            + (x * 0.11 + 0.4).sin() * 2.0;
+        (h * 0.66 + wobble).clamp(24.0, h - 26.0) as i32
+    }
+
+    // Queue a cell for processing if it can still change.
+    #[inline]
+    pub(crate) fn mark_active(&mut self, i: usize) {
+        let k = self.kind[i];
+        if k != Elem::Empty as u8 && !self.inert[k as usize] && !self.listed[i] {
+            self.listed[i] = true;
+            self.next_active.push(i as u32);
+        }
+    }
+
+    // Rebuild the full list of active cells (used after seeding).
+    pub fn rebuild_active(&mut self) {
+        self.active.clear();
+        self.next_active.clear();
+        for i in 0..self.listed.len() {
+            self.listed[i] = false;
+            let k = self.kind[i];
+            if k != Elem::Empty as u8 && !self.inert[k as usize] {
+                self.listed[i] = true;
+                self.active.push(i as u32);
+            }
+        }
+    }
+
+    // Recompute the cached ground level of every column: the topmost solid
+    // cell that actually rests on something. Using the real terrain (rather
+    // than the analytic surface) keeps eroded gaps and crater floors from
+    // being painted as black voids.
+    pub fn update_ground(&mut self) {
+        let solid = Elem::solid_table();
+        let empty = Elem::Empty as u8;
+        for x in 0..self.w {
+            let mut g = self.h as i32 - 1;
+            let mut found = false;
+            for y in 0..self.h {
+                let k = self.kind[y * self.w + x];
+                if k != empty && solid[k as usize] {
+                    let below = if y + 1 < self.h {
+                        self.kind[(y + 1) * self.w + x]
+                    } else {
+                        k
+                    };
+                    if below != empty && solid[below as usize] {
+                        g = y as i32;
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if !found {
+                for y in 0..self.h {
+                    let k = self.kind[y * self.w + x];
+                    if k != empty && solid[k as usize] {
+                        g = y as i32;
+                        break;
+                    }
+                }
+            }
+            self.ground[x] = g;
+        }
+    }
+
+    // Which climate band a column belongs to.
+    pub fn biome_at(&self, x: i32) -> Biome {
+        let f = x as f32 / self.w as f32;
+        // A few wide, wavy bands so the map reads as a journey.
+        let v = ((f * 5.0 + (f * 2.3).sin() * 0.7).sin() * 0.5 + 0.5) as f32;
+        if v < 0.20 {
+            Biome::Tundra
+        } else if v < 0.42 {
+            Biome::Forest
+        } else if v < 0.64 {
+            Biome::Grassland
+        } else if v < 0.82 {
+            Biome::Swamp
+        } else {
+            Biome::Desert
+        }
+    }
+
+    // Smoothly blended biome colour for a column, so the borders between
+    // climate bands fade instead of snapping.
+    pub fn biome_tint_at(&self, x: i32) -> [f32; 3] {
+        let f = x as f32 / self.w as f32;
+        let v = ((f * 5.0 + (f * 2.3).sin() * 0.7).sin() * 0.5 + 0.5) as f32;
+        // Representative positions of each band, in the same v space.
+        const POS: [f32; 5] = [0.10, 0.31, 0.53, 0.73, 0.91];
+        let tints = [
+            Biome::Tundra.tint(),
+            Biome::Forest.tint(),
+            Biome::Grassland.tint(),
+            Biome::Swamp.tint(),
+            Biome::Desert.tint(),
+        ];
+        if v <= POS[0] {
+            return tints[0];
+        }
+        for i in 0..4 {
+            if v <= POS[i + 1] {
+                let t = (v - POS[i]) / (POS[i + 1] - POS[i]);
+                let a = tints[i];
+                let b = tints[i + 1];
+                return [
+                    a[0] + (b[0] - a[0]) * t,
+                    a[1] + (b[1] - a[1]) * t,
+                    a[2] + (b[2] - a[2]) * t,
+                ];
+            }
+        }
+        tints[4]
+    }
+
+}

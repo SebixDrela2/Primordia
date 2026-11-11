@@ -3,7 +3,7 @@
 //!
 //! cargo run --release --bin bench -- [steps] [png-out]
 
-#[path = "../creature.rs"]
+#[path = "../creature/mod.rs"]
 mod creature;
 #[path = "../elements.rs"]
 mod elements;
@@ -11,7 +11,7 @@ mod elements;
 mod render;
 #[path = "../rng.rs"]
 mod rng;
-#[path = "../world.rs"]
+#[path = "../world/mod.rs"]
 mod world;
 
 use creature::{CreatureSystem, Role, Tool, Spell, MountKind};

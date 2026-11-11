@@ -1,0 +1,251 @@
+use crate::creature::{CreatureSystem, Role};
+use crate::world::World;
+use macroquad::prelude::*;
+use super::knowledge::HoverTarget;
+use super::minimap::draw_weather;
+
+/// Draw the creatures, their shots and the world overlays.
+pub fn draw_actors(
+    creatures: &CreatureSystem,
+    world: &mut World,
+    ui_hover: &HoverTarget,
+    view_x: f32,
+    view_y: f32,
+    view_w: f32,
+    view_h: f32,
+    zoom: f32,
+    now: f32,
+) {
+
+        // Draw creature bodies and names (only those in view)
+        let show_all_names = zoom >= 2.5;
+        let hovered_creature: Option<u32> = match ui_hover {
+            HoverTarget::Creature { id } => Some(*id),
+            _ => None,
+        };
+        let scr_w = screen_width();
+        let scr_h = screen_height();
+
+        for c in &creatures.list {
+            let in_view = (c.x) >= view_x
+                && (c.x) < (view_x + view_w)
+                && (c.y) >= view_y
+                && (c.y) < (view_y + view_h);
+            if !in_view {
+                continue;
+            }
+
+            let scale_x = scr_w / view_w;
+            let scale_y = scr_h / view_h;
+            let s = scale_x.min(scale_y);
+            let sx = (c.x - view_x) * scale_x;
+            let sy = (c.y - view_y) * scale_y;
+            let r = (c.size * s).max(2.5);
+            let base = Color::new(
+                c.team_color[0] as f32 / 255.0,
+                c.team_color[1] as f32 / 255.0,
+                c.team_color[2] as f32 / 255.0,
+                0.92,
+            );
+            let core = Color::new(1.0, 1.0, 0.95, 0.92);
+
+            // Soft drop shadow + species glow make the colony pop out of the
+            // terrain.
+            draw_circle(
+                sx,
+                sy + r * 0.85,
+                r * 0.95,
+                Color::new(0.0, 0.0, 0.0, 0.22),
+            );
+            if c.role == Role::Queen || zoom >= 1.5 {
+                draw_circle(
+                    sx,
+                    sy,
+                    r * 2.1,
+                    Color::new(base.r, base.g, base.b, 0.10),
+                );
+            }
+
+            // Role silhouettes make the colony readable at a glance.
+            match c.role {
+                Role::Soldier => {
+                    let angle = c.vy.atan2(c.vx) - std::f32::consts::FRAC_PI_2;
+                    draw_poly(sx, sy, 3, r * 1.3, angle, base);
+                    draw_circle(sx, sy, (r * 0.32).max(1.0), core);
+                }
+                Role::Queen => {
+                    draw_circle(sx, sy, r * 1.15, base);
+                    draw_circle_lines(sx, sy, r * 1.65, 1.6, base);
+                    draw_circle(sx, sy, (r * 0.4).max(1.2), Color::new(1.0, 0.93, 0.55, 0.95));
+                }
+                Role::Priest | Role::Shaman => {
+                    draw_poly(sx, sy, 4, r * 1.25, std::f32::consts::FRAC_PI_4, base);
+                    draw_circle(sx, sy, (r * 0.3).max(1.0), core);
+                }
+                Role::Builder | Role::Merchant => {
+                    draw_poly(sx, sy, 6, r * 1.18, 0.0, base);
+                    draw_circle(sx, sy, (r * 0.28).max(1.0), core);
+                }
+                Role::Explorer => {
+                    draw_poly(sx, sy, 3, r * 1.2, std::f32::consts::PI, base);
+                    draw_circle(sx, sy, (r * 0.28).max(1.0), core);
+                }
+                Role::Worker => {
+                    draw_circle(sx, sy, r, base);
+                    draw_circle(sx, sy, (r * 0.3).max(1.0), core);
+                }
+            }
+
+            // Damage bar (only when hurt).
+            let hp = (c.health / 100.0).clamp(0.0, 1.0);
+            if hp < 0.999 {
+                let bw = (r * 2.6).max(6.0);
+                let by = sy - r - 6.0;
+                draw_rectangle(sx - bw / 2.0, by, bw, 2.0, Color::new(0.0, 0.0, 0.0, 0.55));
+                let col = if hp > 0.6 {
+                    Color::new(0.32, 0.85, 0.42, 0.9)
+                } else if hp > 0.3 {
+                    Color::new(0.95, 0.75, 0.22, 0.9)
+                } else {
+                    Color::new(0.92, 0.26, 0.2, 0.9)
+                };
+                draw_rectangle(sx - bw / 2.0, by, bw * hp, 2.0, col);
+            }
+
+            // Hover ring.
+            if hovered_creature == Some(c.id) {
+                draw_circle_lines(
+                    sx,
+                    sy,
+                    (r * 2.5).max(8.0),
+                    2.0,
+                    Color::new(1.0, 1.0, 1.0, 0.8),
+                );
+            }
+
+            // Names only for queens, the hovered creature, tiny populations,
+            // or when zoomed in. Keeps the view clean and avoids text churn.
+            let show_name = show_all_names
+                || c.role == Role::Queen
+                || hovered_creature == Some(c.id)
+                || creatures.list.len() <= 12;
+            if show_name {
+                let end = c.name.iter().position(|&b| b == 0).unwrap_or(c.name.len());
+                let name_str = core::str::from_utf8(&c.name[..end]).unwrap_or("");
+                if !name_str.is_empty() {
+                    let font = (9.0 * s).clamp(9.0, 16.0);
+                    let dims = measure_text(name_str, None, font as u16, 1.0);
+                    draw_text(
+                        name_str,
+                        sx - dims.width / 2.0,
+                        sy - r - 7.0,
+                        font,
+                        Color::new(base.r, base.g, base.b, 0.95),
+                    );
+                }
+            }
+        }
+
+        // ---- Shots in flight ----
+        let vscale_x = scr_w / view_w;
+        let vscale_y = scr_h / view_h;
+        for p in &creatures.projectiles {
+            let sx = (p.x - view_x) * vscale_x;
+            let sy = (p.y - view_y) * vscale_y;
+            let px = (p.px - view_x) * vscale_x;
+            let py = (p.py - view_y) * vscale_y;
+            let c = p.elem.color();
+            let glow = Color::new(
+                c[0] as f32 / 255.0,
+                c[1] as f32 / 255.0,
+                c[2] as f32 / 255.0,
+                1.0,
+            );
+            draw_line(
+                px,
+                py,
+                sx,
+                sy,
+                2.0,
+                Color::new(
+                    c[0] as f32 / 255.0,
+                    c[1] as f32 / 255.0,
+                    c[2] as f32 / 255.0,
+                    0.4,
+                ),
+            );
+            draw_circle(
+                sx,
+                sy,
+                5.0,
+                Color::new(
+                    c[0] as f32 / 255.0,
+                    c[1] as f32 / 255.0,
+                    c[2] as f32 / 255.0,
+                    0.22,
+                ),
+            );
+            draw_circle(sx, sy, 2.2, glow);
+        }
+
+        // ---- Turret markers ----
+        for s in &creatures.structures {
+            if !s.armed {
+                continue;
+            }
+            let sx = (s.x - view_x) * vscale_x;
+            let sy = (s.y - view_y) * vscale_y;
+            draw_circle_lines(
+                sx,
+                sy,
+                8.0,
+                1.5,
+                Color::new(
+                    s.color[0] as f32 / 255.0,
+                    s.color[1] as f32 / 255.0,
+                    s.color[2] as f32 / 255.0,
+                    0.7,
+                ),
+            );
+        }
+
+        // ---- Bombs in flight ----
+        for b in &creatures.bombs {
+            let sx = (b.x - view_x) * vscale_x;
+            let sy = (b.y - view_y) * vscale_y;
+            draw_circle(sx, sy, 4.0, Color::new(0.12, 0.12, 0.15, 0.95));
+            draw_circle(sx, sy, 2.0, Color::new(0.9, 0.55, 0.15, 0.95));
+            draw_circle(
+                sx,
+                sy,
+                7.0,
+                Color::new(1.0, 0.6, 0.2, 0.18),
+            );
+        }
+
+        // ---- Weather overlay ----
+        draw_weather(world.weather, now);
+
+        // ---- Lightning flash ----
+        if world.lightning_flash > 0 {
+            let a = (world.lightning_flash as f32 / 10.0) * 0.35;
+            draw_rectangle(
+                0.0,
+                0.0,
+                screen_width(),
+                screen_height(),
+                Color::new(0.85, 0.9, 1.0, a),
+            );
+        }
+
+        // ---- Meteor flashes ----
+        for (mx, my) in &world.meteor_events {
+            let sx = (mx - view_x) * vscale_x;
+            let sy = (my - view_y) * vscale_y;
+            draw_circle(sx, sy, 26.0, Color::new(1.0, 0.75, 0.35, 0.22));
+            draw_circle(sx, sy, 12.0, Color::new(1.0, 0.9, 0.6, 0.5));
+        }
+        world.meteor_events.clear();
+
+        // ---- Interaction animations ----
+}
