@@ -115,31 +115,15 @@ export class SceneService {
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos,3)); g.setAttribute('color', new THREE.BufferAttribute(col,3)); g.setAttribute('phase', new THREE.BufferAttribute(phase,1));
       return new THREE.Points(g, starMat(size, opacity));
     };
-    const ds = makePoints(10000, () => { const t=Math.random()*Math.PI*2, p=Math.acos(2*Math.random()-1), r=14000+Math.random()*8000; return [r*Math.sin(p)*Math.cos(t), r*Math.sin(p)*Math.sin(t), r*Math.cos(p)]; }, () => { const t=Math.random(); if(t<0.05)return[0.5,0.6,0.75]; if(t<0.15)return[0.7,0.75,0.8]; if(t<0.45)return[0.85,0.85,0.9]; if(t<0.75)return[0.9,0.88,0.85]; if(t<0.92)return[0.85,0.75,0.7]; return[0.8,0.65,0.6]; }, 1.2, 0.7);
-    const mw = makePoints(24000, () => { const t=Math.random()*Math.PI*2, p=gauss()*0.16, r=16000+Math.random()*4000; return [r*Math.cos(t)*Math.cos(p), r*Math.sin(t)*Math.cos(p), r*Math.sin(p)]; }, () => { const t=Math.random(); if(t<0.5)return[0.85,0.8,0.75]; if(t<0.85)return[0.8,0.8,0.85]; return[0.75,0.8,0.9]; }, 0.9, 0.6);
-    mw.rotation.x=Math.PI*0.32; mw.rotation.z=Math.PI*0.12; starGroup.add(ds); starGroup.add(mw);
-
-    const galaxy = makePoints(28000, () => { const r=Math.random(); let rr,th,z; if(r<0.12){rr=Math.abs(gauss())*6500*0.1; th=Math.random()*Math.PI*2; z=gauss()*6500*0.05;}else if(r<0.88){const arm=Math.floor(Math.random()*2),tp=Math.pow(Math.random(),0.75); rr=tp*6500; th=arm*Math.PI+tp*4.4*Math.PI+gauss()*0.22; const sp=(1-tp*0.7)*6500*0.08; z=gauss()*sp*0.4;}else{rr=Math.pow(Math.random(),0.7)*6500; th=Math.random()*Math.PI*2; z=gauss()*6500*0.03;} rr+=gauss()*6500*0.02; return[rr*Math.cos(th),rr*Math.sin(th),z]; }, (i: number, c: number, p: number[])=>{const rr=Math.hypot(p[0],p[1]),t=rr/6500; if(t<0.15)return[1.0,0.85+0.1*Math.random(),0.55+0.1*Math.random()]; if(t<0.4){const f=(t-0.15)/0.25; return[1.0,0.88-0.3*f,0.6+0.2*f];} if(t<0.7){const f=(t-0.4)/0.3; return[0.95-0.15*f,0.55-0.15*f,0.85+0.1*f];} const f=(t-0.7)/0.3; return[0.7-0.3*f,0.5+0.1*f,1.0];}, 1.9, 0.9);
-    const gGroup = new THREE.Group(); gGroup.position.set(-11500,7000,-8500); gGroup.rotation.x=Math.PI*0.35; gGroup.rotation.z=Math.PI*0.25; gGroup.add(galaxy);
-    const core = new THREE.Sprite(new THREE.SpriteMaterial({map:halo,color:0xaaaaaa,transparent:true,opacity:0.4,blending:THREE.AdditiveBlending,depthWrite:false,fog:false})); core.scale.set(1800,1800,1); gGroup.add(core);
-    const outer = new THREE.Sprite(new THREE.SpriteMaterial({map:halo,color:0x7777aa,transparent:true,opacity:0.15,blending:THREE.AdditiveBlending,depthWrite:false,fog:false})); outer.scale.set(6000,6000,1); gGroup.add(outer);
-    this.scene.add(gGroup);
-
-    const nebulaTex = this.makeNebulaTex();
-    const nebulae: THREE.Sprite[] = [];
-    for(let i=0;i<14;i++){ const m=new THREE.SpriteMaterial({map:nebulaTex,color:[0xaa5599,0x5588aa,0xaa55ff,0xaa9955,0x55ddaa,0xaaaa99,0xff5577][i%7],transparent:true,opacity:0.15+Math.random()*0.1,blending:THREE.AdditiveBlending,depthWrite:false,fog:false}); const s=new THREE.Sprite(m); const r=7000+Math.random()*5000; const th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1); s.position.set(r*Math.sin(ph)*Math.cos(th), r*Math.sin(ph)*Math.sin(th), r*Math.cos(ph)); const sc=2000+Math.random()*3000; s.scale.set(sc,sc,1); s.userData['rot']=(Math.random()-0.5)*0.00003; s.userData['ph']=Math.random()*Math.PI*2; s.userData['base']=m.opacity; this.scene.add(s); nebulae.push(s); }
-
-    const coreE = new THREE.Mesh(new THREE.IcosahedronGeometry(CONFIG.PIPE_RADIUS*3,3), new THREE.MeshBasicMaterial({color:0x8888ff,toneMapped:false,blending:THREE.AdditiveBlending,depthTest:false,depthWrite:false})); coreE.renderOrder=200; this.scene.add(coreE);
-    const ringE = new THREE.Mesh(new THREE.RingGeometry(CONFIG.PIPE_RADIUS*2.5,CONFIG.PIPE_RADIUS*5,32), new THREE.MeshBasicMaterial({color:0x50dcff,toneMapped:false,transparent:true,opacity:0.35,blending:THREE.AdditiveBlending,depthTest:false,depthWrite:false,side:THREE.DoubleSide})); ringE.rotation.x=Math.PI*0.5; ringE.renderOrder=201; this.scene.add(ringE);
-    const pulseE = new THREE.Mesh(new THREE.SphereGeometry(CONFIG.PIPE_RADIUS*1.5,14,10), new THREE.MeshBasicMaterial({color:0xff5cb8,toneMapped:false,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthTest:false,depthWrite:false})); pulseE.renderOrder=199; this.scene.add(pulseE);
-
-    const beams: THREE.Mesh[] = []; for(let i=0;i<4;i++){ const b=new THREE.Mesh(new THREE.ConeGeometry(25,3000,6,1,true), new THREE.MeshBasicMaterial({color:0xccccdd,toneMapped:false,transparent:true,opacity:0.025,blending:THREE.AdditiveBlending,depthWrite:false,fog:false})); b.geometry.translate(0,1500,0); b.position.copy(new THREE.Vector3(-11500,7000,-8500)); b.rotation.x=(i/4)*Math.PI*2; b.rotation.z=Math.PI*0.25; b.userData['base']=b.material.opacity; this.scene.add(b); beams.push(b); }
-
-    this.ud = { starGroup, gGroup, core: coreE, ring: ringE, pulse: pulseE, beams, nebulae, brightStars: [], deepStars: ds, milkyWay: mw };
+    const ds = makePoints(8000, () => { const t=Math.random()*Math.PI*2, p=Math.acos(2*Math.random()-1), r=14000+Math.random()*8000; return [r*Math.sin(p)*Math.cos(t), r*Math.sin(p)*Math.sin(t), r*Math.cos(p)]; }, () => { const t=Math.random(); if(t<0.03)return[0.6,0.7,0.9]; if(t<0.12)return[0.7,0.75,0.85]; if(t<0.4)return[0.85,0.85,0.9]; if(t<0.7)return[0.9,0.88,0.85]; return[0.8,0.7,0.65]; }, 1.2, 0.5);
+    const mw = makePoints(16000, () => { const t=Math.random()*Math.PI*2, p=gauss()*0.14, r=15000+Math.random()*5000; return [r*Math.cos(t)*Math.cos(p), r*Math.sin(t)*Math.cos(p), r*Math.sin(p)]; }, () => { const t=Math.random(); if(t<0.5)return[0.7,0.72,0.8]; if(t<0.8)return[0.75,0.75,0.8]; return[0.7,0.75,0.85]; }, 0.8, 0.4);
+    mw.rotation.x=Math.PI*0.3; mw.rotation.z=Math.PI*0.1; starGroup.add(ds); starGroup.add(mw);
+    this.scene.add(starGroup);
+    this.ud = { starGroup, deepStars: ds, milkyWay: mw };
+  }
   }
 
   private makeHaloTexture(size: number) { const cv=document.createElement('canvas'); cv.width=cv.height=size; const ctx=cv.getContext('2d')!; const g=ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2); g.addColorStop(0,'rgba(255,255,255,1)'); g.addColorStop(0.15,'rgba(255,255,255,0.8)'); g.addColorStop(0.35,'rgba(160,200,255,0.35)'); g.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=g; ctx.fillRect(0,0,size,size); return new THREE.CanvasTexture(cv); }
-  private makeNebulaTex() { const s=256,cv=document.createElement('canvas'); cv.width=cv.height=s; const ctx=cv.getContext('2d')!; for(let i=0;i<30;i++){ const x=s/2+(Math.random()-0.5)*s*0.6,y=s/2+(Math.random()-0.5)*s*0.6,r=30+Math.random()*80; const g=ctx.createRadialGradient(x,y,0,x,y,r); g.addColorStop(0,'rgba(255,255,255,0.35)'); g.addColorStop(1,'rgba(255,255,255,0)'); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); } return new THREE.CanvasTexture(cv); }
 
   private setupGeometry() {
     const cyl=new THREE.CylinderGeometry(CONFIG.PIPE_RADIUS,CONFIG.PIPE_RADIUS,1,14,1,false);
@@ -151,15 +135,9 @@ export class SceneService {
   }
 
   private setupHead() {
-    const halo=this.makeHaloTexture(128);
-    this.ud.headCore=new THREE.Mesh(new THREE.SphereGeometry(CONFIG.PIPE_RADIUS*1.4,16,12),new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false,depthTest:false,depthWrite:false})); this.ud.headCore.renderOrder=100; this.scene.add(this.ud.headCore);
-    this.ud.headHalo1=new THREE.Sprite(new THREE.SpriteMaterial({map:halo,color:0xffffff,transparent:true,opacity:0.2,blending:THREE.AdditiveBlending,depthTest:false,depthWrite:false,fog:false})); this.ud.headHalo1.renderOrder=101; this.scene.add(this.ud.headHalo1);
-    this.ud.headHalo2=new THREE.Sprite(new THREE.SpriteMaterial({map:halo,color:0xffffff,transparent:true,opacity:0.1,blending:THREE.AdditiveBlending,depthTest:false,depthWrite:false,fog:false})); this.ud.headHalo2.renderOrder=102; this.scene.add(this.ud.headHalo2);
-    // Distinct tip arrow — clearly shows direction
-    this.ud.headArrow=new THREE.Mesh(new THREE.ConeGeometry(CONFIG.PIPE_RADIUS*1.1,CONFIG.PIPE_RADIUS*4,12),new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false,depthTest:false,depthWrite:false,transparent:true,opacity:0.85})); this.ud.headArrow.renderOrder=103; this.scene.add(this.ud.headArrow);
-    this.ud.tipLight=new THREE.PointLight(0xffffff,0.4,120,2); this.scene.add(this.ud.tipLight);
-    this.ud.headFlare=new THREE.Mesh(new THREE.CircleGeometry(CONFIG.PIPE_RADIUS*2,12),new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false,transparent:true,opacity:0.1,blending:THREE.AdditiveBlending,depthTest:false,depthWrite:false})); this.ud.headFlare.renderOrder=99; this.scene.add(this.ud.headFlare);
-    this.ud.headFlare2=new THREE.Mesh(new THREE.CircleGeometry(CONFIG.PIPE_RADIUS*4,12),new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false,transparent:true,opacity:0.04,blending:THREE.AdditiveBlending,depthTest:false,depthWrite:false})); this.ud.headFlare2.renderOrder=98; this.scene.add(this.ud.headFlare2);
+    this.ud.headCore=new THREE.Mesh(new THREE.SphereGeometry(CONFIG.PIPE_RADIUS*1.6,16,12),new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false,depthTest:false,depthWrite:false})); this.ud.headCore.renderOrder=100; this.scene.add(this.ud.headCore);
+    this.ud.headArrow=new THREE.Mesh(new THREE.ConeGeometry(CONFIG.PIPE_RADIUS*1.4,CONFIG.PIPE_RADIUS*5,14),new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false,depthTest:false,depthWrite:false})); this.ud.headArrow.renderOrder=103; this.scene.add(this.ud.headArrow);
+    this.ud.tipLight=new THREE.PointLight(0xffffff,0.3,100,2); this.scene.add(this.ud.tipLight);
     this.ud.headWake=new THREE.Mesh(new THREE.ConeGeometry(CONFIG.PIPE_RADIUS*0.4,CONFIG.PIPE_RADIUS*5,10),new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false,transparent:true,opacity:0.15,depthTest:false,depthWrite:false})); this.ud.headWake.geometry.translate(0,-CONFIG.PIPE_RADIUS*2.5,0); this.ud.headWake.renderOrder=102; this.scene.add(this.ud.headWake);
     this.ud.headWarp=new THREE.Mesh(new THREE.CylinderGeometry(0,CONFIG.PIPE_RADIUS*8,CONFIG.PIPE_RADIUS*30,16,1,true),new THREE.MeshBasicMaterial({color:0x50dcff,toneMapped:false,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthTest:false,depthWrite:false})); this.ud.headWarp.geometry.translate(0,-CONFIG.PIPE_RADIUS*15,0); this.ud.headWarp.renderOrder=104; this.scene.add(this.ud.headWarp);
   }
@@ -231,14 +209,10 @@ export class SceneService {
   private updateHead(pos: THREE.Vector3, fwd: THREE.Vector3, hue: number) {
     const c=new THREE.Color().setHSL(hue,1.0,0.55);
     this.ud.headCore.position.copy(pos); (this.ud.headCore.material as THREE.MeshBasicMaterial).color.copy(c).lerp(new THREE.Color(0xffffff),0.4);
-    this.ud.headHalo1.position.copy(pos); this.ud.headHalo2.position.copy(pos); (this.ud.headHalo1.material as THREE.SpriteMaterial).color.copy(c); (this.ud.headHalo2.material as THREE.SpriteMaterial).color.copy(c);
-    this.ud.headArrow.position.copy(pos).addScaledVector(fwd,CONFIG.PIPE_RADIUS*3.4); this.ud.headArrow.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),fwd); (this.ud.headArrow.material as THREE.MeshBasicMaterial).color.copy(c);
-    this.ud.headWake.position.copy(pos).addScaledVector(fwd,-CONFIG.PIPE_RADIUS*3.0); this.ud.headWake.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),fwd); (this.ud.headWake.material as THREE.MeshBasicMaterial).color.copy(c); (this.ud.headWake.material as THREE.MeshBasicMaterial).opacity=0.2+0.1*Math.sin(performance.now()*0.008);
-    const fs=1.0+0.15*Math.sin(performance.now()*0.006);
-    this.ud.headFlare.position.copy(pos); this.ud.headFlare.quaternion.copy(this.camera.quaternion); this.ud.headFlare.scale.setScalar(CONFIG.PIPE_RADIUS*2*fs); (this.ud.headFlare.material as THREE.MeshBasicMaterial).color.copy(c);
-    this.ud.headFlare2.position.copy(pos); this.ud.headFlare2.quaternion.copy(this.camera.quaternion); this.ud.headFlare2.scale.setScalar(CONFIG.PIPE_RADIUS*4*fs); (this.ud.headFlare2.material as THREE.MeshBasicMaterial).color.copy(c);
+    this.ud.headArrow.position.copy(pos).addScaledVector(fwd,CONFIG.PIPE_RADIUS*3.6); this.ud.headArrow.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),fwd); (this.ud.headArrow.material as THREE.MeshBasicMaterial).color.copy(c);
+    this.ud.headWake.position.copy(pos).addScaledVector(fwd,-CONFIG.PIPE_RADIUS*2.2); this.ud.headWake.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),fwd); (this.ud.headWake.material as THREE.MeshBasicMaterial).color.copy(c); (this.ud.headWake.material as THREE.MeshBasicMaterial).opacity=0.12+0.06*Math.sin(performance.now()*0.008);
     const boosting=this.keys['ShiftLeft']||this.keys['ShiftRight'];
-    if(boosting){this.ud.headWarp.position.copy(pos).addScaledVector(fwd,-CONFIG.PIPE_RADIUS*18);this.ud.headWarp.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),fwd);const ws=0.6+0.4*Math.sin(performance.now()*0.02);this.ud.headWarp.scale.setScalar(CONFIG.PIPE_RADIUS*8*ws);(this.ud.headWarp.material as THREE.MeshBasicMaterial).opacity=0.2+0.1*Math.sin(performance.now()*0.015);(this.ud.headWarp.material as THREE.MeshBasicMaterial).color.copy(c);}(this.ud.headWarp.material as THREE.MeshBasicMaterial).opacity=boosting?(this.ud.headWarp.material as THREE.MeshBasicMaterial).opacity:0;
+    if(boosting){this.ud.headWarp.position.copy(pos).addScaledVector(fwd,-CONFIG.PIPE_RADIUS*14);this.ud.headWarp.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),fwd);const ws=0.6+0.4*Math.sin(performance.now()*0.02);this.ud.headWarp.scale.setScalar(CONFIG.PIPE_RADIUS*6*ws);(this.ud.headWarp.material as THREE.MeshBasicMaterial).opacity=0.2+0.1*Math.sin(performance.now()*0.015);(this.ud.headWarp.material as THREE.MeshBasicMaterial).color.copy(c);}(this.ud.headWarp.material as THREE.MeshBasicMaterial).opacity=boosting?(this.ud.headWarp.material as THREE.MeshBasicMaterial).opacity:0;
     this.ud.tipLight.position.copy(pos); this.ud.tipLight.color.copy(c);
   }
 
@@ -291,9 +265,6 @@ export class SceneService {
   private updateBackground(now: number) {
     const t=now*0.001;
     [this.ud.deepStars,this.ud.milkyWay].forEach(s=>{if(s.material.userData?.shader)s.material.userData.shader.uniforms['uTime'].value=t;});
-    this.ud.brightStars?.forEach((b: any)=>{b.sprite.scale.setScalar(b.baseScale*(0.92+0.08*Math.sin(t*1.0+b.phase)));});
-    if(this.ud.gGroup){this.ud.gGroup.rotation.z+=0.00008;this.ud.gGroup.rotation.x+=0.00002;if(this.ud.core)(this.ud.core.material as THREE.SpriteMaterial).opacity=0.4+0.1*Math.sin(t*0.5);if(this.ud.outer)(this.ud.outer.material as THREE.SpriteMaterial).opacity=0.15+0.05*Math.sin(t*0.3+1);if(this.ud.pulse){const s=1+0.4*Math.sin(t*2);this.ud.pulse.scale.setScalar(CONFIG.PIPE_RADIUS*6*s);(this.ud.pulse.material as THREE.MeshBasicMaterial).opacity=0.25*Math.max(0,Math.sin(t*2));}if(this.ud.core){this.ud.core.rotation.x=t*0.25;this.ud.core.rotation.y=t*0.15;const cs=1+0.08*Math.sin(t*1.5);this.ud.core.scale.setScalar(CONFIG.PIPE_RADIUS*3*cs);(this.ud.core.material as THREE.MeshBasicMaterial).color.setHSL(t*0.05%1,0.8,0.55);}if(this.ud.ring){this.ud.ring.rotation.z=t*0.1;this.ud.ring.scale.setScalar(1+0.15*Math.sin(t*1));(this.ud.ring.material as THREE.MeshBasicMaterial).opacity=0.35+0.15*Math.sin(t*1+1);}this.ud.beams.forEach((b: THREE.Mesh, i: number)=>{b.rotation.z+=0.00005*(i+1);(b.material as THREE.MeshBasicMaterial).opacity=b.userData['base']*(0.8+0.2*Math.sin(t*0.3+i));});}
-    this.ud.nebulae?.forEach((s: THREE.Sprite)=>{s.rotation.z+=s.userData['rot']*8;s.position.x+=Math.sin(t*0.05+s.userData['ph'])*0.04;s.position.y+=Math.cos(t*0.04+s.userData['ph'])*0.03;(s.material as THREE.SpriteMaterial).opacity=s.userData['base']*(0.9+0.1*Math.sin(t*0.4+s.userData['ph']));});
     if(this.ud.dust)(this.ud.dust.material as THREE.ShaderMaterial).uniforms['uTime'].value=t;
   }
 
