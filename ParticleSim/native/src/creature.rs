@@ -2,8 +2,8 @@ use crate::elements::Elem;
 use crate::rng::Rng;
 use crate::world::{World, DIRS4, DIRS8};
 
-pub const INPUTS: usize = 160;
-pub const OUTPUTS: usize = 14;
+pub const INPUTS: usize = 224;
+pub const OUTPUTS: usize = 20;
 const MAX_POP: usize = 500;
 /// Above this population creatures stop reproducing so the world stays lively
 /// without grinding to a halt (the hard cap is still MAX_POP).
@@ -48,7 +48,7 @@ impl Net {
         for layer in 0..sizes.len() - 1 {
             let fan_in = sizes[layer];
             let fan_out = sizes[layer + 1];
-            let scale = (2.0 / (fan_in + fan_out) as f32).sqrt();
+            let scale = (2.0 / (fan_in + fan_out) as f32).sqrt() * 2.2;
             let mut ws = Vec::with_capacity(fan_in * fan_out);
             for _ in 0..fan_in * fan_out {
                 ws.push((rng.f32() * 2.0 - 1.0) * scale);
@@ -95,10 +95,26 @@ impl Net {
             next.clear();
             next.resize(out_n, 0.0);
             for o in 0..out_n {
-                let mut sum = bs[o];
-                let row = o * in_n;
-                for i in 0..in_n {
-                    sum += act[i] * ws[row + i];
+                let row = &ws[o * in_n..(o + 1) * in_n];
+                // Four independent accumulators: the float adds cannot be
+                // re-associated automatically, so we break the dependency
+                // chain by hand. This roughly halves the cost of the network.
+                let mut s0 = 0.0f32;
+                let mut s1 = 0.0f32;
+                let mut s2 = 0.0f32;
+                let mut s3 = 0.0f32;
+                let mut i = 0usize;
+                let mut chunks = row.chunks_exact(4);
+                for ch in &mut chunks {
+                    s0 += ch[0] * act[i];
+                    s1 += ch[1] * act[i + 1];
+                    s2 += ch[2] * act[i + 2];
+                    s3 += ch[3] * act[i + 3];
+                    i += 4;
+                }
+                let mut sum = bs[o] + (s0 + s1) + (s2 + s3);
+                for j in i..in_n {
+                    sum += act[j] * row[j];
                 }
                 next[o] = if layer == last { sum.tanh() } else { sum.max(0.0) };
             }
@@ -325,6 +341,122 @@ pub enum SimEvent {
     Trade { x: f32, y: f32, color: [u8; 3] },
     Birth { x: f32, y: f32, color: [u8; 3] },
     Death { x: f32, y: f32, color: [u8; 3], size: f32 },
+}
+
+/// A cheap local scan of the world around a creature (radius 8, every other
+/// cell). Shared between the neural senses and the steering behaviours so the
+/// world is only scanned once per creature per step.
+#[derive(Clone, Copy)]
+struct LocalScan {
+    /// (dx, dy, distance) of the closest interesting thing.
+    food: (f32, f32, f32),
+    water: (f32, f32, f32),
+    wood: (f32, f32, f32),
+    ore: (f32, f32, f32),
+    hazard: (f32, f32, f32),
+    poison: (f32, f32, f32),
+    /// wood, metal, crystal, food, water, solid, empty, lava/fire, acid, plants, structures
+    counts: [f32; 11],
+}
+
+impl LocalScan {
+    fn empty() -> Self {
+        LocalScan {
+            food: (0.0, 0.0, f32::MAX),
+            water: (0.0, 0.0, f32::MAX),
+            wood: (0.0, 0.0, f32::MAX),
+            ore: (0.0, 0.0, f32::MAX),
+            hazard: (0.0, 0.0, f32::MAX),
+            poison: (0.0, 0.0, f32::MAX),
+            counts: [0.0; 11],
+        }
+    }
+}
+
+fn scan_local(world: &World, cx: i32, cy: i32) -> LocalScan {
+    let mut s = LocalScan::empty();
+    let w = world.w as i32;
+    let h = world.h as i32;
+    for dy in (-8..=8).step_by(2) {
+        let y = cy + dy;
+        if y < 0 || y >= h {
+            continue;
+        }
+        for dx in (-8..=8).step_by(2) {
+            let x = cx + dx;
+            if x < 0 || x >= w {
+                continue;
+            }
+            let e = Elem::from_u8(world.kind[(y as usize) * world.w + x as usize]);
+            let dist = ((dx * dx + dy * dy) as f32).sqrt();
+            if e == Elem::Empty {
+                s.counts[6] += 1.0;
+                continue;
+            }
+            if e.is_solid() {
+                s.counts[5] += 1.0;
+            }
+            if e.is_constructed() {
+                s.counts[10] += 1.0;
+            }
+            if e.nutrition() > 0.0 && e.is_edible() {
+                s.counts[3] += 1.0;
+                if dist < s.food.2 {
+                    s.food = (dx as f32, dy as f32, dist);
+                }
+            }
+            if e == Elem::Water {
+                s.counts[4] += 1.0;
+                if dist < s.water.2 {
+                    s.water = (dx as f32, dy as f32, dist);
+                }
+            }
+            if matches!(e, Elem::Wood | Elem::Roots) {
+                s.counts[0] += 1.0;
+                if dist < s.wood.2 {
+                    s.wood = (dx as f32, dy as f32, dist);
+                }
+            }
+            if matches!(
+                e,
+                Elem::Metal
+                    | Elem::Copper
+                    | Elem::Tin
+                    | Elem::Bronze
+                    | Elem::Iron
+                    | Elem::Steel
+                    | Elem::Gold
+                    | Elem::Silver
+            ) {
+                s.counts[1] += 1.0;
+                if dist < s.ore.2 {
+                    s.ore = (dx as f32, dy as f32, dist);
+                }
+            }
+            if matches!(e, Elem::Crystal | Elem::Gem | Elem::Diamond) {
+                s.counts[2] += 1.0;
+                if dist < s.ore.2 {
+                    s.ore = (dx as f32, dy as f32, dist);
+                }
+            }
+            if matches!(e, Elem::Lava | Elem::Magma | Elem::Fire) {
+                s.counts[7] += 1.0;
+                if dist < s.hazard.2 {
+                    s.hazard = (dx as f32, dy as f32, dist);
+                }
+            }
+            if matches!(e, Elem::Acid | Elem::Poison | Elem::Chlorine) {
+                s.counts[8] += 1.0;
+                if dist < s.poison.2 {
+                    s.poison = (dx as f32, dy as f32, dist);
+                }
+            }
+            if matches!(e, Elem::Plant | Elem::Moss | Elem::Spore | Elem::Fungus) {
+                s.counts[9] += 1.0;
+            }
+        }
+    }
+    s
 }
 
 // ---------------------------------------------------------------------------
@@ -911,6 +1043,34 @@ impl CreatureSystem {
         let mut net_next: Vec<f32> = Vec::with_capacity(24);
         let positions: Vec<(usize, u32, f32, f32, u32)> =
             self.list.iter().enumerate().map(|(i, c)| (i, c.id, c.x, c.y, c.species)).collect();
+        // Richer per-agent view for the senses: id, x, y, species, role, health.
+        let agents: Vec<(u32, f32, f32, u32, u8, f32)> = self
+            .list
+            .iter()
+            .map(|c| (c.id, c.x, c.y, c.species, c.role as u8, c.health))
+            .collect();
+        // Shots currently in flight (used by the senses).
+        let shot_positions: Vec<(f32, f32, u32)> = self
+            .projectiles
+            .iter()
+            .map(|p| (p.x, p.y, p.species))
+            .collect();
+        // Per-species aggregates, computed once per step.
+        let mut species_counts: Vec<(u32, u32)> = Vec::new();
+        for c in &self.list {
+            match species_counts.iter_mut().find(|(id, _)| *id == c.species) {
+                Some(e) => e.1 += 1,
+                None => species_counts.push((c.species, 1)),
+            }
+        }
+        let mut tower_counts: Vec<(u32, u32)> = Vec::new();
+        for s in &self.structures {
+            match tower_counts.iter_mut().find(|(id, _)| *id == s.species) {
+                Some(e) => e.1 += 1,
+                None => tower_counts.push((s.species, 1)),
+            }
+        }
+        let total_towers = self.structures.len() as u32;
         let pop_now = self.list.len();
 
         for index in 0..self.list.len() {
@@ -958,13 +1118,31 @@ impl CreatureSystem {
                     c.mood_timer = (self.rng.range(120) + 60) as u16;
                 } else { c.mood_timer -= 1; }
 
+                let scan = scan_local(world, c.x.round() as i32, c.y.round() as i32);
+                let own_pop = species_counts
+                    .iter()
+                    .find(|(id, _)| *id == c.species)
+                    .map(|(_, n)| *n)
+                    .unwrap_or(1);
+                let own_towers = tower_counts
+                    .iter()
+                    .find(|(id, _)| *id == c.species)
+                    .map(|(_, n)| *n)
+                    .unwrap_or(0);
+
                 Self::sense(
-                    &positions,
+                    &agents,
                     c,
                     world,
                     self.day_night,
                     self.temperature,
                     self.season,
+                    &scan,
+                    &shot_positions,
+                    own_towers,
+                    total_towers.saturating_sub(own_towers),
+                    own_pop,
+                    (pop_now as u32).saturating_sub(own_pop),
                     &mut input_buf,
                 );
                 c.net.forward_into(&input_buf, &mut net_act, &mut net_next);
@@ -972,14 +1150,87 @@ impl CreatureSystem {
 
                 // Outputs: [0]=move_x, [1]=move_y, [2]=eat, [3]=reproduce, [4]=attack,
                 // [5]=build, [6]=craft, [7]=cast_spell, [8]=mount/dismount, [9]=trade,
-                // [10]=rest, [11]=switch_spell, [12]=dig/mine, [13]=gather_water
-                c.vx = out[0] * 2.2;
-                c.vy = (out[1] * 2.2 + 0.5).clamp(-2.6, 2.6);
+                // [10]=rest, [11]=switch_spell, [12]=dig/mine, [13]=gather_water,
+                // [14]=shoot, [15]=flee, [16]=seek, [17]=forage, [18]=rally,
+                // [19]=defend
+                let mut steer_x = 0.0f32;
+                let mut steer_y = 0.0f32;
+                let mut speed_mult_extra = 1.0f32;
+
+                // --- Flee: run from the closest enemy ---
+                let mut flee_target: Option<(f32, f32, f32)> = None;
+                for &(id, ox, oy, ospecies, _orole, _ohp) in &agents {
+                    if id == c.id || ospecies == c.species {
+                        continue;
+                    }
+                    let dx = ox - c.x;
+                    let dy = oy - c.y;
+                    let d = (dx * dx + dy * dy).sqrt();
+                    if d < 45.0 && flee_target.map_or(true, |t| d < t.2) {
+                        flee_target = Some((dx, dy, d));
+                    }
+                }
+
+                // --- Seek: head for whatever the creature needs most ---
+                let seek_target: Option<(f32, f32, f32)> = if c.thirst > 45.0 && scan.water.2 < 30.0 {
+                    Some(scan.water)
+                } else if c.hunger > 45.0 && scan.food.2 < 30.0 {
+                    Some(scan.food)
+                } else if c.energy < c.max_energy * 0.5 && scan.food.2 < 30.0 {
+                    Some(scan.food)
+                } else {
+                    None
+                };
+
+                // --- Forage: head for wood or ore to build with ---
+                let forage_target: Option<(f32, f32, f32)> = {
+                    let wood = scan.wood;
+                    let ore = scan.ore;
+                    if wood.2 <= ore.2 { Some(wood) } else { Some(ore) }
+                };
+
+                if out[15] > 0.35 {
+                    if let Some((dx, dy, d)) = flee_target {
+                        if d > 0.1 {
+                            steer_x -= dx / d;
+                            steer_y -= dy / d;
+                            speed_mult_extra = 1.4;
+                        }
+                    }
+                }
+                if out[16] > 0.3 {
+                    if let Some((dx, dy, d)) = seek_target {
+                        if d > 0.1 && d < f32::MAX {
+                            steer_x += dx / d;
+                            steer_y += dy / d;
+                            speed_mult_extra = speed_mult_extra.max(1.15);
+                        }
+                    }
+                }
+                if out[17] > 0.3 {
+                    if let Some((dx, dy, d)) = forage_target {
+                        if d > 0.1 && d < f32::MAX {
+                            steer_x += dx / d;
+                            steer_y += dy / d;
+                        }
+                    }
+                }
+                if out[18] > 0.3 {
+                    let bx = c.base_x - c.x;
+                    let by = c.base_y - c.y;
+                    let bd = (bx * bx + by * by).sqrt().max(0.1);
+                    steer_x += bx / bd;
+                    steer_y += by / bd;
+                }
+
+                c.vx = (out[0] * 2.2 + steer_x * 2.0).clamp(-2.6, 2.6);
+                c.vy = (out[1] * 2.2 + steer_y * 2.0 + 0.5).clamp(-2.6, 2.6);
+                let behaviour_speed = speed_mult_extra;
 
                 // Movement with collision (mounted moves faster)
-                let mut speed_mult = 1.0;
+                let mut speed_mult = behaviour_speed;
                 if c.mount_kind != MountKind::None && c.mount_stamina > 0.0 {
-                    speed_mult = 1.6;
+                    speed_mult = 1.6 * behaviour_speed;
                     c.mount_stamina = (c.mount_stamina - 0.3).max(0.0);
                 }
                 let nx = c.x + c.vx * speed_mult;
@@ -1055,7 +1306,7 @@ impl CreatureSystem {
                     let gy = c.y.round() as i32;
                     // Hungry creatures actively search a little further for food.
                     let hungry = c.hunger > 55.0 || c.energy < c.max_energy * 0.45;
-                    let radius = if out[2] > 0.3 {
+                    let radius = if out[2] > 0.3 || out[16] > 0.3 {
                         6
                     } else if hungry {
                         5
@@ -1141,7 +1392,7 @@ impl CreatureSystem {
 
                 // Mining / gathering (output[12]). Takes solid resources out of
                 // the world for building but is explicitly *not* food.
-                let wants_mine = out[12] > 0.35 && world.mine_budget > 0;
+                let wants_mine = (out[12] > 0.35 || out[17] > 0.3) && world.mine_budget > 0;
                 let exploratory_mine = c.carried < 60.0
                     && c.stamina > 8.0
                     && matches!(c.role, Role::Worker | Role::Builder | Role::Explorer)
@@ -1468,14 +1719,32 @@ impl CreatureSystem {
                     wants_attack = true;
                 }
 
+                // Defend (output[19]): strike at anything closing in on the
+                // colony, even without a general attack impulse.
+                if out[19] > 0.3 {
+                    for &(id, ox, oy, ospecies, _orole, _ohp) in &agents {
+                        if id == c.id || ospecies == c.species {
+                            continue;
+                        }
+                        let bx = ox - c.base_x;
+                        let by = oy - c.base_y;
+                        if bx * bx + by * by < 900.0 {
+                            wants_attack = true;
+                            break;
+                        }
+                    }
+                }
+
                 // Ranged attack. A creature that managed to craft a bow or a
                 // staff shoots at the nearest enemy instead of closing in.
+                // The shoot output asks for it; soldiers open fire anyway.
                 let ranged_range = match c.tool {
                     Tool::Bow => 30.0,
                     Tool::Staff => 24.0,
                     _ => 0.0,
                 };
-                if ranged_range > 0.0 && c.fire_cooldown == 0 && c.energy > 40.0 {
+                let wants_shoot = out[14] > 0.3 || (out[4] > 0.6 && c.role == Role::Soldier);
+                if ranged_range > 0.0 && wants_shoot && c.fire_cooldown == 0 && c.energy > 40.0 {
                     let mut target: Option<(f32, f32, f32)> = None;
                     for &(_, oid, ox, oy, ospecies) in &positions {
                         if oid == c.id || ospecies == c.species { continue; }
@@ -1551,19 +1820,21 @@ impl CreatureSystem {
                 }
 
                 // Trade (output[9] = trade) - with nearby creature
-                if out[9] > 0.5 && c.craft_cooldown == 0 {
+                if out[9] > 0.4 && c.craft_cooldown == 0 {
                     for &(list_idx, oid, ox, oy, ospecies) in &positions {
                         if oid == c.id { continue; }
                         let d = ((ox - c.x).powi(2) + (oy - c.y).powi(2)).sqrt();
                         if d < 6.0 && ospecies != c.species {
                             traded = true;
+                            // A trade is a negotiation, not a per-tick income.
+                            c.craft_cooldown = 25;
                             self.events.push(SimEvent::Trade {
                                 x: (c.x + ox) * 0.5,
                                 y: (c.y + oy) * 0.5,
                                 color: c.team_color,
                             });
                             c.reputation = (c.reputation as i32 + 1).clamp(-100, 100) as i16;
-                            c.energy = (c.energy + 10.0).min(c.max_energy);
+                            c.energy = (c.energy + 5.0).min(c.max_energy);
                             break;
                         }
                     }
@@ -2000,7 +2271,21 @@ impl CreatureSystem {
         }
     }
 
-    fn sense(positions: &[(usize, u32, f32, f32, u32)], c: &Creature, world: &World, day_night: f32, temperature: f32, season: u8, input: &mut [f32]) {
+    fn sense(
+        agents: &[(u32, f32, f32, u32, u8, f32)],
+        c: &Creature,
+        world: &World,
+        day_night: f32,
+        temperature: f32,
+        season: u8,
+        scan: &LocalScan,
+        shots: &[(f32, f32, u32)],
+        own_turrets: u32,
+        enemy_turrets: u32,
+        species_population: u32,
+        rival_population: u32,
+        input: &mut [f32],
+    ) {
         input.fill(0.0);
         let cx = c.x.round() as i32;
         let cy = c.y.round() as i32;
@@ -2033,12 +2318,24 @@ impl CreatureSystem {
             input[base + 5] = crystal.min(1.0);
         }
 
-        // Creature proximity (nearest other, count nearby)
+        // Creature proximity: one pass over the colony gives the nearest
+        // neighbour, the nearest rival, the nearest ally and the local
+        // friend/foe counts.
         let mut nearest_dist = f32::MAX;
         let mut nearest_dx = 0.0;
         let mut nearest_dy = 0.0;
         let mut others = 0.0;
-        for &(list_idx, id, ox, oy, _ospecies) in positions {
+        let mut same = 0.0;
+        let mut enemy = 0.0;
+        let (mut e_dx, mut e_dy, mut e_dist) = (0.0f32, 0.0f32, f32::MAX);
+        let (mut a_dx, mut a_dy, mut a_dist) = (0.0f32, 0.0f32, f32::MAX);
+        let mut e_is_queen = 0.0;
+        let mut e_is_soldier = 0.0;
+        let mut e_hp = 0.0;
+        let mut a_is_queen = 0.0;
+        let mut enemies_close = 0.0f32;
+        let mut enemies_far = 0.0f32;
+        for &(id, ox, oy, ospecies, orole, ohp) in agents {
             if id == c.id {
                 continue;
             }
@@ -2047,11 +2344,39 @@ impl CreatureSystem {
             let d2 = dx * dx + dy * dy;
             if d2 < 400.0 {
                 others += 1.0;
+                if ospecies == c.species {
+                    same += 1.0;
+                } else {
+                    enemy += 1.0;
+                }
             }
             if d2 < nearest_dist {
                 nearest_dist = d2;
                 nearest_dx = dx;
                 nearest_dy = dy;
+            }
+            let d = d2.sqrt();
+            if ospecies == c.species {
+                if d < a_dist {
+                    a_dist = d;
+                    a_dx = dx;
+                    a_dy = dy;
+                    a_is_queen = if orole == Role::Queen as u8 { 1.0 } else { 0.0 };
+                }
+            } else {
+                if d < e_dist {
+                    e_dist = d;
+                    e_dx = dx;
+                    e_dy = dy;
+                    e_hp = ohp;
+                    e_is_queen = if orole == Role::Queen as u8 { 1.0 } else { 0.0 };
+                    e_is_soldier = if orole == Role::Soldier as u8 { 1.0 } else { 0.0 };
+                }
+                if d < 10.0 {
+                    enemies_close += 1.0;
+                } else if d < 25.0 {
+                    enemies_far += 1.0;
+                }
             }
         }
 
@@ -2081,15 +2406,6 @@ impl CreatureSystem {
         input[49] = (base_dy / base_dist).clamp(-1.0, 1.0);
         input[50] = 1.0 - (base_dist / 100.0).min(1.0);
         // Same-species count nearby
-        let mut same = 0.0;
-        let mut enemy = 0.0;
-        for &(list_idx, id, ox, oy, ospecies) in positions {
-            if id == c.id { continue; }
-            let d2 = (ox - c.x).powi(2) + (oy - c.y).powi(2);
-            if d2 < 400.0 {
-                if ospecies == c.species { same += 1.0; } else { enemy += 1.0; }
-            }
-        }
         input[51] = (same / 10.0f32).clamp(0.0f32, 1.0f32);
         input[52] = (enemy / 10.0f32).clamp(0.0f32, 1.0f32);
         input[53] = match c.role { Role::Queen => 1.0, _ => 0.0 };
@@ -2165,6 +2481,103 @@ impl CreatureSystem {
         input[138] = if season == 1 { 1.0 } else { 0.0 };
         input[139] = if season == 2 { 1.0 } else { 0.0 };
         input[140] = if season == 3 { 1.0 } else { 0.0 };
+
+        // ---- Extended senses (160-223) ----------------------------------
+        // Enemy awareness (160-171)
+        input[160] = (e_dx / 30.0).clamp(-1.0, 1.0);
+        input[161] = (e_dy / 30.0).clamp(-1.0, 1.0);
+        input[162] = (1.0 - (e_dist / 60.0).min(1.0)).max(0.0);
+        input[163] = e_is_queen;
+        input[164] = e_is_soldier;
+        input[165] = (e_hp / 150.0).clamp(0.0, 1.0);
+        input[166] = (enemies_close / 6.0).clamp(0.0, 1.0);
+        input[167] = (enemies_far / 10.0).clamp(0.0, 1.0);
+        input[168] = (a_dx / 30.0).clamp(-1.0, 1.0);
+        input[169] = (a_dy / 30.0).clamp(-1.0, 1.0);
+        input[170] = (1.0 - (a_dist / 60.0).min(1.0)).max(0.0);
+        input[171] = a_is_queen;
+
+        // Threats (172-181)
+        let mut shot_dx = 0.0;
+        let mut shot_dy = 0.0;
+        let mut shots_near = 0.0f32;
+        for &(sx, sy, s_species) in shots {
+            if s_species == c.species {
+                continue;
+            }
+            let dx = sx - c.x;
+            let dy = sy - c.y;
+            let d = (dx * dx + dy * dy).sqrt();
+            if d < 20.0 {
+                shots_near += 1.0;
+                shot_dx += dx;
+                shot_dy += dy;
+            }
+        }
+        input[172] = (shots_near / 5.0).clamp(0.0, 1.0);
+        input[173] = (shot_dx / 30.0).clamp(-1.0, 1.0);
+        input[174] = (shot_dy / 30.0).clamp(-1.0, 1.0);
+        input[175] = (scan.counts[7] / 6.0).clamp(0.0, 1.0);
+        input[176] = (scan.hazard.0 / 16.0).clamp(-1.0, 1.0);
+        input[177] = (scan.hazard.1 / 16.0).clamp(-1.0, 1.0);
+        input[178] = (scan.counts[8] / 6.0).clamp(0.0, 1.0);
+        input[179] = (scan.poison.0 / 16.0).clamp(-1.0, 1.0);
+        input[180] = (scan.poison.1 / 16.0).clamp(-1.0, 1.0);
+        let max_hp = if c.role == Role::Soldier { 150.0 } else { 100.0 };
+        input[181] = if c.health < max_hp * 0.35 { 1.0 } else { 0.0 };
+
+        // Foraging (182-193)
+        input[182] = (scan.food.0 / 16.0).clamp(-1.0, 1.0);
+        input[183] = (scan.food.1 / 16.0).clamp(-1.0, 1.0);
+        input[184] = (1.0 - (scan.food.2 / 24.0).min(1.0)).max(0.0);
+        input[185] = (scan.water.0 / 16.0).clamp(-1.0, 1.0);
+        input[186] = (scan.water.1 / 16.0).clamp(-1.0, 1.0);
+        input[187] = (1.0 - (scan.water.2 / 24.0).min(1.0)).max(0.0);
+        input[188] = (scan.wood.0 / 16.0).clamp(-1.0, 1.0);
+        input[189] = (scan.wood.1 / 16.0).clamp(-1.0, 1.0);
+        input[190] = (1.0 - (scan.wood.2 / 24.0).min(1.0)).max(0.0);
+        input[191] = (scan.ore.0 / 16.0).clamp(-1.0, 1.0);
+        input[192] = (scan.ore.1 / 16.0).clamp(-1.0, 1.0);
+        input[193] = (1.0 - (scan.ore.2 / 24.0).min(1.0)).max(0.0);
+
+        // Resources & colony (194-203)
+        input[194] = (scan.counts[0] / 20.0).clamp(0.0, 1.0);
+        input[195] = (scan.counts[1] / 10.0).clamp(0.0, 1.0);
+        input[196] = (scan.counts[2] / 10.0).clamp(0.0, 1.0);
+        input[197] = (scan.counts[3] / 15.0).clamp(0.0, 1.0);
+        input[198] = (scan.counts[4] / 10.0).clamp(0.0, 1.0);
+        input[199] = (own_turrets as f32 / 6.0).clamp(0.0, 1.0);
+        input[200] = (enemy_turrets as f32 / 6.0).clamp(0.0, 1.0);
+        input[201] = (scan.counts[10] / 10.0).clamp(0.0, 1.0);
+        input[202] = (base_dist / 120.0).min(1.0);
+        input[203] = (base_dx / 60.0).clamp(-1.0, 1.0);
+
+        // Environment (204-211)
+        let surface_y = world.surface_y(cx);
+        input[204] = ((cy - surface_y) as f32 / 60.0).clamp(0.0, 1.0);
+        input[205] = if world.get(cx, cy - 3) == Elem::Empty { 1.0 } else { 0.0 };
+        input[206] = (scan.counts[5] / 40.0).clamp(0.0, 1.0);
+        input[207] = (scan.counts[6] / 40.0).clamp(0.0, 1.0);
+        input[208] = (scan.counts[4] / 10.0).clamp(0.0, 1.0);
+        input[209] = ((scan.counts[7] + scan.counts[8]) / 8.0).clamp(0.0, 1.0);
+        input[210] = (scan.counts[3] / 15.0).clamp(0.0, 1.0);
+        input[211] = (scan.counts[9] / 20.0).clamp(0.0, 1.0);
+
+        // Personal readiness (212-221)
+        input[212] = (c.fire_cooldown as f32 / 60.0).clamp(0.0, 1.0);
+        input[213] = if c.fire_cooldown == 0 { 1.0 } else { 0.0 };
+        input[214] = if c.tool == Tool::Bow { 1.0 } else { 0.0 };
+        input[215] = if c.tool == Tool::Staff { 1.0 } else { 0.0 };
+        input[216] = if matches!(c.tool, Tool::Pickaxe | Tool::Drill) { 1.0 } else { 0.0 };
+        input[217] = if c.tool == Tool::Hammer { 1.0 } else { 0.0 };
+        input[218] = if c.inventory[6] >= 8 && c.tech_level >= 1 { 1.0 } else { 0.0 };
+        input[219] = (c.build_cooldown as f32 / 10.0).clamp(0.0, 1.0);
+        input[220] = if c.hunger > 70.0 { 1.0 } else { 0.0 };
+        input[221] = if c.thirst > 70.0 { 1.0 } else { 0.0 };
+
+        // Colony strength (222-223)
+        input[222] = (species_population as f32 / 40.0).clamp(0.0, 1.0);
+        input[223] = (rival_population as f32 / 40.0).clamp(0.0, 1.0);
     }
 
     pub fn update_stats(&mut self) {

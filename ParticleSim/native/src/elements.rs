@@ -274,6 +274,17 @@ impl Elem {
         t
     }
 
+    /// Lookup table: is this element byte solid? Built once at startup.
+    pub fn solid_table() -> [bool; 80] {
+        let mut t = [false; 80];
+        let mut i = 0;
+        while i < 80 {
+            t[i] = Elem::from_u8(i as u8).is_solid();
+            i += 1;
+        }
+        t
+    }
+
     pub fn behavior(self) -> Behavior {
         match self {
             Elem::Sand | Elem::Sulfur | Elem::Salt | Elem::Ash | Elem::Dust | Elem::Gunpowder | Elem::Fertilizer => Behavior::Fall,

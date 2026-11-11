@@ -17,6 +17,43 @@ fn noise(x: i32, y: i32) -> f32 {
     (hash2(x, y) >> 8) as f32 / 16_777_216.0
 }
 
+/// Smooth 2D value noise (used for the cloud layer).
+#[inline]
+fn vnoise(x: f32, y: f32) -> f32 {
+    let xi = x.floor();
+    let yi = y.floor();
+    let xf = x - xi;
+    let yf = y - yi;
+    let u = xf * xf * (3.0 - 2.0 * xf);
+    let v = yf * yf * (3.0 - 2.0 * yf);
+    let ix = xi as i32;
+    let iy = yi as i32;
+    let a = noise(ix, iy);
+    let b = noise(ix + 1, iy);
+    let c = noise(ix, iy + 1);
+    let d = noise(ix + 1, iy + 1);
+    (a * (1.0 - u) + b * u) * (1.0 - v) + (c * (1.0 - u) + d * u) * v
+}
+
+/// Cloud density: domain-warped fractal noise. The warping breaks up the
+/// round blobs so the result reads as torn cloud banks instead of ellipses.
+#[inline]
+fn cloud_density(x: f32, y: f32) -> f32 {
+    let wx = vnoise(x * 0.8 + 3.1, y * 0.8 + 1.7) - 0.5;
+    let wy = vnoise(x * 0.8 + 11.7, y * 0.8 + 5.2) - 0.5;
+    let px = x + wx * 2.4;
+    let py = y + wy * 1.1;
+    vnoise(px, py) * 0.55
+        + vnoise(px * 2.2 + 1.7, py * 2.2) * 0.3
+        + vnoise(px * 4.6 + 8.2, py * 4.6) * 0.15
+}
+
+#[inline]
+fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
 #[inline]
 fn clamp_u8(v: f32) -> u8 {
     v.clamp(0.0, 255.0) as u8
@@ -41,15 +78,17 @@ pub fn render_world(
     // Ground level per column: the topmost *supported* solid cell. Using the
     // real terrain (instead of the analytic surface) keeps eroded gaps and
     // crater floors from being painted as black voids.
+    let solid = Elem::solid_table();
     let mut ground = vec![0i32; w];
     for x in 0..w {
         let mut g = h as i32 - 1;
         let mut found = false;
         for y in 0..h {
-            let e = Elem::from_u8(world.kind[y * w + x]);
-            if e.is_solid() {
+            let k = world.kind[y * w + x];
+            if k != Elem::Empty as u8 && solid[k as usize] {
                 let supported = y + 1 < h
-                    && Elem::from_u8(world.kind[(y + 1) * w + x]).is_solid();
+                    && world.kind[(y + 1) * w + x] != Elem::Empty as u8
+                    && solid[world.kind[(y + 1) * w + x] as usize];
                 if supported || y + 1 >= h {
                     g = y as i32;
                     found = true;
@@ -59,7 +98,8 @@ pub fn render_world(
         }
         if !found {
             for y in 0..h {
-                if Elem::from_u8(world.kind[y * w + x]).is_solid() {
+                let k = world.kind[y * w + x];
+                if k != Elem::Empty as u8 && solid[k as usize] {
                     g = y as i32;
                     break;
                 }
@@ -72,6 +112,28 @@ pub fn render_world(
     let day = 0.5 - 0.5 * (day_night * std::f32::consts::TAU).cos();
     let light = 0.34 + 0.66 * day;
 
+    // Sun / moon position across the sky (day_night 0 = midnight, 0.5 = noon).
+    let sun_x = (day_night * w as f32) as i32;
+    let sun_height = (1.0 - (day_night - 0.5).abs() * 2.0).max(0.0);
+    let sun_y = (h as f32 * (0.62 - 0.55 * sun_height)) as i32;
+    let is_day = day > 0.25;
+
+    // Cloud layer: domain-warped fractal noise sampled from a coarse grid.
+    // The grid is stretched horizontally so the clouds come out as wide,
+    // flat banks instead of round blobs.
+    const GSX: f32 = 30.0;
+    const GSY: f32 = 13.0;
+    let gw = (w as f32 / GSX) as usize + 2;
+    let gh = (h as f32 / GSY) as usize + 2;
+    let mut clouds = vec![0.0f32; gw * gh];
+    for gy in 0..gh {
+        for gx in 0..gw {
+            let fx = gx as f32 + time * 0.06;
+            let fy = gy as f32;
+            clouds[gy * gw + gx] = cloud_density(fx, fy);
+        }
+    }
+
     // Seasonal atmosphere tint (subtle, so materials keep their identity).
     let (sr, sg, sb) = match season {
         0 => (0.94f32, 1.0f32, 0.95f32),
@@ -81,6 +143,7 @@ pub fn render_world(
     };
 
     for y in 0..h {
+        let mut cv_row = 0.0f32;
         for x in 0..w {
             let cell = y * w + x;
             let o = cell * 4;
@@ -110,6 +173,51 @@ pub fn render_world(
                         r = r.max(star * 0.85);
                         g = g.max(star * 0.9);
                         b = b.max(star);
+                    }
+
+                    // Sun or moon, with a soft halo.
+                    let sdx = x as i32 - sun_x;
+                    let sdy = y as i32 - sun_y;
+                    let sd = (sdx * sdx + sdy * sdy) as f32;
+                    if sd < 900.0 {
+                        let halo = (1.0 - (sd / 900.0).sqrt()).max(0.0);
+                        let core = if sd < 36.0 { 1.0 } else { 0.0 };
+                        let (cr, cg, cb) = if is_day {
+                            (255.0, 238.0, 190.0)
+                        } else {
+                            (200.0, 215.0, 245.0)
+                        };
+                        let amt = halo * halo * 0.55 + core;
+                        r += (cr - r) * amt;
+                        g += (cg - g) * amt;
+                        b += (cb - b) * amt;
+                    }
+
+                    // Cloud banks, sampled from the warped noise grid. Only the
+                    // upper sky carries clouds, and the sample is reused for
+                    // every second column to keep the cost down.
+                    if (y as f32) < surf * 0.6 {
+                        if x & 1 == 0 {
+                            let fx = x as f32 / GSX;
+                            let fy = y as f32 / GSY;
+                            let gx0 = (fx.floor() as usize).min(gw - 2);
+                            let gy0 = (fy.floor() as usize).min(gh - 2);
+                            let tx = fx - gx0 as f32;
+                            let ty = fy - gy0 as f32;
+                            let c00 = clouds[gy0 * gw + gx0];
+                            let c10 = clouds[gy0 * gw + gx0 + 1];
+                            let c01 = clouds[(gy0 + 1) * gw + gx0];
+                            let c11 = clouds[(gy0 + 1) * gw + gx0 + 1];
+                            cv_row = (c00 * (1.0 - tx) + c10 * tx) * (1.0 - ty)
+                                + (c01 * (1.0 - tx) + c11 * tx) * ty;
+                        }
+                        // Soft edges, and only the denser parts become clouds.
+                        let amt = smoothstep(0.56, 0.78, cv_row) * (0.20 + 0.32 * day);
+                        if amt > 0.002 {
+                            r += (206.0 - r) * amt;
+                            g += (214.0 - g) * amt;
+                            b += (232.0 - b) * amt;
+                        }
                     }
 
                     buf[o] = clamp_u8(r);

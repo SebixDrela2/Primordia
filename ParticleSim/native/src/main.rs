@@ -366,7 +366,7 @@ async fn main() {
 
     // Camera position (top-left of view in world coordinates)
     let mut cam_x: f32 = 0.0;
-    let mut cam_y: f32 = 0.0;
+    let mut cam_y: f32 = (H as f32 * 0.55) - (VIEW_H as f32 * 0.5);
     let cam_speed = 300.0;
 
     static mut ACCUM: f64 = 0.0;
@@ -397,6 +397,19 @@ async fn main() {
     telemetry.reset(1);
     let mut effects = Effects::new();
     let mut force_render = true;
+    // Smoothed camera position (the input drives `cam_x`/`cam_y`, the view
+    // eases towards it).
+    let mut view_x: f32 = 0.0;
+    let mut view_y: f32 = cam_y;
+
+    // Minimap terrain texture (downsampled world).
+    const MINI_W: usize = 120;
+    const MINI_H: usize = 68;
+    let mut mini_image = Image::gen_image_color(MINI_W as u16, MINI_H as u16, WHITE);
+    let mini_texture = Texture2D::from_image(&mini_image);
+    mini_texture.set_filter(FilterMode::Linear);
+    let mut mini_dirty = true;
+    let mut frame_counter: u32 = 0;
 
     loop {
         let now = get_time() as f32;
@@ -413,7 +426,7 @@ async fn main() {
             creatures = CreatureSystem::new(new_seed.wrapping_add(0x1234_5678_9ABC_DEF0));
             creatures.populate(&world, 36);
             cam_x = 0.0;
-            cam_y = 0.0;
+            cam_y = (H as f32 * 0.55) - (VIEW_H as f32 * 0.5);
             // A manual reroll starts a brand new lineage.
             revival = 1;
             champion = None;
@@ -485,11 +498,22 @@ async fn main() {
         cam_x = cam_x.clamp(0.0, max_cam_x);
         cam_y = cam_y.clamp(0.0, max_cam_y);
 
+        // Ease the actual view towards the camera target for smooth panning.
+        let ease = 1.0 - (-9.0 * dt).exp();
+        view_x += (cam_x - view_x) * ease;
+        view_y += (cam_y - view_y) * ease;
+        if (cam_x - view_x).abs() < 0.05 {
+            view_x = cam_x;
+        }
+        if (cam_y - view_y).abs() < 0.05 {
+            view_y = cam_y;
+        }
+
         let sim_dt = (get_frame_time().min(0.1) as f64) * (sim_speed as f64);
         let fixed_step = 1.0 / 60.0;
         // Cap the catch-up work per frame so a fast sim speed never stalls
         // the renderer for a whole second.
-        let max_steps = (4.0 * sim_speed).min(48.0) as u32;
+        let max_steps = (4.0 * sim_speed).min(32.0) as u32;
         let mut steps_taken = 0u32;
         if paused {
             unsafe { ACCUM = 0.0; }
@@ -643,7 +667,7 @@ async fn main() {
                 last_species = None;
                 fallback_champion = None;
                 cam_x = 0.0;
-                cam_y = 0.0;
+                cam_y = (H as f32 * 0.55) - (VIEW_H as f32 * 0.5);
                 zoom = 1.0;
                 paused = false;
                 force_render = true;
@@ -659,8 +683,8 @@ async fn main() {
         let (mx, my) = mouse_position();
         let scale_x = screen_width() / view_w;
         let scale_y = screen_height() / view_h;
-        let world_x = cam_x + mx / scale_x;
-        let world_y = cam_y + my / scale_y;
+        let world_x = view_x + mx / scale_x;
+        let world_y = view_y + my / scale_y;
         let cell_x = world_x as i32;
         let cell_y = world_y as i32;
 
@@ -699,11 +723,31 @@ async fn main() {
             image.bytes.copy_from_slice(&pixels);
             texture.update(&image);
             force_render = false;
+            mini_dirty = true;
+        }
+
+        // Refresh the minimap terrain a few times a second.
+        frame_counter += 1;
+        if mini_dirty && frame_counter % 4 == 0 {
+            for my in 0..MINI_H {
+                for mx in 0..MINI_W {
+                    let sx = mx * 8;
+                    let sy = my * 8;
+                    let o = (sy * W + sx) * 4;
+                    let d = (my * MINI_W + mx) * 4;
+                    mini_image.bytes[d] = pixels[o];
+                    mini_image.bytes[d + 1] = pixels[o + 1];
+                    mini_image.bytes[d + 2] = pixels[o + 2];
+                    mini_image.bytes[d + 3] = 255;
+                }
+            }
+            mini_texture.update(&mini_image);
+            mini_dirty = false;
         }
 
         // Draw only the camera view portion
-        let src_x = cam_x;
-        let src_y = cam_y;
+        let src_x = view_x;
+        let src_y = view_y;
         let src_w = view_w;
         let src_h = view_h;
 
@@ -719,6 +763,9 @@ async fn main() {
             },
         );
 
+        // Atmospheric vignette.
+        draw_vignette();
+
         // Draw creature bodies and names (only those in view)
         let show_all_names = zoom >= 2.5;
         let hovered_creature = match ui.hover {
@@ -729,10 +776,10 @@ async fn main() {
         let scr_h = screen_height();
 
         for c in &creatures.list {
-            let in_view = (c.x) >= cam_x
-                && (c.x) < (cam_x + view_w)
-                && (c.y) >= cam_y
-                && (c.y) < (cam_y + view_h);
+            let in_view = (c.x) >= view_x
+                && (c.x) < (view_x + view_w)
+                && (c.y) >= view_y
+                && (c.y) < (view_y + view_h);
             if !in_view {
                 continue;
             }
@@ -740,8 +787,8 @@ async fn main() {
             let scale_x = scr_w / view_w;
             let scale_y = scr_h / view_h;
             let s = scale_x.min(scale_y);
-            let sx = (c.x - cam_x) * scale_x;
-            let sy = (c.y - cam_y) * scale_y;
+            let sx = (c.x - view_x) * scale_x;
+            let sy = (c.y - view_y) * scale_y;
             let r = (c.size * s).max(2.5);
             let base = Color::new(
                 c.team_color[0] as f32 / 255.0,
@@ -750,6 +797,23 @@ async fn main() {
                 0.92,
             );
             let core = Color::new(1.0, 1.0, 0.95, 0.92);
+
+            // Soft drop shadow + species glow make the colony pop out of the
+            // terrain.
+            draw_circle(
+                sx,
+                sy + r * 0.85,
+                r * 0.95,
+                Color::new(0.0, 0.0, 0.0, 0.22),
+            );
+            if c.role == Role::Queen || zoom >= 1.5 {
+                draw_circle(
+                    sx,
+                    sy,
+                    r * 2.1,
+                    Color::new(base.r, base.g, base.b, 0.10),
+                );
+            }
 
             // Role silhouettes make the colony readable at a glance.
             match c.role {
@@ -835,10 +899,10 @@ async fn main() {
         let vscale_x = scr_w / view_w;
         let vscale_y = scr_h / view_h;
         for p in &creatures.projectiles {
-            let sx = (p.x - cam_x) * vscale_x;
-            let sy = (p.y - cam_y) * vscale_y;
-            let px = (p.px - cam_x) * vscale_x;
-            let py = (p.py - cam_y) * vscale_y;
+            let sx = (p.x - view_x) * vscale_x;
+            let sy = (p.y - view_y) * vscale_y;
+            let px = (p.px - view_x) * vscale_x;
+            let py = (p.py - view_y) * vscale_y;
             let c = p.elem.color();
             let glow = Color::new(
                 c[0] as f32 / 255.0,
@@ -878,8 +942,8 @@ async fn main() {
             if !s.armed {
                 continue;
             }
-            let sx = (s.x - cam_x) * vscale_x;
-            let sy = (s.y - cam_y) * vscale_y;
+            let sx = (s.x - view_x) * vscale_x;
+            let sy = (s.y - view_y) * vscale_y;
             draw_circle_lines(
                 sx,
                 sy,
@@ -895,10 +959,17 @@ async fn main() {
         }
 
         // ---- Interaction animations ----
-        effects.draw(cam_x, cam_y, vscale_x, vscale_y);
+        effects.draw(view_x, view_y, vscale_x, vscale_y);
 
-        draw_minimap(&creatures, cam_x, cam_y, view_w, view_h);
-        draw_hud(&world, &creatures, cam_x, cam_y, seed, sim_speed, paused, zoom, revival);
+        draw_minimap(
+            &creatures,
+            view_x,
+            view_y,
+            view_w,
+            view_h,
+            &mini_texture,
+        );
+        draw_hud(&world, &creatures, view_x, view_y, seed, sim_speed, paused, zoom, revival);
         if screen_width() >= 1080.0 {
             draw_telemetry(&telemetry, screen_width() - 332.0, 18.0);
         }
@@ -920,6 +991,24 @@ async fn main() {
     }
 }
 
+/// Soft darkening towards the screen edges.
+fn draw_vignette() {
+    let w = screen_width();
+    let h = screen_height();
+    let steps = 12;
+    let band = (w.min(h) * 0.22).max(40.0);
+    for i in 0..steps {
+        let f = 1.0 - i as f32 / steps as f32;
+        let a = 0.05 * f;
+        let t = band * f;
+        let c = Color::new(0.0, 0.0, 0.0, a);
+        draw_rectangle(0.0, 0.0, w, t, c);
+        draw_rectangle(0.0, h - t, w, t, c);
+        draw_rectangle(0.0, 0.0, t, h, c);
+        draw_rectangle(w - t, 0.0, t, h, c);
+    }
+}
+
 /// The species with the most living members (ties broken by lowest id).
 fn dominant_species(creatures: &CreatureSystem) -> Option<u32> {
     let mut counts: Vec<(u32, u32)> = Vec::new();
@@ -933,13 +1022,14 @@ fn dominant_species(creatures: &CreatureSystem) -> Option<u32> {
     counts.first().map(|(id, _)| *id)
 }
 
-/// Bottom-left minimap: species dots plus the current camera viewport.
+/// Bottom-left minimap: terrain, species dots and the current camera viewport.
 fn draw_minimap(
     creatures: &CreatureSystem,
     cam_x: f32,
     cam_y: f32,
     view_w: f32,
     view_h: f32,
+    mini_texture: &Texture2D,
 ) {
     let mw = 180.0f32;
     let mh = mw * (H as f32 / W as f32);
@@ -956,7 +1046,18 @@ fn draw_minimap(
         mh + 6.0,
         Color::new(0.02, 0.03, 0.05, 0.82),
     );
-    draw_rectangle(x, y, mw, mh, Color::new(0.04, 0.06, 0.09, 0.9));
+    // Downsampled terrain.
+    draw_texture_ex(
+        mini_texture,
+        x,
+        y,
+        WHITE,
+        DrawTextureParams {
+            dest_size: Some(vec2(mw, mh)),
+            ..Default::default()
+        },
+    );
+    draw_rectangle(x, y, mw, mh, Color::new(0.02, 0.04, 0.07, 0.25));
     draw_rectangle_lines(x, y, mw, mh, 1.0, Color::new(0.3, 0.5, 0.7, 0.55));
 
     for c in &creatures.list {
@@ -1304,7 +1405,24 @@ fn draw_knowledge_window(_world: &World, creatures: &CreatureSystem, ui: &UiStat
     draw_rectangle_lines(x + 16.0, y + 34.0, 100.0, 2.0, 1.0, Color::new(0.3, 0.5, 0.7, 0.6));
     draw_text("press K to close", x + 16.0, y + 52.0, 14.0, Color::new(0.5, 0.55, 0.6, 0.7));
 
-    let mut yy = y + 80.0;
+    // What a creature can decide to do.
+    draw_text("BEHAVIOURS", x + 16.0, y + 76.0, 13.0, Color::new(0.4, 0.75, 0.9, 0.85));
+    let abilities = [
+        ("SHOOT", "fire a bow or staff at a rival"),
+        ("FLEE", "run from a stronger enemy"),
+        ("SEEK", "head for the food or water it needs"),
+        ("FORAGE", "collect wood and ore to build with"),
+        ("RALLY", "return to the colony base"),
+        ("DEFEND", "guard the colony against intruders"),
+    ];
+    let mut ay = y + 96.0;
+    for (name, desc) in abilities.iter() {
+        draw_text(name, x + 24.0, ay, 12.0, Color::new(0.55, 0.9, 1.0, 0.9));
+        draw_text(desc, x + 90.0, ay, 12.0, Color::new(0.62, 0.68, 0.75, 0.8));
+        ay += 17.0;
+    }
+
+    let mut yy = ay + 14.0;
 
     // ---- Elements section ----
     if !ui.discovered_elements.is_empty() {
