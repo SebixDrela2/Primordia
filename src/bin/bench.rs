@@ -5,9 +5,9 @@
 
 #[path = "../creature/mod.rs"]
 mod creature;
-#[path = "../elements.rs"]
+#[path = "../elements/mod.rs"]
 mod elements;
-#[path = "../render.rs"]
+#[path = "../render/mod.rs"]
 mod render;
 #[path = "../rng.rs"]
 mod rng;
@@ -50,14 +50,14 @@ fn main() {
     creatures.populate(&world, 64);
 
     // Seed-time census: all elements present right after world generation
-    let mut seed_counts = [0u32; Elem::Food as usize + 1];
+    let mut seed_counts = [0u32; Elem::MAX as usize + 1];
     for &k in &world.kind {
         if k == Elem::Empty as u8 { continue; }
         let idx = k as usize;
         if idx < seed_counts.len() { seed_counts[idx] += 1; }
     }
-    let seed_present: usize = (1..=Elem::Food as u8).filter(|&e| seed_counts[e as usize] > 0).count();
-    println!("seed-time elements present: {}/{}", seed_present, Elem::Food as usize);
+    let seed_present: usize = (1..=Elem::MAX).filter(|&e| seed_counts[e as usize] > 0).count();
+    println!("seed-time elements present: {}/{}", seed_present, Elem::MAX as usize);
     let water_idx = Elem::Water as usize;
     println!("  Water cells at seed: {}", seed_counts[water_idx]);
 
@@ -237,7 +237,7 @@ fn main() {
 
     // ---- Element census: which elements ever existed in the world ----
     // We approximate by counting what's present at the end plus what was eaten/built.
-    let mut element_counts = [0u32; Elem::Food as usize + 1];
+    let mut element_counts = [0u32; Elem::MAX as usize + 1];
     // Count current world contents
     for &k in &world.kind {
         if k == Elem::Empty as u8 {
@@ -251,7 +251,7 @@ fn main() {
 
     // Diagnostic: which elements lost/gained the most cells over the run.
     let mut deltas: Vec<(&str, i64)> = Vec::new();
-    for e in 1..=Elem::Food as u8 {
+    for e in 1..=Elem::MAX {
         let s = seed_counts[e as usize] as i64;
         let c = element_counts[e as usize] as i64;
         if (c - s).abs() > 500 {
@@ -268,7 +268,7 @@ fn main() {
     println!("");
     println!("=== ELEMENTS PRESENT IN WORLD (end of bench) ===");
     let mut present: Vec<(&str, u32)> = Vec::new();
-    for e in 1..=Elem::Food as u8 {
+    for e in 1..=Elem::MAX {
         let elem = Elem::from_u8(e);
         let cnt = element_counts[e as usize];
         if cnt > 0 {
@@ -281,11 +281,11 @@ fn main() {
     }
 
     let total_present: u32 = present.iter().map(|(_, c)| c).sum();
-    println!("total distinct elements present: {}/{}", present.len(), Elem::Food as usize);
+    println!("total distinct elements present: {}/{}", present.len(), Elem::MAX as usize);
 
     // Print missing elements
     let mut missing: Vec<&str> = Vec::new();
-    for e in 1..=Elem::Food as u8 {
+    for e in 1..=Elem::MAX {
         if element_counts[e as usize] == 0 {
             missing.push(Elem::from_u8(e).name());
         }
@@ -296,7 +296,8 @@ fn main() {
 
     // Write a PNG snapshot of the final frame
     let mut buf = vec![0u8; (W * H * 4) as usize];
-    render::render_world(&world, &creatures, &mut buf, 0.0, 0.25, 0);
+    let mut renderer = render::Renderer::new();
+    renderer.render_world(&world, &creatures, &mut buf, 0.0, 0.25, 0, world.weather);
 
     let file = std::fs::File::create(&out).expect("create png");
     let writer = BufWriter::new(file);

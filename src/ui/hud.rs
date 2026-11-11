@@ -1,4 +1,4 @@
-use crate::creature::CreatureSystem;
+use crate::creature::{CreatureSystem, trait_list};
 use crate::world::World;
 use crate::W;
 use macroquad::prelude::*;
@@ -205,10 +205,34 @@ pub fn draw_telemetry(t: &Telemetry, x: f32, y: f32) {
 }
 
 
+/// The species with the most members and the traits it has evolved.
+pub fn dominant_lineage(creatures: &CreatureSystem) -> (Option<u32>, Vec<&'static str>) {
+    let mut counts: Vec<(u32, u32)> = Vec::new();
+    for c in &creatures.list {
+        match counts.iter_mut().find(|(id, _)| *id == c.species) {
+            Some(e) => e.1 += 1,
+            None => counts.push((c.species, 1)),
+        }
+    }
+    counts.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    let Some((sp, _)) = counts.first().copied() else {
+        return (None, Vec::new());
+    };
+    let traits = creatures
+        .list
+        .iter()
+        .find(|c| c.species == sp)
+        .map(|c| trait_list(c.traits).into_iter().map(|t| t.name()).collect())
+        .unwrap_or_default();
+    (Some(sp), traits)
+}
+
 pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f32, seed: u64, sim_speed: f32, paused: bool, zoom: f32, revival: u32) {
     let stats = &creatures.stats;
     let biome_name = world.biome_at((cam_x as i32).clamp(0, W as i32 - 1)).name();
     let weather_name = world.weather.name();
+    // The dominant lineage and the traits it evolved.
+    let (leader, leader_traits) = dominant_lineage(creatures);
 
     draw_text(
         "PRIMORDIA",
@@ -258,12 +282,25 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         "hunger {:.0}  thirst {:.0}  stamina {:.0}  diseases {}",
         stats.avg_hunger, stats.avg_thirst, stats.avg_stamina, stats.diseases
     );
+    let line6 = match leader {
+        Some(sp) => format!(
+            "lineage {} evolved: {}",
+            sp,
+            if leader_traits.is_empty() {
+                "no special traits yet".to_string()
+            } else {
+                leader_traits.join(", ")
+            }
+        ),
+        None => "lineage: none".to_string(),
+    };
 
     draw_text(&line1, 18.0, 66.0, 17.0, Color::new(0.85, 0.9, 0.95, 0.8));
     draw_text(&line2, 18.0, 88.0, 17.0, Color::new(0.6, 0.66, 0.74, 0.8));
     draw_text(&line3, 18.0, 110.0, 17.0, Color::new(0.7, 0.8, 0.6, 0.85));
     draw_text(&line4, 18.0, 132.0, 17.0, Color::new(0.45, 0.5, 0.58, 0.8));
     draw_text(&line5, 18.0, 154.0, 17.0, Color::new(0.6, 0.5, 0.58, 0.8));
+    draw_text(&line6, 18.0, 176.0, 17.0, Color::new(0.55, 0.85, 0.7, 0.85));
 
     let help = "WASD/Arrows: move  |  scroll: zoom  |  P: pause  |  R: reroll  |  K: knowledge  |  +/-: sim speed  |  hover: inspect  |  ESC: quit";
     let dims = measure_text(help, None, 15, 1.0);

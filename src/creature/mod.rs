@@ -167,6 +167,8 @@ pub struct Creature {
     // Genetics
     pub genes: [f32; 32],
     pub mutations: u16,
+    /// Evolutionary traits decoded from the genes.
+    pub traits: u8,
     // Needs
     pub hunger: f32,
     pub thirst: f32,

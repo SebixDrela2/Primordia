@@ -1,130 +1,9 @@
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum Elem {
-    Empty = 0,
-    // Powders
-    Sand,
-    Sulfur,
-    Salt,
-    Ash,
-    Dust,
-    Gunpowder,
-    Fertilizer,
-            Mud,
-    // Liquids
-    Water,
-    Oil,
-    Acid,
-    Mercury,
-    Blood,
-    Poison,
-    Alcohol,
-    Honey,
-    // Gases
-    Steam,
-    Smoke,
-    Gas,
-    Plasma,
-    Chlorine,
-    Methane,
-    Oxygen,
-    // Solids
-    Stone,
-    Metal,
-    Copper,
-    Tin,
-    Bronze,
-    Iron,
-    Steel,
-    Gold,
-    Silver,
-    Glass,
-    Crystal,
-    Gem,
-    Diamond,
-    Obsidian,
-    // Organic
-    Wood,
-    Plant,
-    Spore,
-    Fungus,
-    Moss,
-    Roots,
-    Meat,
-    Bone,
-    Leather,
-    // Energy/Exotic
-    Fire,
-    Energy,
-    Ice,
-    Lava,
-    Magma,
-    Void,
-    Mana,
-    Soul,
-    // Constructed
-    Brick,
-    Concrete,
-    Wire,
-    Circuit,
-    Tool,
-    Machine,
-    Wall,
-    Door,
-    Chest,
-    Furnace,
-    Anvil,
-    Forge,
-    Farm,
-    Temple,
-    Tower,
-    Bridge,
-    Road,
-    // Magical
-    Rune,
-    Ward,
-    Portal,
-    // Biological
-    Egg,
-    Corpse,
-    Virus,
-    Bacteria,
-            Food,
-}
+use super::*;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Behavior {
-    Static,
-    Fall,
-    Flow,
-    Rise,
-    Diffuse,
-    Burn,
-    Grow,
-    Energy,
-    Conduct, // for electricity/wires
-    Spread,  // for viruses/bacteria
-    Hatch,   // for eggs
-    Decay,   // for corpses
-}
-
+/// Per-element data: colour, physical behaviour and the numbers the
+/// simulation runs on. Everything here is reached through the lookup tables
+/// in `mod.rs` inside the hot loops.
 impl Elem {
-    /// Convert a raw byte back into an element. `Elem` is `#[repr(u8)]`, so the
-    /// discriminant is authoritative. This must stay in lock-step with the enum
-    /// declaration (it previously hand-duplicated a shifted table and silently
-    /// mapped every stored cell to the wrong element).
-    pub fn from_u8(v: u8) -> Elem {
-        if v <= Elem::Food as u8 {
-            // SAFETY: `Elem` is `#[repr(u8)]` and `v` is a declared discriminant.
-            unsafe { std::mem::transmute::<u8, Elem>(v) }
-        } else {
-            Elem::Empty
-        }
-    }
-
-    /// The largest valid element discriminant (inclusive).
-    pub const MAX: u8 = Elem::Food as u8;
-
     pub fn color(self) -> [u8; 3] {
         match self {
             Elem::Empty => [10, 14, 23],
@@ -137,6 +16,7 @@ impl Elem {
             Elem::Gunpowder => [40, 40, 45],
             Elem::Fertilizer => [100, 140, 80],
             Elem::Mud => [120, 100, 80],
+            Elem::Snow => [238, 244, 252],
             // Liquids
             Elem::Water => [56, 132, 255],
             Elem::Oil => [58, 46, 34],
@@ -146,6 +26,7 @@ impl Elem {
             Elem::Poison => [100, 255, 100],
             Elem::Alcohol => [200, 200, 220],
             Elem::Honey => [255, 200, 60],
+            Elem::Tar => [28, 22, 20],
             // Gases
             Elem::Steam => [196, 214, 226],
             Elem::Smoke => [96, 104, 116],
@@ -169,6 +50,8 @@ impl Elem {
             Elem::Gem => [100, 255, 180],
             Elem::Diamond => [220, 240, 255],
             Elem::Obsidian => [30, 20, 40],
+            Elem::Granite => [92, 86, 96],
+            Elem::Rust => [126, 74, 38],
             // Organic
             Elem::Wood => [124, 86, 48],
             Elem::Plant => [52, 186, 92],
@@ -179,6 +62,7 @@ impl Elem {
             Elem::Meat => [200, 80, 80],
             Elem::Bone => [230, 225, 210],
             Elem::Leather => [160, 120, 80],
+            Elem::Charcoal => [38, 36, 38],
             // Energy/Exotic
             Elem::Fire => [255, 107, 32],
             Elem::Energy => [255, 232, 64],
@@ -188,6 +72,7 @@ impl Elem {
             Elem::Void => [0, 0, 0],
             Elem::Mana => [180, 100, 255],
             Elem::Soul => [255, 255, 200],
+            Elem::Ember => [220, 90, 30],
             // Constructed
             Elem::Brick => [178, 90, 60],
             Elem::Concrete => [140, 140, 145],
@@ -219,8 +104,32 @@ impl Elem {
         }
     }
 
-    /// Elements that have a branch in `World::try_reaction`. Kept in sync
-    /// with the reaction match in `world.rs`.
+    /// Light this element radiates, as an RGB multiplier. `[0,0,0]` means the
+    /// element is not a light source. The renderer builds a light field from
+    /// these values so caves are lit by the lava and crystals inside them.
+    pub fn emission(self) -> [f32; 3] {
+        match self {
+            Elem::Fire => [1.00, 0.42, 0.10],
+            Elem::Lava => [1.00, 0.34, 0.06],
+            Elem::Magma => [1.00, 0.26, 0.04],
+            Elem::Ember => [0.80, 0.30, 0.08],
+            Elem::Plasma => [0.95, 0.30, 0.95],
+            Elem::Mana => [0.55, 0.28, 0.95],
+            Elem::Soul => [0.90, 0.88, 0.60],
+            Elem::Energy => [0.80, 0.72, 0.22],
+            Elem::Crystal => [0.26, 0.42, 0.70],
+            Elem::Gem => [0.20, 0.70, 0.45],
+            Elem::Diamond => [0.30, 0.38, 0.55],
+            Elem::Rune => [0.62, 0.30, 0.62],
+            Elem::Ward => [0.30, 0.70, 0.70],
+            Elem::Portal => [0.70, 0.45, 0.70],
+            Elem::Circuit => [0.20, 0.48, 0.70],
+            Elem::Void => [0.0, 0.0, 0.0],
+            _ => [0.0, 0.0, 0.0],
+        }
+    }
+
+    /// Elements that have a branch in `World::try_reaction`.
     pub fn is_reactive(self) -> bool {
         matches!(
             self,
@@ -229,12 +138,14 @@ impl Elem {
                 | Elem::Magma
                 | Elem::Acid
                 | Elem::Ice
+                | Elem::Snow
                 | Elem::Plant
                 | Elem::Fungus
                 | Elem::Moss
                 | Elem::Roots
                 | Elem::Fire
                 | Elem::Oil
+                | Elem::Tar
                 | Elem::Sulfur
                 | Elem::Mercury
                 | Elem::Plasma
@@ -251,6 +162,9 @@ impl Elem {
                 | Elem::Soul
                 | Elem::Rune
                 | Elem::Ward
+                | Elem::Iron
+                | Elem::Wood
+                | Elem::Ember
         )
     }
 
@@ -263,69 +177,14 @@ impl Elem {
             && self.lifetime() == u32::MAX
     }
 
-    /// Lookup table: is this element byte inert? Built once at startup.
-    pub fn inert_table() -> [bool; 80] {
-        let mut t = [false; 80];
-        let mut i = 0;
-        while i < 80 {
-            t[i] = Elem::from_u8(i as u8).is_inert();
-            i += 1;
-        }
-        t
-    }
-
-    /// Lookup table: is this element byte solid? Built once at startup.
-    pub fn solid_table() -> [bool; 80] {
-        let mut t = [false; 80];
-        let mut i = 0;
-        while i < 80 {
-            t[i] = Elem::from_u8(i as u8).is_solid();
-            i += 1;
-        }
-        t
-    }
-
-    /// Lookup table: is this element edible?
-    pub fn edible_table() -> [bool; 80] {
-        let mut t = [false; 80];
-        let mut i = 0;
-        while i < 80 {
-            t[i] = Elem::from_u8(i as u8).is_edible();
-            i += 1;
-        }
-        t
-    }
-
-    /// Lookup table: how much nutrition does this element carry?
-    pub fn nutrition_table() -> [f32; 80] {
-        let mut t = [0.0f32; 80];
-        let mut i = 0;
-        while i < 80 {
-            t[i] = Elem::from_u8(i as u8).nutrition();
-            i += 1;
-        }
-        t
-    }
-
-    /// Lookup table: how toxic is this element?
-    pub fn toxicity_table() -> [f32; 80] {
-        let mut t = [0.0f32; 80];
-        let mut i = 0;
-        while i < 80 {
-            t[i] = Elem::from_u8(i as u8).toxicity();
-            i += 1;
-        }
-        t
-    }
-
     pub fn behavior(self) -> Behavior {
         match self {
-            Elem::Sand | Elem::Sulfur | Elem::Salt | Elem::Ash | Elem::Dust | Elem::Gunpowder | Elem::Fertilizer => Behavior::Fall,
-            Elem::Water | Elem::Oil | Elem::Acid | Elem::Mercury | Elem::Blood | Elem::Poison | Elem::Alcohol | Elem::Honey | Elem::Lava | Elem::Magma => Behavior::Flow,
+            Elem::Sand | Elem::Sulfur | Elem::Salt | Elem::Ash | Elem::Dust | Elem::Gunpowder | Elem::Fertilizer | Elem::Snow | Elem::Rust => Behavior::Fall,
+            Elem::Water | Elem::Oil | Elem::Acid | Elem::Mercury | Elem::Blood | Elem::Poison | Elem::Alcohol | Elem::Honey | Elem::Lava | Elem::Magma | Elem::Tar => Behavior::Flow,
             Elem::Fire => Behavior::Burn,
             Elem::Smoke | Elem::Steam | Elem::Gas | Elem::Plasma | Elem::Chlorine | Elem::Methane | Elem::Oxygen => Behavior::Rise,
             Elem::Spore | Elem::Moss => Behavior::Diffuse,
-            Elem::Energy | Elem::Mana | Elem::Soul => Behavior::Energy,
+            Elem::Energy | Elem::Mana | Elem::Soul | Elem::Ember => Behavior::Energy,
             Elem::Plant | Elem::Fungus | Elem::Roots => Behavior::Grow,
             Elem::Wire | Elem::Circuit => Behavior::Conduct,
             Elem::Virus | Elem::Bacteria => Behavior::Spread,
@@ -338,25 +197,28 @@ impl Elem {
     pub fn density(self) -> i16 {
         match self {
             Elem::Empty => 0,
-            Elem::Gas | Elem::Smoke | Elem::Steam | Elem::Plasma | Elem::Energy | Elem::Mana | Elem::Soul | Elem::Fire => 1,
+            Elem::Gas | Elem::Smoke | Elem::Steam | Elem::Plasma | Elem::Energy | Elem::Mana | Elem::Soul | Elem::Fire | Elem::Ember => 1,
             Elem::Chlorine | Elem::Methane | Elem::Oxygen => 2,
-            Elem::Sulfur | Elem::Salt | Elem::Ash | Elem::Dust | Elem::Spore | Elem::Gunpowder | Elem::Fertilizer | Elem::Mud => 3,
+            Elem::Sulfur | Elem::Salt | Elem::Ash | Elem::Dust | Elem::Spore | Elem::Gunpowder | Elem::Fertilizer | Elem::Mud | Elem::Snow | Elem::Rust => 3,
             Elem::Oil => 7,
             Elem::Alcohol => 8,
             Elem::Water => 10,
             Elem::Poison | Elem::Honey => 11,
             Elem::Acid => 12,
             Elem::Blood => 11,
+            Elem::Tar => 14,
             Elem::Sand => 16,
             Elem::Plant | Elem::Fungus | Elem::Moss | Elem::Ice => 9,
             Elem::Wood => 8,
             Elem::Roots => 10,
             Elem::Meat | Elem::Leather => 11,
             Elem::Bone => 14,
+            Elem::Charcoal => 12,
             Elem::Mercury => 13,
             Elem::Lava => 15,
             Elem::Magma => 16,
             Elem::Stone | Elem::Brick | Elem::Concrete | Elem::Wall | Elem::Furnace | Elem::Anvil | Elem::Forge | Elem::Tower => 20,
+            Elem::Granite => 22,
             Elem::Metal | Elem::Iron | Elem::Steel => 22,
             Elem::Copper | Elem::Tin | Elem::Bronze | Elem::Wire | Elem::Gold | Elem::Silver => 22,
             Elem::Glass | Elem::Crystal | Elem::Gem | Elem::Diamond | Elem::Obsidian => 18,
@@ -394,6 +256,8 @@ impl Elem {
             Elem::Gem => 20.0,
             Elem::Diamond => 50.0,
             Elem::Obsidian => 8.0,
+            Elem::Granite => 1.0,
+            Elem::Rust => 3.0,
             Elem::Brick => 3.0,
             Elem::Concrete => 2.0,
             Elem::Wire => 5.0,
@@ -412,6 +276,8 @@ impl Elem {
             Elem::Corpse => 40.0,
             Elem::Mud => 5.0,
             Elem::Food => 25.0,
+            Elem::Charcoal => 5.0,
+            Elem::Snow => 1.0,
             // Gases/energy: small nutrition
             Elem::Chlorine => 1.0,
             Elem::Methane => 5.0,
@@ -419,13 +285,11 @@ impl Elem {
             Elem::Steam => 1.0,
             Elem::Smoke => 0.5,
             Elem::Fire => 0.5,
+            Elem::Ember => 1.0,
             Elem::Virus => 0.5,
             Elem::Bacteria => 0.5,
             // Constructed/decorative: not food
-            Elem::Brick => 0.0,
-            Elem::Concrete => 0.0,
             Elem::Chest => 0.0,
-            Elem::Forge => 0.0,
             Elem::Farm => 0.0,
             Elem::Temple => 0.0,
             Elem::Machine => 0.0,
@@ -437,6 +301,7 @@ impl Elem {
             Elem::Wire => 0.0,
             Elem::Circuit => 0.0,
             Elem::Tool => 0.0,
+            Elem::Tar => 0.0,
             _ => 0.0,
         }
     }
@@ -447,7 +312,9 @@ impl Elem {
             Elem::Smoke => 5.0,
             Elem::Lava => 50.0,
             Elem::Magma => 60.0,
+            Elem::Ember => 12.0,
             Elem::Oil => 10.0,
+            Elem::Tar => 14.0,
             Elem::Acid => 100.0,
             Elem::Mercury => 30.0,
             Elem::Plasma => 200.0,
@@ -475,6 +342,7 @@ impl Elem {
             Elem::Oxygen => 150,
             Elem::Mana => 1000,
             Elem::Soul => 500,
+            Elem::Ember => 900,
             Elem::Virus => 500,
             Elem::Bacteria => 400,
             Elem::Egg => 2000,
@@ -503,6 +371,7 @@ impl Elem {
                 | Elem::Honey
                 | Elem::Blood
                 | Elem::Alcohol
+                | Elem::Charcoal
         )
     }
 
@@ -516,6 +385,7 @@ impl Elem {
                 | Elem::Gas
                 | Elem::Energy
                 | Elem::Fire
+                | Elem::Ember
                 | Elem::Plasma
                 | Elem::Chlorine
                 | Elem::Methane
@@ -539,6 +409,8 @@ impl Elem {
                 | Elem::Dust
                 | Elem::Gunpowder
                 | Elem::Fertilizer
+                | Elem::Snow
+                | Elem::Rust
                 | Elem::Wood
                 | Elem::Stone
                 | Elem::Ice
@@ -555,6 +427,7 @@ impl Elem {
                 | Elem::Gem
                 | Elem::Diamond
                 | Elem::Obsidian
+                | Elem::Granite
                 | Elem::Brick
                 | Elem::Concrete
                 | Elem::Wire
@@ -578,6 +451,7 @@ impl Elem {
                 | Elem::Roots
                 | Elem::Bone
                 | Elem::Leather
+                | Elem::Charcoal
                 | Elem::Rune
                 | Elem::Ward
                 | Elem::Portal
@@ -589,17 +463,47 @@ impl Elem {
     pub fn flammable(self) -> bool {
         matches!(
             self,
-            Elem::Wood | Elem::Plant | Elem::Oil | Elem::Sulfur | Elem::Fungus | Elem::Spore | Elem::Moss | Elem::Roots | Elem::Gunpowder | Elem::Alcohol | Elem::Honey | Elem::Meat | Elem::Leather | Elem::Fertilizer
+            Elem::Wood
+                | Elem::Plant
+                | Elem::Oil
+                | Elem::Tar
+                | Elem::Sulfur
+                | Elem::Fungus
+                | Elem::Spore
+                | Elem::Moss
+                | Elem::Roots
+                | Elem::Gunpowder
+                | Elem::Alcohol
+                | Elem::Honey
+                | Elem::Meat
+                | Elem::Leather
+                | Elem::Fertilizer
+                | Elem::Charcoal
         )
     }
 
     pub fn conducts(self) -> bool {
-        matches!(self, Elem::Metal | Elem::Copper | Elem::Tin | Elem::Bronze | Elem::Iron | Elem::Steel | Elem::Gold | Elem::Silver | Elem::Wire | Elem::Circuit | Elem::Machine | Elem::Tool)
+        matches!(
+            self,
+            Elem::Metal
+                | Elem::Copper
+                | Elem::Tin
+                | Elem::Bronze
+                | Elem::Iron
+                | Elem::Steel
+                | Elem::Gold
+                | Elem::Silver
+                | Elem::Wire
+                | Elem::Circuit
+                | Elem::Machine
+                | Elem::Tool
+        )
     }
 
     pub fn melt_temp(self) -> u16 {
         match self {
             Elem::Ice => 0,
+            Elem::Snow => 1,
             Elem::Sulfur => 115,
             Elem::Salt => 800,
             Elem::Glass => 1400,
@@ -612,13 +516,27 @@ impl Elem {
             Elem::Bronze => 950,
             Elem::Metal => 1500,
             Elem::Stone => 1600,
+            Elem::Granite => 1650,
             Elem::Obsidian => 1200,
+            Elem::Tar => 180,
+            Elem::Charcoal => 900,
             _ => u16::MAX,
         }
     }
 
     pub fn is_metal(self) -> bool {
-        matches!(self, Elem::Metal | Elem::Copper | Elem::Tin | Elem::Bronze | Elem::Iron | Elem::Steel | Elem::Gold | Elem::Silver)
+        matches!(
+            self,
+            Elem::Metal
+                | Elem::Copper
+                | Elem::Tin
+                | Elem::Bronze
+                | Elem::Iron
+                | Elem::Steel
+                | Elem::Gold
+                | Elem::Silver
+                | Elem::Rust
+        )
     }
 
     pub fn is_gemstone(self) -> bool {
@@ -626,19 +544,71 @@ impl Elem {
     }
 
     pub fn is_organic(self) -> bool {
-        matches!(self, Elem::Wood | Elem::Plant | Elem::Spore | Elem::Fungus | Elem::Moss | Elem::Roots | Elem::Meat | Elem::Bone | Elem::Leather | Elem::Egg | Elem::Corpse | Elem::Blood | Elem::Honey)
+        matches!(
+            self,
+            Elem::Wood
+                | Elem::Plant
+                | Elem::Spore
+                | Elem::Fungus
+                | Elem::Moss
+                | Elem::Roots
+                | Elem::Meat
+                | Elem::Bone
+                | Elem::Leather
+                | Elem::Egg
+                | Elem::Corpse
+                | Elem::Blood
+                | Elem::Honey
+                | Elem::Charcoal
+        )
     }
 
     pub fn is_constructed(self) -> bool {
-        matches!(self, Elem::Brick | Elem::Concrete | Elem::Wire | Elem::Circuit | Elem::Tool | Elem::Machine | Elem::Wall | Elem::Door | Elem::Chest | Elem::Furnace | Elem::Anvil | Elem::Forge | Elem::Farm | Elem::Temple | Elem::Tower | Elem::Bridge | Elem::Road)
+        matches!(
+            self,
+            Elem::Brick
+                | Elem::Concrete
+                | Elem::Wire
+                | Elem::Circuit
+                | Elem::Tool
+                | Elem::Machine
+                | Elem::Wall
+                | Elem::Door
+                | Elem::Chest
+                | Elem::Furnace
+                | Elem::Anvil
+                | Elem::Forge
+                | Elem::Farm
+                | Elem::Temple
+                | Elem::Tower
+                | Elem::Bridge
+                | Elem::Road
+        )
     }
 
     pub fn is_magical(self) -> bool {
-        matches!(self, Elem::Mana | Elem::Soul | Elem::Rune | Elem::Ward | Elem::Portal)
+        matches!(
+            self,
+            Elem::Mana | Elem::Soul | Elem::Rune | Elem::Ward | Elem::Portal
+        )
     }
 
     pub fn is_hazardous(self) -> bool {
-        matches!(self, Elem::Fire | Elem::Lava | Elem::Magma | Elem::Acid | Elem::Poison | Elem::Chlorine | Elem::Plasma | Elem::Virus | Elem::Bacteria | Elem::Gunpowder)
+        matches!(
+            self,
+            Elem::Fire
+                | Elem::Lava
+                | Elem::Magma
+                | Elem::Ember
+                | Elem::Acid
+                | Elem::Poison
+                | Elem::Chlorine
+                | Elem::Plasma
+                | Elem::Virus
+                | Elem::Bacteria
+                | Elem::Gunpowder
+                | Elem::Tar
+        )
     }
 
     /// Human-readable name of the element.
@@ -654,6 +624,7 @@ impl Elem {
             Elem::Gunpowder => "Gunpowder",
             Elem::Fertilizer => "Fertilizer",
             Elem::Mud => "Mud",
+            Elem::Snow => "Snow",
             // Liquids
             Elem::Water => "Water",
             Elem::Oil => "Oil",
@@ -663,6 +634,7 @@ impl Elem {
             Elem::Poison => "Poison",
             Elem::Alcohol => "Alcohol",
             Elem::Honey => "Honey",
+            Elem::Tar => "Tar",
             // Gases
             Elem::Steam => "Steam",
             Elem::Smoke => "Smoke",
@@ -686,6 +658,8 @@ impl Elem {
             Elem::Gem => "Gem",
             Elem::Diamond => "Diamond",
             Elem::Obsidian => "Obsidian",
+            Elem::Granite => "Granite",
+            Elem::Rust => "Rust",
             // Organic
             Elem::Wood => "Wood",
             Elem::Plant => "Plant",
@@ -696,6 +670,7 @@ impl Elem {
             Elem::Meat => "Meat",
             Elem::Bone => "Bone",
             Elem::Leather => "Leather",
+            Elem::Charcoal => "Charcoal",
             // Energy/Exotic
             Elem::Fire => "Fire",
             Elem::Energy => "Energy",
@@ -705,6 +680,7 @@ impl Elem {
             Elem::Void => "Void",
             Elem::Mana => "Mana",
             Elem::Soul => "Soul",
+            Elem::Ember => "Ember",
             // Constructed
             Elem::Brick => "Brick",
             Elem::Concrete => "Concrete",
@@ -749,6 +725,7 @@ impl Elem {
             Elem::Gunpowder => "Explosive powder. Detonates when near fire or plasma.",
             Elem::Fertilizer => "Boosts plant growth when nearby.",
             Elem::Mud => "Wet dirt. Forms where water meets soil.",
+            Elem::Snow => "Cold powder that falls in winter. Melts back into water.",
             // Liquids
             Elem::Water => "Flowing liquid. Essential for life and plants. Extinguishes fire.",
             Elem::Oil => "Flammable dark liquid. Burns readily and can be gathered for energy.",
@@ -758,6 +735,7 @@ impl Elem {
             Elem::Poison => "Toxic green liquid. Harms anything that touches or drinks it.",
             Elem::Alcohol => "Clear flammable liquid. Burns with a clean flame.",
             Elem::Honey => "Thick golden sweet liquid. High energy food.",
+            Elem::Tar => "Sticky black residue of burnt oil. Slow to burn, hard to wash off.",
             // Gases
             Elem::Steam => "Hot water vapor. Rises and condenses back to water.",
             Elem::Smoke => "Grey gas from fires. Rises and fades over time.",
@@ -781,6 +759,8 @@ impl Elem {
             Elem::Gem => "Polished precious crystal. Rare and valuable.",
             Elem::Diamond => "Hardest natural substance. Extremely valuable.",
             Elem::Obsidian => "Volcanic glass. Forms where water meets lava.",
+            Elem::Granite => "Deep igneous rock. Slow to melt and harder than stone.",
+            Elem::Rust => "Iron oxide. Feeds iron ore back into the ground.",
             // Organic
             Elem::Wood => "Solid plant material. Burns and floats on water.",
             Elem::Plant => "Living vegetation. Grows near water and spreads slowly.",
@@ -791,6 +771,7 @@ impl Elem {
             Elem::Meat => "Animal flesh. Nutritious food for creatures.",
             Elem::Bone => "Hard skeletal remains. Slow to decay.",
             Elem::Leather => "Treated hide. Durable crafting material.",
+            Elem::Charcoal => "Burnt carbon. Burns slowly but burns hot.",
             // Energy/Exotic
             Elem::Fire => "Hot flame. Spreads to flammable neighbors and rises.",
             Elem::Energy => "Pure energy drifts above ground. High nutrition for creatures.",
@@ -800,6 +781,7 @@ impl Elem {
             Elem::Void => "Absolute emptiness. Denser than anything; impassable.",
             Elem::Mana => "Magical energy. Powers spells and activates runes.",
             Elem::Soul => "Rare spiritual energy. Very high nutrition.",
+            Elem::Ember => "Glowing coal. Lights the dark and fades slowly.",
             // Constructed
             Elem::Brick => "Fired clay block. Used in ancient ruins.",
             Elem::Concrete => "Strong artificial stone.",
@@ -835,14 +817,83 @@ impl Elem {
     pub fn category(self) -> &'static str {
         match self {
             Elem::Empty => "Void",
-            Elem::Sand | Elem::Sulfur | Elem::Salt | Elem::Ash | Elem::Dust | Elem::Gunpowder | Elem::Fertilizer | Elem::Mud => "Powders",
-            Elem::Water | Elem::Oil | Elem::Acid | Elem::Mercury | Elem::Blood | Elem::Poison | Elem::Alcohol | Elem::Honey => "Liquids",
-            Elem::Steam | Elem::Smoke | Elem::Gas | Elem::Plasma | Elem::Chlorine | Elem::Methane | Elem::Oxygen => "Gases",
-            Elem::Stone | Elem::Metal | Elem::Copper | Elem::Tin | Elem::Bronze | Elem::Iron | Elem::Steel | Elem::Gold | Elem::Silver | Elem::Glass | Elem::Crystal | Elem::Gem | Elem::Diamond | Elem::Obsidian => "Solids",
-            Elem::Wood | Elem::Plant | Elem::Spore | Elem::Fungus | Elem::Moss | Elem::Roots | Elem::Meat | Elem::Bone | Elem::Leather => "Organic",
-            Elem::Fire | Elem::Energy | Elem::Ice | Elem::Lava | Elem::Magma | Elem::Mana | Elem::Soul => "Energy",
+            Elem::Sand
+            | Elem::Sulfur
+            | Elem::Salt
+            | Elem::Ash
+            | Elem::Dust
+            | Elem::Gunpowder
+            | Elem::Fertilizer
+            | Elem::Mud
+            | Elem::Snow
+            | Elem::Rust => "Powders",
+            Elem::Water
+            | Elem::Oil
+            | Elem::Acid
+            | Elem::Mercury
+            | Elem::Blood
+            | Elem::Poison
+            | Elem::Alcohol
+            | Elem::Honey
+            | Elem::Tar => "Liquids",
+            Elem::Steam
+            | Elem::Smoke
+            | Elem::Gas
+            | Elem::Plasma
+            | Elem::Chlorine
+            | Elem::Methane
+            | Elem::Oxygen => "Gases",
+            Elem::Stone
+            | Elem::Metal
+            | Elem::Copper
+            | Elem::Tin
+            | Elem::Bronze
+            | Elem::Iron
+            | Elem::Steel
+            | Elem::Gold
+            | Elem::Silver
+            | Elem::Glass
+            | Elem::Crystal
+            | Elem::Gem
+            | Elem::Diamond
+            | Elem::Obsidian
+            | Elem::Granite => "Solids",
+            Elem::Wood
+            | Elem::Plant
+            | Elem::Spore
+            | Elem::Fungus
+            | Elem::Moss
+            | Elem::Roots
+            | Elem::Meat
+            | Elem::Bone
+            | Elem::Leather
+            | Elem::Charcoal => "Organic",
+            Elem::Fire
+            | Elem::Energy
+            | Elem::Ice
+            | Elem::Lava
+            | Elem::Magma
+            | Elem::Mana
+            | Elem::Soul
+            | Elem::Ember => "Energy",
             Elem::Void => "Void",
-            Elem::Brick | Elem::Concrete | Elem::Wire | Elem::Circuit | Elem::Tool | Elem::Machine | Elem::Wall | Elem::Door | Elem::Chest | Elem::Furnace | Elem::Anvil | Elem::Forge | Elem::Farm | Elem::Temple | Elem::Tower | Elem::Bridge | Elem::Road => "Constructed",
+            Elem::Brick
+            | Elem::Concrete
+            | Elem::Wire
+            | Elem::Circuit
+            | Elem::Tool
+            | Elem::Machine
+            | Elem::Wall
+            | Elem::Door
+            | Elem::Chest
+            | Elem::Furnace
+            | Elem::Anvil
+            | Elem::Forge
+            | Elem::Farm
+            | Elem::Temple
+            | Elem::Tower
+            | Elem::Bridge
+            | Elem::Road => "Constructed",
             Elem::Rune | Elem::Ward | Elem::Portal => "Magical",
             Elem::Egg | Elem::Corpse | Elem::Virus | Elem::Bacteria | Elem::Food => "Biological",
         }

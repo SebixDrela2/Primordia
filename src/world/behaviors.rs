@@ -69,12 +69,20 @@ impl World {
         let x = (i % self.w) as i32;
         let y = (i / self.w) as i32;
 
+        // Fire needs something to burn. At the very top of the world there is
+        // nothing but thin air, so the flame goes out instead of hovering at
+        // row 0 for its whole lifetime.
+        if y <= 0 {
+            self.set_at(i, Elem::Smoke);
+            return;
+        }
+
         // Ignite fuel nearby
         for (dx, dy) in DIRS8 {
             let t = self.get(x + dx, y + dy);
             let fuel = matches!(
                 t,
-                Elem::Wood | Elem::Oil | Elem::Plant | Elem::Spore | Elem::Gas
+                Elem::Wood | Elem::Oil | Elem::Tar | Elem::Plant | Elem::Spore | Elem::Gas
             );
             if fuel && self.rng.chance(0.14) {
                 self.set_xy(x + dx, y + dy, Elem::Fire);

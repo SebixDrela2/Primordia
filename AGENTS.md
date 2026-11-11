@@ -8,6 +8,8 @@
   `cargo build --release --config 'build.rustflags=[]'`.
 - Release builds are the ones to benchmark (`cargo build --release`).
 - Headless checks: `cargo run --release --bin bench -- 6000`.
+- `cargo run --release --bin spawncheck -- 3000` asserts that no
+  underground-only material ever appears above the terrain.
 
 ## Code size rules
 - **No file may exceed ~1000 lines.** A file may run slightly over that
@@ -21,19 +23,28 @@
   in the sibling files; private fields stay reachable because every
   submodule is a child of the module that defines the struct.
 - Current layout:
+  - `src/elements/`  mod.rs (enum + lookup tables), properties.rs
   - `src/world/`   cell, terrain, generation, element placement, vaults,
                    structures, physics, behaviors, reactions, maintain,
                    census, query
   - `src/creature/` brain, enums, names, senses, colony, step, actions,
                    combat, stats
   - `src/ui/`      effects, hud, knowledge, minimap, victory, actors
+  - `src/render/`  mod.rs (pixel loop), fx.rs (element effects),
+                   light.rs (dynamic light field)
 
 ## Performance
 - The hot paths are `World::step`, `CreatureSystem::step` and
-  `render::render_region`. Keep allocations out of them (reuse buffers).
+  `render::Renderer::render_region`. Keep allocations out of them (reuse
+  buffers).
 - Element properties are read through lookup tables
   (`Elem::solid_table()`, `Elem::inert_table()`, ...), never by matching on
-  the enum in a per-cell loop.
+  the enum in a per-cell loop. The renderer follows the same rule through
+  `render::fx::fx_table()`.
+- The renderer's pixel loop lives in a free function that takes plain
+  slices. Keeping it out of a `&mut self` method matters: the compiler
+  cannot prove the pixel buffer does not alias the renderer's own fields,
+  so every pixel would reload them from memory.
 - Neighbour queries go through the spatial grid, never a full scan.
 
 ## Simulation rules
@@ -41,5 +52,11 @@
   `Elem` enum (`Elem::from_u8`).
 - The world must stay stable: creatures may not strip-mine it, terrain must
   not be permanently destroyed, and resources belong underground.
+- **Depth is always measured from the terrain, never from an absolute
+  row.** `self.surface_y(x)` is the reference. Absolute heights (`h/2`,
+  `h/3`) sit *above* the surface, so they put materials in the sky.
+- Lakes and pools are *carved into* the ground: the basin is dug out and
+  the water fills it. Placing water above the ground leaves it floating.
 - A run ends when a single species is left (victory) or the population dies
   out (extinction). The winning genome seeds the next revival.
+

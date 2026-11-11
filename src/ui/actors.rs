@@ -26,6 +26,48 @@ pub fn draw_actors(
         let scr_w = screen_width();
         let scr_h = screen_height();
 
+        // Colony campfires: every species that still has a queen burns a light
+        // at its nest, so settlements are visible from across the world.
+        {
+            let mut fires: Vec<(f32, f32, [u8; 3])> = Vec::new();
+            for c in &creatures.list {
+                if c.role == crate::creature::Role::Queen {
+                    if !fires.iter().any(|(_, _, col)| col == &c.team_color) {
+                        fires.push((c.base_x, c.base_y, c.team_color));
+                    }
+                }
+            }
+            let scale_x = scr_w / view_w;
+            let scale_y = scr_h / view_h;
+            for (fx, fy, col) in fires {
+                if fx < view_x - 20.0 || fx > view_x + view_w + 20.0 {
+                    continue;
+                }
+                let sx = (fx - view_x) * scale_x;
+                let sy = (fy - view_y) * scale_y;
+                let flicker = 0.75 + 0.25 * ((now * 6.0 + fx) * 1.7).sin();
+                for (radius, alpha) in [(26.0f32, 0.05f32), (15.0, 0.08), (7.0, 0.12)] {
+                    draw_circle(
+                        sx,
+                        sy,
+                        radius * scale_x.min(1.2) * flicker,
+                        Color::new(
+                            1.0,
+                            0.65 + col[0] as f32 / 900.0,
+                            0.25,
+                            alpha * flicker,
+                        ),
+                    );
+                }
+                draw_circle(
+                    sx,
+                    sy,
+                    3.0 * scale_x.min(1.5),
+                    Color::new(1.0, 0.85, 0.45, 0.9),
+                );
+            }
+        }
+
         for c in &creatures.list {
             let in_view = (c.x) >= view_x
                 && (c.x) < (view_x + view_w)

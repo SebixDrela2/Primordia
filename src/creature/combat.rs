@@ -251,6 +251,10 @@ impl CreatureSystem {
                         Tool::Staff => 15.0,
                         _ => 0.0,
                     };
+                    // Ferocious species hit harder.
+                    if attacker.traits & trait_bits::FEROCIOUS != 0 {
+                        dmg *= 1.35;
+                    }
                     if attacker.active_spell == Spell::Fireball && attacker.spell_cd[1] == 0 { dmg += 20.0; }
                     self.list[j].health -= dmg;
                     self.list[a].energy = (self.list[a].energy + 20.0).min(self.list[a].max_energy);

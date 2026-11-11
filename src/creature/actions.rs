@@ -170,10 +170,15 @@ pub(crate) fn act_eat(world: &mut World, c: &mut Creature, out: &[f32]) -> bool 
                     let gy = c.y.round() as i32;
                     // Hungry creatures actively search a little further for food.
                     let hungry = c.hunger > 55.0 || c.energy < c.max_energy * 0.45;
+                    // Hungry creatures actively search a little further for food.
+                    // Scavengers have a much better nose for food, and keen
+                    // senses extend the search radius.
+                    let scavenger = c.traits & trait_bits::SCAVENGER != 0;
+                    let keen = c.traits & trait_bits::KEEN_SENSES != 0;
                     let radius = if out[2] > 0.3 || out[16] > 0.3 {
-                        6
+                        6 + if scavenger { 3 } else { 0 } + if keen { 2 } else { 0 }
                     } else if hungry {
-                        5
+                        5 + if scavenger { 2 } else { 0 } + if keen { 1 } else { 0 }
                     } else {
                         2
                     };
@@ -375,7 +380,7 @@ pub(crate) fn act_build(
                                     place_x = tx;
                                     place_y = ty;
                                     c.carried = (c.carried - 15.0).max(0.0);
-                                    c.build_cooldown = 10;
+                                    c.build_cooldown = if c.traits & trait_bits::INDUSTRIOUS != 0 { 6 } else { 10 };
                                     placed = true;
                                     built_something = true;
                                     structures_total += 1;
@@ -396,7 +401,7 @@ pub(crate) fn act_build(
                                 place_x = tx;
                                 place_y = ty;
                                 c.carried = (c.carried - 15.0).max(0.0);
-                                c.build_cooldown = 10;
+                                c.build_cooldown = if c.traits & trait_bits::INDUSTRIOUS != 0 { 6 } else { 10 };
                                 built_something = true;
                                 structures_total += 1;
                                 placed = true;
@@ -643,7 +648,10 @@ pub(crate) fn act_combat(
     let mut wants_attack = false;
                 // Attack intent (output[4] = attack)
                 if out[4] > 0.45 {
-                    wants_attack = true;
+                    // Peaceful species refuse to start a fight.
+                    if c.traits & trait_bits::PEACEFUL == 0 {
+                        wants_attack = true;
+                    }
                 }
 
                 // Defend (output[19]): strike at anything closing in on the

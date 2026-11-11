@@ -131,8 +131,10 @@ impl CreatureSystem {
                 c.age += 1;
 
                 // Needs decay
-                c.hunger = (c.hunger + 0.06).clamp(0.0, 100.0);
-                c.thirst = (c.thirst + 0.045).clamp(0.0, 100.0);
+                // Hardy species tire of hunger more slowly.
+                let hardy = if c.traits & trait_bits::HARDY != 0 { 0.7 } else { 1.0 };
+                c.hunger = (c.hunger + 0.06 * hardy).clamp(0.0, 100.0);
+                c.thirst = (c.thirst + 0.045 * hardy).clamp(0.0, 100.0);
                 c.stamina = (c.stamina - 0.05).clamp(0.0, c.max_stamina);
                 // A temple nearby steadies the colony: less hunger, faster
                 // recovery.
@@ -270,7 +272,11 @@ impl CreatureSystem {
                 }
 
                 // Trade (output[9] = trade) - with nearby creature
-                if out[9] > 0.4 && c.craft_cooldown == 0 {
+                // Peaceful species actively seek out trade partners instead
+                // of fighting.
+                let trade_wanted = out[9] > 0.4
+                    || (c.traits & trait_bits::PEACEFUL != 0 && out[15] < 0.3);
+                if trade_wanted && c.craft_cooldown == 0 {
                     for &(list_idx, oid, ox, oy, ospecies) in &positions {
                         if oid == c.id { continue; }
                         let d = ((ox - c.x).powi(2) + (oy - c.y).powi(2)).sqrt();
@@ -322,24 +328,30 @@ impl CreatureSystem {
                 // A soft population cap keeps the sim responsive while still
                 // allowing real generational turnover.
                 let nn_wants_reproduce = out[3] > 0.05;
-                let exploratory_reproduce = c.energy > 500.0 && c.cooldown == 0
+                let exploratory_reproduce = c.energy > 380.0 && c.cooldown == 0
                     && c.hunger < 60.0 && c.thirst < 70.0
                     && (c.age * 13 + c.id * 29) % 120 < 2;
+                // The thresholds are per role, so a colony's workers, soldiers
+                // and scholars all get a chance to contribute to the next
+                // generation. Without this the lineage stalls: only the
+                // queens ever have enough energy to breed.
                 let can_reproduce = match c.role {
-                    Role::Queen => c.energy > 360.0,
-                    Role::Worker => c.energy > 700.0 && c.hunger < 60.0 && (c.age * 17 + c.id * 23) % 300 < 2,
-                    Role::Soldier => c.energy > 800.0 && c.hunger < 60.0 && (c.age * 19 + c.id * 29) % 300 < 2,
-                    Role::Priest => c.energy > 750.0 && c.hunger < 60.0 && (c.age * 13 + c.id * 17) % 300 < 2,
-                    Role::Merchant => c.energy > 800.0 && c.hunger < 60.0 && (c.age * 19 + c.id * 23) % 300 < 2,
-                    Role::Builder => c.energy > 700.0 && c.hunger < 60.0 && (c.age * 11 + c.id * 13) % 300 < 2,
-                    Role::Explorer => c.energy > 650.0 && c.hunger < 60.0 && (c.age * 7 + c.id * 11) % 300 < 2,
-                    Role::Shaman => c.energy > 750.0 && c.hunger < 60.0 && (c.age * 17 + c.id * 19) % 300 < 2,
+                    Role::Queen => c.energy > 300.0,
+                    Role::Worker => c.energy > 430.0 && c.hunger < 60.0 && (c.age * 17 + c.id * 23) % 220 < 2,
+                    Role::Soldier => c.energy > 460.0 && c.hunger < 60.0 && (c.age * 19 + c.id * 29) % 220 < 2,
+                    Role::Priest => c.energy > 440.0 && c.hunger < 60.0 && (c.age * 13 + c.id * 17) % 220 < 2,
+                    Role::Merchant => c.energy > 460.0 && c.hunger < 60.0 && (c.age * 19 + c.id * 23) % 220 < 2,
+                    Role::Builder => c.energy > 430.0 && c.hunger < 60.0 && (c.age * 11 + c.id * 13) % 220 < 2,
+                    Role::Explorer => c.energy > 410.0 && c.hunger < 60.0 && (c.age * 7 + c.id * 11) % 220 < 2,
+                    Role::Shaman => c.energy > 440.0 && c.hunger < 60.0 && (c.age * 17 + c.id * 19) % 220 < 2,
                 };
                 if can_reproduce && (nn_wants_reproduce || exploratory_reproduce)
                     && c.energy > 340.0 && c.cooldown == 0 && pop_now < REPRO_SOFT_CAP {
-                    c.energy -= 110.0;
+                    // Fertile species raise young more cheaply.
+                    let fertile = if c.traits & trait_bits::FERTILE != 0 { 0.6 } else { 1.0 };
+                    c.energy -= 110.0 * fertile;
                     c.hunger = (c.hunger + 15.0).clamp(0.0, 100.0);
-                    c.cooldown = 70;
+                    c.cooldown = if c.traits & trait_bits::FERTILE != 0 { 50 } else { 70 };
                     c.offspring += 1;
                     wants_child = true;
                 }

@@ -69,57 +69,89 @@ impl World {
                 }
             }
             self.ground[x] = g;
+            self.ground_inv[x] = 1.0 / (g.max(1) as f32);
         }
     }
 
     // Which climate band a column belongs to.
     pub fn biome_at(&self, x: i32) -> Biome {
-        let f = x as f32 / self.w as f32;
-        // A few wide, wavy bands so the map reads as a journey.
-        let v = ((f * 5.0 + (f * 2.3).sin() * 0.7).sin() * 0.5 + 0.5) as f32;
-        if v < 0.20 {
-            Biome::Tundra
-        } else if v < 0.42 {
-            Biome::Forest
-        } else if v < 0.64 {
-            Biome::Grassland
-        } else if v < 0.82 {
-            Biome::Swamp
-        } else {
-            Biome::Desert
+        if x < 0 {
+            return Biome::Tundra;
         }
+        if (x as usize) < self.biome.len() {
+            return self.biome[x as usize];
+        }
+        Biome::Grassland
     }
 
     // Smoothly blended biome colour for a column, so the borders between
     // climate bands fade instead of snapping.
     pub fn biome_tint_at(&self, x: i32) -> [f32; 3] {
-        let f = x as f32 / self.w as f32;
-        let v = ((f * 5.0 + (f * 2.3).sin() * 0.7).sin() * 0.5 + 0.5) as f32;
-        // Representative positions of each band, in the same v space.
-        const POS: [f32; 5] = [0.10, 0.31, 0.53, 0.73, 0.91];
-        let tints = [
-            Biome::Tundra.tint(),
-            Biome::Forest.tint(),
-            Biome::Grassland.tint(),
-            Biome::Swamp.tint(),
-            Biome::Desert.tint(),
-        ];
-        if v <= POS[0] {
-            return tints[0];
+        if x < 0 {
+            return Biome::Tundra.tint();
         }
-        for i in 0..4 {
-            if v <= POS[i + 1] {
-                let t = (v - POS[i]) / (POS[i + 1] - POS[i]);
-                let a = tints[i];
-                let b = tints[i + 1];
-                return [
-                    a[0] + (b[0] - a[0]) * t,
-                    a[1] + (b[1] - a[1]) * t,
-                    a[2] + (b[2] - a[2]) * t,
-                ];
-            }
+        if (x as usize) < self.biome_tint.len() {
+            return self.biome_tint[x as usize];
         }
-        tints[4]
+        Biome::Grassland.tint()
     }
 
+    // Build the cached per-column biome layout. Called once when the world
+    // is seeded; the layout never changes afterwards.
+    pub fn cache_biomes(&mut self) {
+        for x in 0..self.w {
+            self.biome[x] = biome_of_column(x as i32, self.w as i32);
+            self.biome_tint[x] = biome_tint_of_column(x as i32, self.w as i32);
+        }
+    }
+}
+
+/// The climate band a column belongs to, as a pure function of the column
+/// index and the world width.
+fn biome_of_column(x: i32, w: i32) -> Biome {
+    let f = x as f32 / w as f32;
+    // A few wide, wavy bands so the map reads as a journey.
+    let v = ((f * 5.0 + (f * 2.3).sin() * 0.7).sin() * 0.5 + 0.5) as f32;
+    if v < 0.20 {
+        Biome::Tundra
+    } else if v < 0.42 {
+        Biome::Forest
+    } else if v < 0.64 {
+        Biome::Grassland
+    } else if v < 0.82 {
+        Biome::Swamp
+    } else {
+        Biome::Desert
+    }
+}
+
+/// The blended tint of a column, as a pure function of the column index.
+fn biome_tint_of_column(x: i32, w: i32) -> [f32; 3] {
+    let f = x as f32 / w as f32;
+    let v = ((f * 5.0 + (f * 2.3).sin() * 0.7).sin() * 0.5 + 0.5) as f32;
+    // Representative positions of each band, in the same v space.
+    const POS: [f32; 5] = [0.10, 0.31, 0.53, 0.73, 0.91];
+    let tints = [
+        Biome::Tundra.tint(),
+        Biome::Forest.tint(),
+        Biome::Grassland.tint(),
+        Biome::Swamp.tint(),
+        Biome::Desert.tint(),
+    ];
+    if v <= POS[0] {
+        return tints[0];
+    }
+    for i in 0..4 {
+        if v <= POS[i + 1] {
+            let t = (v - POS[i]) / (POS[i + 1] - POS[i]);
+            let a = tints[i];
+            let b = tints[i + 1];
+            return [
+                a[0] + (b[0] - a[0]) * t,
+                a[1] + (b[1] - a[1]) * t,
+                a[2] + (b[2] - a[2]) * t,
+            ];
+        }
+    }
+    tints[4]
 }

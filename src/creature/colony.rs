@@ -287,6 +287,10 @@ impl CreatureSystem {
             _ => if self.rng.chance(0.08) { 1 } else { 0 },
         };
 
+        // Traits are decoded from the genes, so they are inherited and evolve.
+        let traits = decode_traits(&genes);
+        let hardy = traits & trait_bits::HARDY != 0;
+
         // Starting resources so creatures can immediately craft and build
         let mut starting_inv = [0u16; 16];
         starting_inv[0] = (self.rng.range(10) + 5) as u16;  // stone
@@ -308,7 +312,11 @@ impl CreatureSystem {
             vy: 0.0,
             energy: start_energy,
             max_energy: if role == Role::Soldier { 1500.0 } else { 1200.0 },
-            health: if role == Role::Soldier { 150.0 } else { 100.0 },
+            health: if role == Role::Soldier {
+                150.0
+            } else {
+                100.0
+            } * if hardy { 1.4 } else { 1.0 },
             age: 0,
             net,
             color,
@@ -362,6 +370,7 @@ impl CreatureSystem {
             mount_stamina: 100.0,
             genes,
             mutations,
+            traits,
             hunger: 50.0,
             thirst: 50.0,
             stamina: 100.0,
@@ -378,6 +387,20 @@ impl CreatureSystem {
 }
 impl Creature {
     pub(crate) fn child_blueprint(&self) -> Creature {
+        // Mutate the genes first so the inherited traits can be decoded.
+        let mut child_genes = self.genes;
+        for i in 0..32 {
+            // Deterministic mutation based on id, age, and gene index
+            let mut seed = self.id.wrapping_mul(i as u32 + 1).wrapping_add(self.age);
+            seed ^= seed >> 13;
+            seed ^= seed << 17;
+            seed ^= seed >> 5;
+            let rand_val = (seed as f32 / u32::MAX as f32) * 2.0 - 1.0;
+            if (seed % 20) == 0 {
+                // 5% chance
+                child_genes[i] = (child_genes[i] + rand_val * 0.1).clamp(0.0, 1.0);
+            }
+        }
         Creature {
             id: 0,
             x: self.x,
@@ -386,7 +409,15 @@ impl Creature {
             vy: 0.0,
             energy: 380.0,
             max_energy: if self.role == Role::Soldier { 1500.0 } else { 1200.0 },
-            health: if self.role == Role::Soldier { 150.0 } else { 100.0 },
+            health: if self.role == Role::Soldier {
+                150.0
+            } else {
+                100.0
+            } * if self.traits & trait_bits::HARDY != 0 {
+                1.4
+            } else {
+                1.0
+            },
             age: 0,
             net: self.net.clone_net(),
             color: self.color,
@@ -438,22 +469,11 @@ impl Creature {
             vehicle: None,
             mount_kind: MountKind::None,
             mount_stamina: 100.0,
-            genes: {
-                let mut g = self.genes;
-                for i in 0..32 {
-                    // Deterministic mutation based on id, age, and gene index
-                    let mut seed = self.id.wrapping_mul(i as u32 + 1).wrapping_add(self.age);
-                    seed ^= seed >> 13;
-                    seed ^= seed << 17;
-                    seed ^= seed >> 5;
-                    let rand_val = (seed as f32 / u32::MAX as f32) * 2.0 - 1.0;
-                    if (seed % 20) == 0 { // 5% chance
-                        g[i] = (g[i] + rand_val * 0.1).clamp(0.0, 1.0);
-                    }
-                }
-                g
-            },
+            genes: child_genes,
             mutations: self.mutations + 1,
+            // The traits are decoded from the mutated genes, so a species can
+            // evolve a new trait between generations.
+            traits: decode_traits(&child_genes),
             hunger: 50.0,
             thirst: 50.0,
             stamina: 100.0,

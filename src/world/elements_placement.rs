@@ -58,7 +58,7 @@ impl World {
         // Alcohol ponds (rare)
         for _ in 0..3 {
             let cx = self.rng.range(w as u32) as i32;
-            let cy = (h as i32 / 2) + (self.rng.range((h as u32 / 4) as u32) as i32);
+            let cy = self.surface_y(cx) + 20 + self.rng.range(50) as i32;
             for dy in -2..=2 {
                 for dx in -3..=3 {
                     if dx*dx + dy*dy <= 12 && self.rng.chance(0.25) {
@@ -75,7 +75,7 @@ impl World {
         // Honey pools (rare)
         for _ in 0..2 {
             let cx = self.rng.range(w as u32) as i32;
-            let cy = (h as i32 / 2) + (self.rng.range((h as u32 / 4) as u32) as i32);
+            let cy = self.surface_y(cx) + 20 + self.rng.range(50) as i32;
             for dy in -2..=2 {
                 for dx in -3..=3 {
                     if dx*dx + dy*dy <= 12 && self.rng.chance(0.2) {
@@ -109,7 +109,7 @@ impl World {
         // Poison pools (rare, dangerous)
         for _ in 0..2 {
             let cx = self.rng.range(w as u32) as i32;
-            let cy = (h as i32 / 2) + (self.rng.range((h as u32 / 4) as u32) as i32);
+            let cy = self.surface_y(cx) + 20 + self.rng.range(50) as i32;
             for dy in -2..=2 {
                 for dx in -3..=3 {
                     if dx*dx + dy*dy <= 9 && self.rng.chance(0.2) {
@@ -127,7 +127,7 @@ impl World {
         // Chlorine gas pockets (near acid/poison)
         for _ in 0..4 {
             let cx = self.rng.range(w as u32) as i32;
-            let cy = (h as i32 / 2) + (self.rng.range((h as u32 / 4) as u32) as i32);
+            let cy = self.surface_y(cx) + 20 + self.rng.range(50) as i32;
             for dy in -3..=3 {
                 for dx in -4..=4 {
                     if dx*dx + dy*dy <= 20 && self.rng.chance(0.2) {
@@ -145,7 +145,7 @@ impl World {
         for _ in 0..5 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
-            let cy = sy - 2 - self.rng.range(8) as i32;
+            let cy = sy + 1 + self.rng.range(8) as i32;
             for dy in -2..=2 {
                 for dx in -3..=3 {
                     if dx*dx + dy*dy <= 12 && self.rng.chance(0.25) {
@@ -198,8 +198,8 @@ impl World {
         // Dust (dry areas)
         for _ in 0..30 {
             let cx = self.rng.range(w as u32) as i32;
-            let cy = self.rng.range((h / 3) as u32) as i32;
-            if self.get(cx, cy) == Elem::Empty && self.rng.chance(0.2) {
+            let cy = self.surface_y(cx) + 10 + self.rng.range(40) as i32;
+            if cy < h - 5 && self.get(cx, cy) == Elem::Empty && self.rng.chance(0.2) {
                 self.set_xy(cx, cy, Elem::Dust);
             }
         }
@@ -208,7 +208,7 @@ impl World {
         for _ in 0..3 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
-            let cy = sy - 1 - self.rng.range(5) as i32;
+            let cy = sy + 1 + self.rng.range(5) as i32;
             if self.get(cx, cy) == Elem::Empty {
                 self.set_xy(cx, cy, Elem::Gunpowder);
             }
@@ -218,7 +218,7 @@ impl World {
         for _ in 0..10 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
-            let cy = sy - 1 - self.rng.range(4) as i32;
+            let cy = sy + 1 + self.rng.range(4) as i32;
             if self.get(cx, cy) == Elem::Empty && self.rng.chance(0.3) {
                 self.set_xy(cx, cy, Elem::Fertilizer);
             }
@@ -228,9 +228,26 @@ impl World {
         for _ in 0..10 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
-            let cy = sy - 1;
+            let cy = sy + 1;
             if self.get(cx, cy) == Elem::Water && self.rng.chance(0.3) {
                 self.set_xy(cx, cy, Elem::Mud);
+            }
+        }
+
+        // Tar: the heavy residue of ancient oil fields.
+        for _ in 0..6 {
+            let cx = self.rng.range(w as u32) as i32;
+            let cy = self.surface_y(cx) + 20 + self.rng.range(50) as i32;
+            for dy in -2..=2 {
+                for dx in -3..=3 {
+                    if dx*dx + dy*dy <= 12 && self.rng.chance(0.35) {
+                        let x = cx + dx;
+                        let y = cy + dy;
+                        if x > 1 && x < w - 1 && y > 1 && y < h - 5 && self.get(x, y) == Elem::Empty {
+                            self.set_xy(x, y, Elem::Tar);
+                        }
+                    }
+                }
             }
         }
 
@@ -354,7 +371,7 @@ impl World {
         for _ in 0..20 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
-            let cy = sy - 1 - self.rng.range(5) as i32;
+            let cy = sy + 1 + self.rng.range(5) as i32;
             if self.get(cx, cy) == Elem::Empty && self.has_water_near(cx, cy, 2) {
                 if self.rng.chance(0.3) {
                     self.set_xy(cx, cy, Elem::Fungus);
@@ -366,7 +383,7 @@ impl World {
         for _ in 0..30 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
-            let cy = sy - 1 - self.rng.range(4) as i32;
+            let cy = sy + 1 + self.rng.range(4) as i32;
             if self.get(cx, cy) == Elem::Empty && self.has_water_near(cx, cy, 2) {
                 if self.rng.chance(0.2) {
                     self.set_xy(cx, cy, Elem::Moss);
@@ -387,7 +404,7 @@ impl World {
         for _ in 0..10 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
-            let cy = sy - 1 - self.rng.range(8) as i32;
+            let cy = sy + 1 + self.rng.range(8) as i32;
             if self.get(cx, cy) == Elem::Empty && self.rng.chance(0.15) {
                 if self.rng.chance(0.5) {
                     self.set_xy(cx, cy, Elem::Meat);
@@ -401,7 +418,7 @@ impl World {
         for _ in 0..5 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
-            let cy = sy - 1 - self.rng.range(6) as i32;
+            let cy = sy + 1 + self.rng.range(6) as i32;
             if self.get(cx, cy) == Elem::Empty && self.rng.chance(0.1) {
                 self.set_xy(cx, cy, Elem::Leather);
             }
@@ -466,6 +483,45 @@ impl World {
             }
         }
 
+        // Snow: old snow that never melted, lying in the deep caves.
+        for _ in 0..40 {
+            let cx = self.rng.range(w as u32) as i32;
+            let cy = self.surface_y(cx) + 20 + self.rng.range(50) as i32;
+            for dy in -2..=2 {
+                for dx in -3..=3 {
+                    if self.rng.chance(0.35) {
+                        let x = cx + dx;
+                        let y = cy + dy;
+                        // Snow settles on a floor, so it goes in the empty
+                        // cell directly above solid ground.
+                        if x > 1 && x < w - 1 && y > 1 && y < h - 6
+                            && self.get(x, y) == Elem::Empty
+                            && self.get(x, y + 1).is_solid()
+                        {
+                            self.set_xy(x, y, Elem::Snow);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Embers: coals that still glow in the deep rock.
+        for _ in 0..10 {
+            let cx = self.rng.range(w as u32) as i32;
+            let cy = self.surface_y(cx) + 25 + self.rng.range(50) as i32;
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    if self.rng.chance(0.3) {
+                        let x = cx + dx;
+                        let y = cy + dy;
+                        if x > 1 && x < w - 1 && y > 1 && y < h - 5 && self.get(x, y) == Elem::Empty {
+                            self.set_xy(x, y, Elem::Ember);
+                        }
+                    }
+                }
+            }
+        }
+
         // === CONSTRUCTED ===
         // Ancient brick structures
         for _ in 0..8 {
@@ -518,7 +574,7 @@ impl World {
         for _ in 0..10 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
-            let cy = sy - 1 - self.rng.range(10) as i32;
+            let cy = sy + 1 + self.rng.range(10) as i32;
             if self.get(cx, cy) == Elem::Empty && self.rng.chance(0.2) {
                 match self.rng.range(5) {
                     0 => self.set_xy(cx, cy, Elem::Tool),
@@ -540,6 +596,23 @@ impl World {
                     1 => self.set_xy(cx, cy, Elem::Chest),
                     2 => self.set_xy(cx, cy, Elem::Furnace),
                     _ => self.set_xy(cx, cy, Elem::Anvil),
+                }
+            }
+        }
+
+        // Charcoal: the residue of burnt wood, left where fires have been.
+        for _ in 0..14 {
+            let cx = self.rng.range(w as u32) as i32;
+            let cy = self.surface_y(cx) + 10 + self.rng.range(50) as i32;
+            for dy in -1..=1 {
+                for dx in -2..=2 {
+                    if self.rng.chance(0.35) {
+                        let x = cx + dx;
+                        let y = cy + dy;
+                        if x > 1 && x < w - 1 && y > 1 && y < h - 5 && self.get(x, y) == Elem::Empty {
+                            self.set_xy(x, y, Elem::Charcoal);
+                        }
+                    }
                 }
             }
         }
@@ -577,7 +650,7 @@ impl World {
         for _ in 0..3 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
-            let cy = sy - 1 - self.rng.range(5) as i32;
+            let cy = sy + 1 + self.rng.range(5) as i32;
             if self.get(cx, cy) == Elem::Empty && self.rng.chance(0.1) {
                 self.set_xy(cx, cy, Elem::Egg);
             }
@@ -587,7 +660,7 @@ impl World {
         for _ in 0..5 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
-            let cy = sy - 1 - self.rng.range(8) as i32;
+            let cy = sy + 1 + self.rng.range(8) as i32;
             if self.get(cx, cy) == Elem::Empty && self.rng.chance(0.15) {
                 self.set_xy(cx, cy, Elem::Corpse);
             }
@@ -631,7 +704,7 @@ impl World {
         for _ in 0..10 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
-            let cy = sy - 1 - self.rng.range(6) as i32;
+            let cy = sy + 1 + self.rng.range(6) as i32;
             if self.get(cx, cy) == Elem::Empty && self.rng.chance(0.2) {
                 self.set_xy(cx, cy, Elem::Food);
             }

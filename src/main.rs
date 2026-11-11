@@ -63,6 +63,10 @@ async fn main() {
 
     let mut ui = UiState::new();
 
+    // The renderer owns all its scratch buffers, so rendering never
+    // allocates once the world exists.
+    let mut renderer = render::Renderer::new();
+
     // Simulation speed multiplier (1.0 = normal, press + / - to change).
     // PRIMORDIA_SPEED can be set to start at a different speed.
     let mut sim_speed: f32 = std::env::var("PRIMORDIA_SPEED")
@@ -394,7 +398,7 @@ async fn main() {
         // Re-render the world only when the simulation actually advanced (or
         // after a reroll / revival). Pausing and panning then costs nothing.
         if steps_taken > 0 || force_render {
-            render::render_region(
+            renderer.render_region(
                 &world,
                 &creatures,
                 &mut region_pixels,
@@ -405,6 +409,7 @@ async fn main() {
                 now,
                 creatures.day_night,
                 creatures.season,
+                world.weather,
             );
             region_image
                 .bytes

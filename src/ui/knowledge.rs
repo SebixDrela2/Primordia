@@ -1,5 +1,5 @@
 use crate::creature;
-use crate::creature::CreatureSystem;
+use crate::creature::{CreatureSystem, trait_list};
 use crate::elements::Elem;
 use crate::world::World;
 use macroquad::prelude::*;
@@ -202,6 +202,9 @@ pub fn draw_knowledge_window(_world: &World, creatures: &CreatureSystem, ui: &Ui
         ("FORAGE", "collect wood and ore to build with"),
         ("RALLY", "return to the colony base"),
         ("DEFEND", "guard the colony against intruders"),
+        ("HUNT", "charge the closest rival"),
+        ("PROWL", "roam away from the colony"),
+        ("HOARD", "carry the haul back home"),
         ("BOMB", "craft and throw explosives at rivals"),
         ("SALVE", "craft and use healing salves on allies"),
     ];
@@ -213,6 +216,66 @@ pub fn draw_knowledge_window(_world: &World, creatures: &CreatureSystem, ui: &Ui
     }
 
     let mut yy = ay + 14.0;
+
+    // ---- Living species and the traits they evolved ----
+    {
+        let mut counts: Vec<(u32, u32, u8, [u8; 3])> = Vec::new();
+        for c in &creatures.list {
+            match counts.iter_mut().find(|(id, _, _, _)| *id == c.species) {
+                Some(e) => e.1 += 1,
+                None => counts.push((c.species, 1, c.traits, c.team_color)),
+            }
+        }
+        counts.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        if !counts.is_empty() {
+            draw_text(
+                "LIVING SPECIES",
+                x + 16.0,
+                yy,
+                16.0,
+                Color::new(0.85, 0.9, 0.95, 0.9),
+            );
+            yy += 22.0;
+            for (sp, n, traits, color) in counts.iter().take(12) {
+                draw_rectangle(
+                    x + 24.0,
+                    yy - 2.0,
+                    10.0,
+                    10.0,
+                    Color::new(
+                        color[0] as f32 / 255.0,
+                        color[1] as f32 / 255.0,
+                        color[2] as f32 / 255.0,
+                        0.9,
+                    ),
+                );
+                draw_text(
+                    &format!("species {}", sp),
+                    x + 40.0,
+                    yy + 8.0,
+                    13.0,
+                    Color::new(0.9, 0.95, 1.0, 0.95),
+                );
+                draw_text(
+                    &format!(
+                        "{} members  {}",
+                        n,
+                        trait_list(*traits)
+                            .iter()
+                            .map(|t| t.name())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                    x + 130.0,
+                    yy + 8.0,
+                    11.0,
+                    Color::new(0.65, 0.75, 0.7, 0.85),
+                );
+                yy += 22.0;
+            }
+            yy += 10.0;
+        }
+    }
 
     // ---- Elements section ----
     if !ui.discovered_elements.is_empty() {

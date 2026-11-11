@@ -11,14 +11,17 @@ impl World {
             heat: vec![0; n],
             age: vec![0; n],
             ground: vec![0; w],
+            ground_inv: vec![1.0; w],
+            biome_tint: vec![[1.0, 1.0, 1.0]; w],
+            biome: vec![super::Biome::Grassland; w],
             active: Vec::with_capacity(n / 8),
             next_active: Vec::with_capacity(n / 8),
             listed: vec![false; n],
             inert: Elem::inert_table(),
             food_table: {
-                let mut t = [false; 80];
+                let mut t = [false; Elem::TABLE_LEN];
                 let mut i = 0;
-                while i < 80 {
+                while i < Elem::TABLE_LEN {
                     let e = Elem::from_u8(i as u8);
                     t[i] = e.is_edible() && e.nutrition() > 0.0;
                     i += 1;
@@ -26,9 +29,9 @@ impl World {
                 t
             },
             gatherable: {
-                let mut t = [false; 80];
+                let mut t = [false; Elem::TABLE_LEN];
                 let mut i = 0;
-                while i < 80 {
+                while i < Elem::TABLE_LEN {
                     t[i] = matches!(
                         Elem::from_u8(i as u8),
                         Elem::Metal
@@ -44,17 +47,23 @@ impl World {
                             | Elem::Gem
                             | Elem::Diamond
                             | Elem::Obsidian
+                            | Elem::Granite
+                            | Elem::Rust
                             | Elem::Wood
+                            | Elem::Charcoal
                             | Elem::Brick
                             | Elem::Concrete
                             | Elem::Wire
                             | Elem::Circuit
                             | Elem::Gunpowder
+                            | Elem::Tar
                     );
                     i += 1;
                 }
                 t
             },
+            emissive: Elem::emissive_table(),
+            emission: Elem::emission_table(),
             weather: Weather::Clear,
             weather_timer: 900,
             meteor_events: Vec::new(),

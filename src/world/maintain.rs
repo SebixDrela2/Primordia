@@ -29,6 +29,9 @@ impl World {
         match self.weather {
             Weather::Rain | Weather::Storm => {
                 // Rain falls from the sky (stormy weather falls harder).
+                // It starts just above the local terrain rather than at the
+                // top of the world, so it lands quickly instead of hanging
+                // in the sky for hundreds of steps.
                 let period = if self.weather == Weather::Storm { 15 } else { 30 };
                 let want = if self.weather == Weather::Storm { 3 } else { 2 };
                 if frame % period == 0 {
@@ -37,8 +40,9 @@ impl World {
                     while added < want && attempts < 40 {
                         attempts += 1;
                         let x = self.rng.range(w as u32) as i32;
-                        let y = self.rng.range(4) as i32;
-                        if self.get(x, y) == Elem::Empty {
+                        let surf = self.surface_y(x);
+                        let y = surf - 1 - self.rng.range(6) as i32;
+                        if y > 0 && self.get(x, y) == Elem::Empty {
                             let is_acid = self.weather == Weather::Storm && self.rng.chance(0.05);
                             let e = if is_acid { Elem::Acid } else { Elem::Water };
                             self.set_xy(x, y, e);
@@ -67,8 +71,9 @@ impl World {
                     while added < 1 && attempts < 20 {
                         attempts += 1;
                         let x = self.rng.range(w as u32) as i32;
-                        let y = self.rng.range(4) as i32;
-                        if self.get(x, y) == Elem::Empty {
+                        let surf = self.surface_y(x);
+                        let y = surf - 1 - self.rng.range(4) as i32;
+                        if y > 0 && self.get(x, y) == Elem::Empty {
                             self.set_xy(x, y, Elem::Ice);
                             added += 1;
                         }
@@ -118,8 +123,9 @@ impl World {
             for _ in 0..1 {
                 let x = self.rng.range(w as u32) as i32;
                 let sy = self.surface_y(x);
-                if self.get(x, sy - 1) == Elem::Empty && self.rng.chance(0.1) {
-                    self.set_xy(x, sy - 1, Elem::Water);
+                // The water goes into the ground, not on top of it.
+                if self.get(x, sy) == Elem::Stone && self.rng.chance(0.1) {
+                    self.set_xy(x, sy, Elem::Water);
                 }
             }
         }
@@ -137,7 +143,8 @@ impl World {
             for _ in 0..batches {
                 let x = self.rng.range((w - 4) as u32) as i32 + 2;
                 let sy = self.surface_y(x);
-                let y = sy - 1 - self.rng.range(3) as i32;
+                // Plants grow on the ground, not floating above it.
+                let y = sy + self.rng.range(3) as i32;
                 if self.get(x, y) == Elem::Empty {
                     // Slightly favour spots near moisture.
                     if !self.has_water_near(x, y, 5) && !self.rng.chance(0.5) {
@@ -174,8 +181,10 @@ impl World {
             for _ in 0..4 {
                 let x = self.rng.range(w as u32) as i32;
                 let sy = self.surface_y(x).max(14);
-                let y = sy - 1 - self.rng.range(12) as i32;
-                if self.get(x, y) == Elem::Empty {
+                // Energy hovers a little above the ground, which is what makes
+                // it visible as a drifting mote.
+                let y = sy - 1 - self.rng.range(4) as i32;
+                if y > 0 && self.get(x, y) == Elem::Empty {
                     self.set_xy(x, y, Elem::Energy);
                 }
             }
@@ -206,14 +215,32 @@ impl World {
             }
         }
 
-        // Meteor strike
+        // Meteor strike. The impact site is on the *surface* of the world, so
+        // the crater is placed relative to the terrain height. Using absolute
+        // row numbers here dropped lava into the sky, where it fell back down
+        // and pooled on the surface.
         if frame % 1800 == 900 {
             let cx = self.rng.range_i(8, w - 8);
-            for dy in -2..13 {
+            let surf = self.surface_y(cx);
+            for dy in 0..6 {
                 for dx in -6..7 {
-                    if dx * dx + dy * dy <= 42 {
-                        self.set_xy(cx + dx, dy, Elem::Lava);
+                    if dx * dx + dy * dy <= 30 {
+                        let x = cx + dx;
+                        let y = surf + dy;
+                        // The impact melts the ground it hits. Only solid
+                        // cells are affected, so the crater never spills into
+                        // the sky.
+                        if self.get(x, y).is_solid() {
+                            self.set_xy(x, y, Elem::Lava);
+                        }
                     }
+                }
+            }
+            // A column of fire marks the path of the meteor.
+            for dy in 1..10 {
+                let y = surf - dy;
+                if self.get(cx, y) == Elem::Empty {
+                    self.set_xy(cx, y, Elem::Fire);
                 }
             }
         }

@@ -5,7 +5,7 @@ impl World {
         // Ancient ruins
         for _ in 0..5 {
             let cx = self.rng.range((w / 2) as u32) as i32 + w / 4;
-            let cy = self.rng.range((h / 2) as u32) as i32 + h / 4;
+            let cy = self.surface_y(cx) + 25 + self.rng.range(60) as i32;
             let width = (8 + self.rng.range(6)) as i32;
             let height = (6 + self.rng.range(5)) as i32;
             for dy in 0..height {
@@ -26,15 +26,16 @@ impl World {
             }
         }
 
-        // Crystal towers
+        // Crystal towers. The base is placed relative to the terrain, so the
+        // tower grows out of the ground instead of hanging in the sky.
         for _ in 0..3 {
             let cx = self.rng.range(w as u32) as i32;
-            let cy = self.rng.range((h / 3) as u32) as i32;
+            let cy = self.surface_y(cx) + 20 + self.rng.range(60) as i32;
             let height = (12 + self.rng.range(8)) as i32;
             for dy in 0..height {
                 let x = cx;
                 let y = cy + dy;
-                if self.get(x, y) == Elem::Empty && self.rng.chance(0.7) {
+                if y < h - 5 && self.get(x, y) == Elem::Empty && self.rng.chance(0.7) {
                     match self.rng.range(4) {
                         0 => self.set_xy(x, y, Elem::Crystal),
                         1 => self.set_xy(x, y, Elem::Glass),
@@ -49,11 +50,12 @@ impl World {
         for _ in 0..2 {
             let x1 = self.rng.range((w / 3) as u32) as i32 + w / 6;
             let x2 = self.rng.range((w / 3) as u32) as i32 + 2 * w / 3;
-            let y = self.rng.range((h / 2) as u32) as i32 + h / 4;
+            // The bridge follows the terrain so it never floats above it.
+            let y = self.surface_y((x1 + x2) / 2) + 12 + self.rng.range(40) as i32;
             let start = x1.min(x2);
             let end = x1.max(x2);
             for x in start..=end {
-                if self.get(x, y) == Elem::Empty && self.rng.chance(0.8) {
+                if y < h - 5 && self.get(x, y) == Elem::Empty && self.rng.chance(0.8) {
                     match self.rng.range(3) {
                         0 => self.set_xy(x, y, Elem::Bridge),
                         1 => self.set_xy(x, y, Elem::Brick),

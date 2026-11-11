@@ -138,6 +138,14 @@ pub struct World {
     /// Ground level per column (topmost supported solid cell). Cached so the
     /// renderer does not have to scan every column on every frame.
     pub ground: Vec<i32>,
+    /// Reciprocal of the ground level per column. The renderer uses this to
+    /// turn the per-cell sky gradient into a multiply.
+    pub ground_inv: Vec<f32>,
+    /// Cached per-column biome tint. The biome layout never changes, so the
+    /// renderer reads this instead of recomputing the blend every frame.
+    pub biome_tint: Vec<[f32; 3]>,
+    /// Cached per-column biome, used for auroras and the HUD.
+    pub biome: Vec<Biome>,
     /// Indices of the cells that can still change. Rebuilt each step from a
     /// cheap scan so the simulation never touches the (vast) inert bulk of
     /// the world.
@@ -148,11 +156,15 @@ pub struct World {
     /// Per-cell flag: is this cell already queued in `next_active`?
     listed: Vec<bool>,
     /// Lookup: is this element byte completely inert?
-    pub inert: [bool; 80],
+    pub inert: [bool; Elem::TABLE_LEN],
     /// Lookup: can this element be eaten (and does it feed)?
-    food_table: [bool; 80],
+    food_table: [bool; Elem::TABLE_LEN],
     /// Lookup: can this element be gathered as a resource?
-    gatherable: [bool; 80],
+    gatherable: [bool; Elem::TABLE_LEN],
+    /// Lookup: does this element radiate light?
+    pub emissive: [bool; Elem::TABLE_LEN],
+    /// Lookup: the light colour an element radiates.
+    pub emission: [[f32; 3]; Elem::TABLE_LEN],
     /// Current weather and how long it lasts.
     pub weather: Weather,
     pub weather_timer: u32,

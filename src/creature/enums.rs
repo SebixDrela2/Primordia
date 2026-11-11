@@ -15,6 +15,109 @@ pub enum Role {
     Shaman = 7,
 }
 
+/// Evolutionary traits. A creature inherits its genes from its parents, and
+/// the genes decide which traits a species evolves. Every trait has a real
+/// effect on the simulation.
+pub mod trait_bits {
+    pub const FEROCIOUS: u8 = 1 << 0;
+    pub const INDUSTRIOUS: u8 = 1 << 1;
+    pub const HARDY: u8 = 1 << 2;
+    pub const FERTILE: u8 = 1 << 3;
+    pub const KEEN_SENSES: u8 = 1 << 4;
+    pub const SCAVENGER: u8 = 1 << 5;
+    pub const PEACEFUL: u8 = 1 << 6;
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Trait {
+    Ferocious,
+    Industrious,
+    Hardy,
+    Fertile,
+    KeenSenses,
+    Scavenger,
+    Peaceful,
+}
+
+impl Trait {
+    pub fn name(self) -> &'static str {
+        match self {
+            Trait::Ferocious => "Ferocious",
+            Trait::Industrious => "Industrious",
+            Trait::Hardy => "Hardy",
+            Trait::Fertile => "Fertile",
+            Trait::KeenSenses => "Keen Senses",
+            Trait::Scavenger => "Scavenger",
+            Trait::Peaceful => "Peaceful",
+        }
+    }
+
+    pub fn blurb(self) -> &'static str {
+        match self {
+            Trait::Ferocious => "+35% melee damage, attacks more readily",
+            Trait::Industrious => "builds and gathers faster",
+            Trait::Hardy => "+40% health, hungers more slowly",
+            Trait::Fertile => "cheaper, more frequent offspring",
+            Trait::KeenSenses => "sees and senses further",
+            Trait::Scavenger => "finds food and corpses further away",
+            Trait::Peaceful => "prefers trade over violence",
+        }
+    }
+}
+
+/// Decode the trait flags of a gene set.
+pub fn decode_traits(genes: &[f32; 32]) -> u8 {
+    let mut bits = 0u8;
+    if genes[0] > 0.74 {
+        bits |= trait_bits::FEROCIOUS;
+    }
+    if genes[1] > 0.74 {
+        bits |= trait_bits::INDUSTRIOUS;
+    }
+    if genes[2] > 0.74 {
+        bits |= trait_bits::HARDY;
+    }
+    if genes[3] > 0.74 {
+        bits |= trait_bits::FERTILE;
+    }
+    if genes[4] > 0.74 {
+        bits |= trait_bits::KEEN_SENSES;
+    }
+    if genes[5] > 0.74 {
+        bits |= trait_bits::SCAVENGER;
+    }
+    if genes[6] < 0.18 {
+        bits |= trait_bits::PEACEFUL;
+    }
+    bits
+}
+
+pub fn trait_list(bits: u8) -> Vec<Trait> {
+    let mut v = Vec::new();
+    if bits & trait_bits::FEROCIOUS != 0 {
+        v.push(Trait::Ferocious);
+    }
+    if bits & trait_bits::INDUSTRIOUS != 0 {
+        v.push(Trait::Industrious);
+    }
+    if bits & trait_bits::HARDY != 0 {
+        v.push(Trait::Hardy);
+    }
+    if bits & trait_bits::FERTILE != 0 {
+        v.push(Trait::Fertile);
+    }
+    if bits & trait_bits::KEEN_SENSES != 0 {
+        v.push(Trait::KeenSenses);
+    }
+    if bits & trait_bits::SCAVENGER != 0 {
+        v.push(Trait::Scavenger);
+    }
+    if bits & trait_bits::PEACEFUL != 0 {
+        v.push(Trait::Peaceful);
+    }
+    v
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Tool {
     None = 0,

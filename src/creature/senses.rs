@@ -70,12 +70,12 @@ pub(crate) struct LocalScan {
 
 /// Element lookup tables, so the hot scan does not match on the enum.
 pub(crate) struct ElemTables {
-    solid: [bool; 80],
-    edible: [bool; 80],
-    nutrition: [f32; 80],
-    toxicity: [f32; 80],
+    solid: [bool; Elem::TABLE_LEN],
+    edible: [bool; Elem::TABLE_LEN],
+    nutrition: [f32; Elem::TABLE_LEN],
+    toxicity: [f32; Elem::TABLE_LEN],
     /// Bit flags: wood | metal | crystal | hazard | poison | plant
-    classes: [u8; 80],
+    classes: [u8; Elem::TABLE_LEN],
 }
 
 const CLASS_WOOD: u8 = 1;
@@ -87,11 +87,11 @@ const CLASS_PLANT: u8 = 32;
 
 impl ElemTables {
     pub(crate) fn new() -> Self {
-        let mut classes = [0u8; 80];
+        let mut classes = [0u8; Elem::TABLE_LEN];
         let mut i = 0;
-        while i < 80 {
+        while i < Elem::TABLE_LEN {
             classes[i] = match Elem::from_u8(i as u8) {
-                Elem::Wood | Elem::Roots => CLASS_WOOD,
+                Elem::Wood | Elem::Roots | Elem::Charcoal => CLASS_WOOD,
                 Elem::Metal
                 | Elem::Copper
                 | Elem::Tin
@@ -99,10 +99,11 @@ impl ElemTables {
                 | Elem::Iron
                 | Elem::Steel
                 | Elem::Gold
-                | Elem::Silver => CLASS_METAL,
+                | Elem::Silver
+                | Elem::Rust => CLASS_METAL,
                 Elem::Crystal | Elem::Gem | Elem::Diamond => CLASS_CRYSTAL,
-                Elem::Lava | Elem::Magma | Elem::Fire => CLASS_HAZARD,
-                Elem::Acid | Elem::Poison | Elem::Chlorine => CLASS_POISON,
+                Elem::Lava | Elem::Magma | Elem::Fire | Elem::Ember => CLASS_HAZARD,
+                Elem::Acid | Elem::Poison | Elem::Chlorine | Elem::Tar => CLASS_POISON,
                 Elem::Plant | Elem::Moss | Elem::Spore | Elem::Fungus => CLASS_PLANT,
                 _ => 0,
             };

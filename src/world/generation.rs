@@ -5,6 +5,12 @@ impl World {
         let w = self.w as i32;
         let h = self.h as i32;
 
+        // The climate layout never changes, so it is cached once here.
+        self.cache_biomes();
+
+        // The climate layout never changes, so it is cached once here.
+        self.cache_biomes();
+
         // Bedrock layer at very bottom (impermeable)
         for x in 0..w {
             for y in (h - 3)..h {
@@ -114,11 +120,11 @@ impl World {
                 }
                 Biome::Swamp => {
                     if self.rng.chance(0.3) {
+                        // Carve a shallow pool into the swamp floor so the
+                        // water sits in the ground instead of floating.
                         for dx in 0..3 {
-                            let y = surface - 1;
-                            if self.get(x + dx, y) == Elem::Empty {
-                                self.set_xy(x + dx, y, Elem::Water);
-                            }
+                            let y = surface + self.rng.range(2) as i32;
+                            self.set_xy(x + dx, y, Elem::Water);
                         }
                     }
                 }
@@ -150,7 +156,9 @@ impl World {
 
         // Underground lava chamber (ellipse) - randomized position
         let cx = self.rng.range((w as u32 * 35 / 100) - (w as u32 * 10 / 100)) as i32 + (w as u32 * 10 / 100) as i32;
-        let cy = self.rng.range((h as u32 * 40 / 100) - (h as u32 * 15 / 100)) as i32 + (h as u32 * 15 / 100) as i32;
+        // The chamber must sit *below* the surface, otherwise the lava ends up
+        // floating in the sky.
+        let cy = self.surface_y(cx) + 45 + self.rng.range(70) as i32;
         let rx: i32 = 20 + self.rng.range(25) as i32;
         let ry: i32 = 10 + self.rng.range(15) as i32;
         for dy in -ry..=ry {
@@ -163,27 +171,50 @@ impl World {
             }
         }
 
-        // Surface lake - smaller, so most of the world is land
+        // Carve caves into the rock. Without them the underground is a
+        // solid block with nothing to explore, mine or light.
+        self.carve_caves(w, h);
+
+        // Granite: a deep igneous layer that only appears far underground.
+        // It is much harder than stone, so it marks the oldest rock.
+        for x in 0..w {
+            let surface = self.surface_y(x);
+            let granite_at = surface + 90 + (self.rng.range(40) as i32);
+            for y in granite_at..(h - 6) {
+                if self.get(x, y) == Elem::Stone {
+                    self.set_xy(x, y, Elem::Granite);
+                }
+            }
+        }
+
+        // Surface lake - smaller, so most of the world is land.
+        // The basin is *carved into* the terrain and the water fills it, so
+        // the water surface sits level with the ground. Placing the water
+        // above the ground instead left it floating in the sky.
         let lake_start = (w as f32 * 0.62) as i32;
         let lake_end = (w as f32 * 0.78) as i32;
         for x in lake_start..lake_end {
             let t = (x - lake_start) as f32 / (lake_end - lake_start) as f32;
             let depth = 3.0 + (t * std::f32::consts::PI).sin() * 5.0;
             let surface = self.surface_y(x);
-            for y in (surface - depth as i32)..surface {
-                self.set_xy(x, y, Elem::Water);
+            for dy in 0..depth as i32 {
+                let y = surface + dy;
+                if y < h - 6 {
+                    self.set_xy(x, y, Elem::Water);
+                }
             }
         }
 
-        // A few smaller ponds
+        // A few smaller ponds, also carved into the ground.
         for _ in 0..2 {
             let x = self.rng.range(w as u32) as i32;
             let surface = self.surface_y(x);
             let pond_w = 2 + self.rng.range(3) as i32;
             for px in (x - pond_w / 2)..=(x + pond_w / 2) {
                 let depth = 1 + self.rng.range(2) as i32;
-                for y in (surface - depth)..surface {
-                    if self.get(px, y) == Elem::Empty {
+                for dy in 0..depth {
+                    let y = surface + dy;
+                    if y < h - 6 {
                         self.set_xy(px, y, Elem::Water);
                     }
                 }
@@ -273,6 +304,138 @@ impl World {
         self.rebuild_active();
     }
 
+    /// Carve a network of caves into the rock below the surface.
+    ///
+    /// The caves are carved with a cellular automaton so they form winding,
+    /// connected passages instead of round pockets. Every cave keeps a floor
+    /// of solid rock, so the world stays stable and resources do not end up
+    /// floating in the sky.
+    pub(crate) fn carve_caves(&mut self, w: i32, h: i32) {
+        const DEPTH: i32 = 14; // how far below the surface the caves start
+        const CELL: usize = 24; // size of a cave seed cell
+        let cw = w as usize;
+        let ch = h as usize;
+        let gw = (w as usize).div_ceil(CELL) + 1;
+        let gh = (h as usize).div_ceil(CELL) + 1;
+
+        // Seed: mark the coarse cells that become cave.
+        let mut seed = vec![false; gw * gh];
+        for gy in 0..gh {
+            for gx in 0..gw {
+                let wy = (gy * CELL) as i32;
+                let wx = (gx * CELL) as i32;
+                // Keep the caves below the surface and above the bedrock.
+                let top = self.surface_y(wx) + DEPTH;
+                let bottom = (h - 24).max(top + 1);
+                if wy < top || wy > bottom {
+                    continue;
+                }
+                // Denser in the middle depths, sparser near the surface.
+                let depth = (wy - top).max(0) as f32;
+                let chance = 0.55 - (depth / (bottom - top).max(1) as f32) * 0.25;
+                if self.rng.chance(chance) {
+                    seed[gy * gw + gx] = true;
+                }
+            }
+        }
+
+        // Expand the seeds into a fine grid. Each seed grows a pair of
+        // winding tunnels rather than a round room, so the caves read as
+        // passages that a creature could travel along.
+        let mut cave = vec![false; cw * ch];
+        for gy in 0..gh {
+            for gx in 0..gw {
+                if !seed[gy * gw + gx] {
+                    continue;
+                }
+                let cx = (gx * CELL) as i32;
+                let cy = (gy * CELL) as i32;
+                // The tunnel starts here and wanders off in a random
+                // direction, changing direction as it goes.
+                let mut tx = cx;
+                let mut ty = cy;
+                let mut angle = self.rng.f32() * std::f32::consts::TAU;
+                let len = 14 + self.rng.range(26) as i32;
+                for _ in 0..len {
+                    angle += (self.rng.f32() - 0.5) * 1.1;
+                    tx += (angle.cos() * 2.0) as i32;
+                    ty += (angle.sin() * 2.0) as i32;
+                    let radius = 2 + self.rng.range(3) as i32;
+                    // Carve a blob around the tunnel centre.
+                    for y in (ty - radius).max(0)..(ty + radius).min(h as i32) {
+                        for x in (tx - radius).max(0)..(tx + radius).min(w as i32) {
+                            let dx = (x - tx) as f32 / (radius + 1) as f32;
+                            let dy = (y - ty) as f32 / (radius + 1) as f32;
+                            if dx * dx + dy * dy <= 1.0 {
+                                cave[y as usize * cw + x as usize] = true;
+                            }
+                        }
+                    }
+                }
+                // A wider chamber where the tunnel starts.
+                let rr = 4 + self.rng.range(4) as i32;
+                for y in (cy - rr).max(0)..(cy + rr).min(h as i32) {
+                    for x in (cx - rr).max(0)..(cx + rr).min(w as i32) {
+                        let dx = (x - cx) as f32 / rr as f32;
+                        let dy = (y - cy) as f32 / rr as f32;
+                        if dx * dx + dy * dy <= 1.0 {
+                            cave[y as usize * cw + x as usize] = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Erode: drop cave cells with too few cave neighbours, so the
+        // passages become thin and winding instead of wide rooms.
+        let mut eroded = cave.clone();
+        for y in 1..(h as i32 - 1) {
+            for x in 1..(w as i32 - 1) {
+                let i = y as usize * cw + x as usize;
+                if !cave[i] {
+                    continue;
+                }
+                let mut n = 0;
+                for dy in -1..=1 {
+                    for dx in -1..=1 {
+                        if dx == 0 && dy == 0 {
+                            continue;
+                        }
+                        if cave[(y + dy) as usize * cw + (x + dx) as usize] {
+                            n += 1;
+                        }
+                    }
+                }
+                if n < 4 {
+                    eroded[i] = false;
+                }
+            }
+        }
+
+        // Dig the caves out, but never through the bedrock, and never above
+        // the surface.
+        for x in 0..w {
+            let surf = self.surface_y(x);
+            let floor = surf + DEPTH;
+            for y in floor..(h - 4) {
+                let i = y as usize * cw + x as usize;
+                if !eroded[i] {
+                    continue;
+                }
+                // Keep a solid floor under every cave so nothing floats and
+                // the surface stays intact.
+                let below = self.get(x, y + 1);
+                if below == Elem::Void || below == Elem::Water {
+                    continue;
+                }
+                let e = self.get(x, y);
+                if e == Elem::Stone || e == Elem::Sand || e == Elem::Mud || e == Elem::Granite {
+                    self.set_xy(x, y, Elem::Empty);
+                }
+            }
+        }
+    }
+
     // Move solid/resource cells that ended up floating above the terrain down
     // into the rock. Several placement passes historically used absolute
     // heights (`h/2`) that sat above the surface, leaving ore and minerals
@@ -294,12 +457,20 @@ impl World {
                             | Elem::Poison
                             | Elem::Alcohol
                             | Elem::Honey
+                            | Elem::Tar
                     );
                 // Leave organic growth, airborne gases and water lakes alone.
                 if is_resource
                     && !matches!(
                         e,
-                        Elem::Plant | Elem::Wood | Elem::Moss | Elem::Spore | Elem::Roots
+                        Elem::Plant
+                            | Elem::Wood
+                            | Elem::Moss
+                            | Elem::Spore
+                            | Elem::Roots
+                            | Elem::Water
+                            | Elem::Ice
+                            | Elem::Snow
                     )
                 {
                     floating.push(e);
@@ -348,15 +519,19 @@ impl World {
 
 impl World {
     pub(crate) fn generate_surface_water(&mut self, w: i32, h: i32) {
-        // Main lake
+        // Main lake, carved into the terrain so the water sits in a basin
+        // instead of floating above the ground.
         let lake_start = (w as f32 * 0.55) as i32;
         let lake_end = (w as f32 * 0.75) as i32;
         for x in lake_start..lake_end {
             let t = (x - lake_start) as f32 / (lake_end - lake_start) as f32;
             let depth = 4.0 + (t * std::f32::consts::PI).sin() * 8.0;
             let surface = self.surface_y(x);
-            for y in (surface - depth as i32)..surface {
-                self.set_xy(x, y, Elem::Water);
+            for dy in 0..depth as i32 {
+                let y = surface + dy;
+                if y < h - 6 {
+                    self.set_xy(x, y, Elem::Water);
+                }
             }
         }
 
@@ -367,21 +542,23 @@ impl World {
             let pond_w = 3 + self.rng.range(4) as i32;
             for px in (x - pond_w / 2)..=(x + pond_w / 2) {
                 let depth = 1 + self.rng.range(3) as i32;
-                for y in (surface - depth)..surface {
-                    if self.get(px, y) == Elem::Empty {
+                for dy in 0..depth {
+                    let y = surface + dy;
+                    if y < h - 6 {
                         self.set_xy(px, y, Elem::Water);
                     }
                 }
             }
         }
 
-        // River
-        let river_y = self.surface_y(w / 2) - 2;
+        // River: a channel carved along the terrain, following its slope.
+        let river_y = self.surface_y(w / 2);
         for x in (w / 4)..(3 * w / 4) {
             if self.rng.chance(0.85) {
                 let y = river_y as f32 + (self.rng.f32() - 0.5) * 3.0;
-                if self.get(x, y as i32) == Elem::Empty {
-                    self.set_xy(x, y as i32, Elem::Water);
+                let y = y as i32;
+                if y > 1 && y < h - 6 {
+                    self.set_xy(x, y, Elem::Water);
                 }
             }
         }
@@ -393,8 +570,8 @@ impl World {
             for dx in -2..=2 {
                 for dy in 0..=2 {
                     let px = x + dx;
-                    let py = surface - dy;
-                    if px > 0 && px < w && py > 0 && py < h {
+                    let py = surface + dy;
+                    if px > 0 && py > 0 && px < w && py < h - 6 {
                         if self.rng.chance(0.3) {
                             self.set_xy(px, py, Elem::Water);
                         }
@@ -503,6 +680,26 @@ impl World {
             }
         }
 
+        // Rust: corroded iron, found where iron meets damp ground.
+        for _ in 0..18 {
+            let cx = self.rng.range(w as u32) as i32;
+            let cy = self.surface_y(cx) + 15 + self.rng.range(45) as i32;
+            for dy in -2..=2 {
+                for dx in -2..=2 {
+                    if dx * dx + dy * dy <= 6 && self.rng.chance(0.3) {
+                        let x = cx + dx;
+                        let y = cy + dy;
+                        if x > 1 && x < w - 1 && y > 1 && y < h - 5 {
+                            let e = self.get(x, y);
+                            if e == Elem::Iron || e == Elem::Metal {
+                                self.set_xy(x, y, Elem::Rust);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Coal seams
         for _ in 0..30 {
             let cx = self.rng.range(w as u32) as i32;
@@ -544,7 +741,7 @@ impl World {
         // Oil pools
         for _ in 0..8 {
             let cx = self.rng.range(w as u32) as i32;
-            let cy = h / 2 + self.rng.range((h / 4) as u32) as i32;
+            let cy = self.surface_y(cx) + 20 + self.rng.range(50) as i32;
             for dy in -3..=3 {
                 for dx in -5..=5 {
                     if dx * dx + dy * dy <= 25 && self.rng.chance(0.4) {
