@@ -366,7 +366,7 @@ async fn main() {
 
     // Camera position (top-left of view in world coordinates)
     let mut cam_x: f32 = 0.0;
-    let mut cam_y: f32 = (H as f32 * 0.55) - (VIEW_H as f32 * 0.5);
+    let mut cam_y: f32 = 0.0;
     let cam_speed = 300.0;
 
     static mut ACCUM: f64 = 0.0;
@@ -382,8 +382,9 @@ async fn main() {
         .clamp(0.25, 32.0);
     // P toggles pause
     let mut paused = false;
-    // Scroll wheel zoom (1.0 = default view)
-    let mut zoom: f32 = 1.0;
+    // Scroll wheel zoom (0.5 = whole world visible, 6.0 = close-up).
+    // Every run starts fully zoomed out.
+    let mut zoom: f32 = 0.5;
     // Endless "revival" lineage: run 1 is the original population, then each
     // victory seeds a new world from the winning species' genome.
     let mut revival: u32 = 1;
@@ -400,7 +401,7 @@ async fn main() {
     // Smoothed camera position (the input drives `cam_x`/`cam_y`, the view
     // eases towards it).
     let mut view_x: f32 = 0.0;
-    let mut view_y: f32 = cam_y;
+    let mut view_y: f32 = 0.0;
 
     // Minimap terrain texture (downsampled world).
     const MINI_W: usize = 120;
@@ -426,7 +427,10 @@ async fn main() {
             creatures = CreatureSystem::new(new_seed.wrapping_add(0x1234_5678_9ABC_DEF0));
             creatures.populate(&world, 36);
             cam_x = 0.0;
-            cam_y = (H as f32 * 0.55) - (VIEW_H as f32 * 0.5);
+            cam_y = 0.0;
+            view_x = 0.0;
+            view_y = 0.0;
+            zoom = 0.5;
             // A manual reroll starts a brand new lineage.
             revival = 1;
             champion = None;
@@ -667,8 +671,10 @@ async fn main() {
                 last_species = None;
                 fallback_champion = None;
                 cam_x = 0.0;
-                cam_y = (H as f32 * 0.55) - (VIEW_H as f32 * 0.5);
-                zoom = 1.0;
+                cam_y = 0.0;
+                view_x = 0.0;
+                view_y = 0.0;
+                zoom = 0.5;
                 paused = false;
                 force_render = true;
                 telemetry.reset(revival);
