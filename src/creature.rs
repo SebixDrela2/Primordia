@@ -330,6 +330,8 @@ pub struct Structure {
     pub hp: f32,
     pub cooldown: u32,
     pub armed: bool,
+    /// 0 = generic, 1 = turret, 2 = temple (grants morale to its colony).
+    pub kind: u8,
 }
 
 /// A thrown bomb: arcs towards its target and detonates.
@@ -1055,6 +1057,35 @@ impl CreatureSystem {
         self.season_timer += 1;
         if self.season_timer > 7200 { self.season_timer = 0; self.season = (self.season + 1) % 4; }
 
+        // Soldiers that stand together form a squad and fight as one.
+        {
+            let mut squads: Vec<(u32, u16, f32, f32)> = Vec::new();
+            let mut next_squad = self.next_squad.max(1);
+            for c in self.list.iter_mut() {
+                if c.role != Role::Soldier {
+                    continue;
+                }
+                let mut joined = false;
+                for s in squads.iter_mut() {
+                    if s.0 == c.species {
+                        let d = (s.2 - c.x).powi(2) + (s.3 - c.y).powi(2);
+                        if d < 400.0 {
+                            c.squad_id = s.1;
+                            joined = true;
+                            break;
+                        }
+                    }
+                }
+                if !joined {
+                    let id = if next_squad > 60 { 1 } else { next_squad };
+                    next_squad = next_squad.wrapping_add(1).max(1);
+                    c.squad_id = id;
+                    squads.push((c.species, id, c.x, c.y));
+                }
+            }
+            self.next_squad = next_squad;
+        }
+
         let mut dead: Vec<usize> = Vec::new();
         let mut births: Vec<(f32, f32, Creature)> = Vec::new();
         let mut attackers: Vec<usize> = Vec::new();
@@ -1121,6 +1152,16 @@ impl CreatureSystem {
                 c.hunger = (c.hunger + 0.06).clamp(0.0, 100.0);
                 c.thirst = (c.thirst + 0.045).clamp(0.0, 100.0);
                 c.stamina = (c.stamina - 0.05).clamp(0.0, c.max_stamina);
+                // A temple nearby steadies the colony: less hunger, faster
+                // recovery.
+                let morale = self.structures.iter().any(|s| {
+                    s.kind == 2
+                        && s.species == c.species
+                        && (s.x - c.x).powi(2) + (s.y - c.y).powi(2) < 625.0
+                });
+                if morale {
+                    c.hunger = (c.hunger - 0.03).clamp(0.0, 100.0);
+                }
                 if c.resting {
                     c.stamina = (c.stamina + STAMINA_REGEN).clamp(0.0, c.max_stamina);
                     c.energy = (c.energy + 0.02).min(c.max_energy);
@@ -1587,7 +1628,7 @@ impl CreatureSystem {
                             let mine = self
                                 .structures
                                 .iter()
-                                .filter(|s| s.species == c.species)
+                                .filter(|s| s.species == c.species && s.kind == 1)
                                 .count();
                             c.inventory[6] = c.inventory[6].saturating_sub(8);
                             if mine < 6 {
@@ -1599,8 +1640,23 @@ impl CreatureSystem {
                                     hp: 120.0,
                                     cooldown: 40,
                                     armed: true,
+                                    kind: 1,
                                 });
                             }
+                        } else if chosen == Buildable::Temple {
+                            // Temples rally the colony: nearby members recover
+                            // faster and keep their spirits up.
+                            c.inventory[4] = c.inventory[4].saturating_sub(2);
+                            self.structures.push(Structure {
+                                x: place_x as f32,
+                                y: place_y as f32,
+                                species: c.species,
+                                color: c.team_color,
+                                hp: 200.0,
+                                cooldown: 0,
+                                armed: false,
+                                kind: 2,
+                            });
                         }
                         self.events.push(SimEvent::Build {
                             x: place_x as f32,
@@ -2144,6 +2200,7 @@ impl CreatureSystem {
                         hp: s.hp,
                         cooldown: s.cooldown,
                         armed: false,
+                        kind: s.kind,
                     });
                     false
                 }
@@ -2297,11 +2354,14 @@ impl CreatureSystem {
         self.projectiles.extend(shots);
         self.stats.shots += shots_fired;
 
-        // Resolve attacks - soldiers target enemy queens/bases, workers defend
+        // Resolve attacks - soldiers target enemy queens/bases, workers defend.
+        // Squads coordinate: whoever spots a target first calls it out, and
+        // the rest of the squad concentrates fire on the same victim.
+        let mut squad_targets: Vec<(u16, usize)> = Vec::new();
         for &a in &attackers {
-            let (ax, ay, a_species, a_role) = {
+            let (ax, ay, a_species, a_role, a_squad) = {
                 let c = &self.list[a];
-                (c.x, c.y, c.species, c.role)
+                (c.x, c.y, c.species, c.role, c.squad_id)
             };
             let mut best: Option<(usize, f32)> = None;
             for (j, other) in self.list.iter().enumerate() {
@@ -2320,7 +2380,22 @@ impl CreatureSystem {
                     best = Some((j, d));
                 }
             }
+            // No target of its own? Follow the squad's call.
+            if best.is_none() && a_squad > 0 {
+                if let Some((_, tj)) = squad_targets.iter().find(|(sq, _)| *sq == a_squad) {
+                    let d = {
+                        let t = &self.list[*tj];
+                        ((t.x - ax).powi(2) + (t.y - ay).powi(2)).sqrt()
+                    };
+                    if d < 26.0 && self.list[*tj].species != a_species {
+                        best = Some((*tj, d));
+                    }
+                }
+            }
             if let Some((j, _)) = best {
+                if a_squad > 0 && !squad_targets.iter().any(|(sq, _)| *sq == a_squad) {
+                    squad_targets.push((a_squad, j));
+                }
                 if self.list[j].health > 0.0 {
                     let attacker = &self.list[a];
                     let mut dmg = if a_role == Role::Soldier { 45.0 } else { 25.0 };

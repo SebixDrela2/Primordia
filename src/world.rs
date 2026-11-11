@@ -622,6 +622,13 @@ impl World {
         self.guarantee_water(w, h);
         self.bury_floating_resources(w, h);
 
+        // Richer underground: ore veins, crystal caves and ancient ruins give
+        // the world real places to dig and to fight over.
+        self.generate_ore_veins(w, h);
+        self.generate_crystal_caves(w, h);
+        self.generate_underground_structures(w, h);
+        self.bury_floating_resources(w, h);
+
         self.census = self.count();
         // The world is fully built now: cache the ground level and collect
         // every cell that can still change.

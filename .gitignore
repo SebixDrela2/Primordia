@@ -1,19 +1,17 @@
-node_modules/
-dist/
-.angular/
-public/
-.env
-*.log
+# Rust build output
+/target/
+
+# Generated screenshots / benchmark artifacts
+/snapshot*.png
+/bench_snapshot.png
+
+# Obsolete seed counter (the seed is time + PID based now)
+/seed_counter.txt
+
+# OS / editor noise
 .DS_Store
-.vs/
-*.vsidx
-*.suo
-*.user
-*.sln.docstates
-*.userosscache
-PrimeSpiral/
-llama.cpp/
-models/
-rea-source/
-pipeprimesim.html
-start-glm.ps1
+Thumbs.db
+*.swp
+
+# Local agent/tooling scratch files
+.opencode/
