@@ -40,6 +40,46 @@ const CARRY_CAP: f32 = 400.0;
 const MANA_REGEN: f32 = 0.15;
 const STAMINA_REGEN: f32 = 0.2;
 
+/// The energy cost of every action a creature can take.
+///
+/// Actions used to be free, so a creature could mine, build, craft and fight
+/// without ever needing to eat. Now everything costs energy, which is what
+/// makes foraging and the food web matter.
+pub mod energy_cost {
+    /// Moving at all.
+    pub const MOVE: f32 = 0.020;
+    /// Shoving through loose debris while moving.
+    pub const SHOVE: f32 = 0.35;
+    /// Attacking in melee.
+    pub const ATTACK: f32 = 6.0;
+    /// Loosing a shot.
+    pub const SHOOT: f32 = 4.0;
+    /// Digging a tunnel through rock.
+    pub const DIG: f32 = 5.0;
+    /// Extracting ore or rock from the ground.
+    pub const MINE: f32 = 3.0;
+    /// Raising a structure.
+    pub const BUILD: f32 = 8.0;
+    /// Crafting a tool, bomb or salve.
+    pub const CRAFT: f32 = 5.0;
+    /// Throwing a bomb.
+    pub const BOMB: f32 = 6.0;
+    /// Using a salve on a wounded colonymate.
+    pub const SALVE: f32 = 4.0;
+    /// Making a trade.
+    pub const TRADE: f32 = 2.0;
+    /// Casting a spell.
+    pub const SPELL: f32 = 10.0;
+}
+
+/// How fast a creature may move, in cells per step.
+///
+/// The old limit was 2.6, which made a creature cross the whole screen in
+/// well under a second: it looked like zooming rather than walking.
+pub const MAX_SPEED: f32 = 0.9;
+/// The speed multiplier a mounted creature gets.
+pub const MOUNT_SPEED_BONUS: f32 = 1.5;
+
 /// Distance from a point to a line segment. Used for swept projectile hits so
 
 pub struct Projectile {

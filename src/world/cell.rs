@@ -67,10 +67,11 @@ impl World {
             weather: Weather::Clear,
             weather_timer: 900,
             meteor_events: Vec::new(),
-            lightning_flash: 0,
             rng: Rng::new(seed),
             frame: 0,
             mine_budget: 0,
+            pressure: super::Pressure::default(),
+            plant_capacity: 0.0,
             census: Census::default(),
         }
     }

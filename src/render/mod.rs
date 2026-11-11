@@ -96,61 +96,55 @@ impl Renderer {
         // Emissive cells inside the region seed the field; the blur spreads
         // the light so a lava chamber lights the whole cave around it.
         //
-        // Only the underground part of the region needs lighting: above the
+        // The field is anchored to *world* coordinates, not to the region:
+        // a light cell always covers the same four world cells whatever the
+        // camera is doing. Anchoring it to the region instead made the
+        // lighting slide every time the camera panned or zoomed.
+        //
+        // Only the underground part of the world needs lighting: above the
         // ground the sun already provides the illumination, so the sky rows
         // are skipped entirely. That keeps the extra pass small even when the
         // whole world is on screen.
-        //
-        // The light field is built at a quarter resolution, so the seed scan
-        // only has to look at every fourth cell in each direction.
-        let mut lit_top = h as i32;
-        for x in 0..w {
-            let gx = x0 + x as i32;
-            if gx < 0 || gx >= w as i32 {
-                continue;
-            }
-            lit_top = lit_top.min(world.ground[gx as usize]);
-        }
-        let lit_rows = (h as i32 - lit_top).max(0);
-        let lw = (rw as usize).div_ceil(light::LIGHT_SCALE) + 2;
-        let lh = (lit_rows as usize).div_ceil(light::LIGHT_SCALE) + 2;
+        const SCALE: i32 = light::LIGHT_SCALE as i32;
+        // The light cell that covers world column x is x / SCALE, so the
+        // window starts on the cell boundary that contains x0. The margin is
+        // the blur radius: with it, every cell in the middle of the region
+        // gets exactly the same light it would get if the whole world were
+        // in view.
+        const MARGIN: i32 = 3;
+        let gx0 = x0.div_euclid(SCALE) - MARGIN;
+        let gy0 = y0.div_euclid(SCALE) - MARGIN;
+        let gx1 = (x0 + rw).div_euclid(SCALE) + MARGIN;
+        let gy1 = (y0 + rh).div_euclid(SCALE) + MARGIN;
+        let lw = (gx1 - gx0 + 1) as usize;
+        let lh = (gy1 - gy0 + 1) as usize;
         self.light.resize(lw, lh);
         self.light.clear();
-        // Seed the field directly from the emissive cells, then spread it.
-        // Only every LIGHT_SCALE-th cell is examined: the light is blurred
-        // over several cells anyway, so sampling sparsely is invisible and
-        // makes the pass four times cheaper in each direction.
-        let step = light::LIGHT_SCALE;
-        let mut ry = 0usize;
-        while ry < rh as usize {
-            let y = y0 + ry as i32;
-            if y >= lit_top && y < h as i32 {
-                let row = y as usize * w;
-                let ly = ((y - lit_top) as usize) / step;
-                let mut rx = 0usize;
-                while rx < rw as usize {
-                    let x = x0 + rx as i32;
-                    if x >= 0 && x < w as i32 {
-                        let k = world.kind[row + x as usize];
-                        if world.emissive[k as usize] {
-                            let lx = rx / step;
-                            self.light.add(lx, ly, world.emission[k as usize]);
-                        }
-                    }
-                    rx += step;
+        // Seed the field from the emissive cells. Whole light cells are
+        // scanned, so a cell gathers exactly the same light no matter where
+        // the camera is looking.
+        let sx0 = (gx0 * SCALE).max(0);
+        let sy0 = (gy0 * SCALE).max(0);
+        let sx1 = ((gx1 + 1) * SCALE).min(w as i32);
+        let sy1 = ((gy1 + 1) * SCALE).min(h as i32);
+        for y in sy0..sy1 {
+            let row = y as usize * w;
+            let ly = (y.div_euclid(SCALE) - gy0) as usize;
+            for x in sx0..sx1 {
+                let k = world.kind[row + x as usize];
+                if world.emissive[k as usize] {
+                    let lx = (x.div_euclid(SCALE) - gx0) as usize;
+                    self.light.add(lx, ly, world.emission[k as usize]);
                 }
             }
-            ry += step;
         }
         // Spread the light outwards with a decaying falloff. This keeps the
         // brightness of the source instead of averaging it away, so a lava
         // chamber really lights the cave around it.
+        let __t1 = std::time::Instant::now();
         self.light.blur(2);
         self.light.finalize();
-        {
-            let mut mx = 0f32; let mut at = (0,0);
-            for (i,c) in self.light.buf.iter().enumerate() { if c[0] > mx { mx = c[0]; at = (i % self.light.w, i / self.light.w); } }
-        }
+        let __t2 = __t1.elapsed().as_secs_f64()*1000.0;
 
         // ---- Sky ---------------------------------------------------------
         // Cloud layer: domain-warped fractal noise sampled from a coarse grid.
@@ -181,6 +175,7 @@ impl Renderer {
         }
         self.light_rows.copy_from_slice(&self.light.buf);
 
+        let __t3 = std::time::Instant::now();
         // The hot loop takes plain slices, so nothing has to be reloaded from
         // the renderer state for every pixel.
         paint(
@@ -190,6 +185,7 @@ impl Renderer {
             &self.fx,
             &self.light_rows,
             lw,
+            lh,
             x0,
             y0,
             rw,
@@ -198,8 +194,10 @@ impl Renderer {
             day_night,
             season,
             weather,
-            lit_top,
+            gx0,
+            gy0,
         );
+        eprintln!("blur {:.3}  paint {:.3}", __t2, __t3.elapsed().as_secs_f64()*1000.0);
     }
 }
 
@@ -213,6 +211,7 @@ fn paint(
     fx: &[FxEntry],
     light_rows: &[[f32; 3]],
     lw: usize,
+    lh: usize,
     x0: i32,
     y0: i32,
     rw: i32,
@@ -221,7 +220,8 @@ fn paint(
     day_night: f32,
     season: u8,
     weather: Weather,
-    lit_top: i32,
+    gx0: i32,
+    gy0: i32,
 ) {
     let w = world.w;
     let h = world.h;
@@ -290,17 +290,33 @@ fn paint(
         // The light field is read through a shared reference, so the compiler
         // knows it cannot alias the pixel buffer. Reading the light field
         // directly would make every pixel write reload the field's pointer.
-        let light_row: &[[f32; 3]] = if y >= lit_top {
-            let ly = ((y - lit_top) as usize) >> 2;
-            &light_rows[ly * lw..ly * lw + lw]
-        } else {
-            &[]
+        let light_row: &[[f32; 3]] = {
+            let ly = (y.div_euclid(4) - gy0).max(0) as usize;
+            if ly < lh {
+                &light_rows[ly * lw..ly * lw + lw]
+            } else {
+                &[]
+            }
         };
         for rx in 0..rw {
             let x = x0 + rx;
             if x < 0 || x >= w as i32 {
                 continue;
             }
+            // The light column advances every four world cells. Tracking it
+            // incrementally avoids a division per pixel.
+            let light_col = if light_row.is_empty() {
+                0
+            } else {
+                let c = (x >> 2) - gx0;
+                if c < 0 {
+                    0
+                } else if c as usize >= lw {
+                    lw - 1
+                } else {
+                    c as usize
+                }
+            };
             let cell = row_base + x as usize;
             let o = (ry as usize * rw as usize + rx as usize) * 4;
             let e = kind[cell];
@@ -535,9 +551,10 @@ fn paint(
             //
             // The light field is coarser than the render, so nearest
             // neighbour is enough: the field is already blurred over several
-            // cells.
-            if y >= lit_top {
-                let lf = light_row[(rx as usize) >> 2];
+            // cells. The column is derived from the world coordinate, so the
+            // lighting of a cell does not depend on the camera.
+            if !light_row.is_empty() {
+                let lf = light_row[light_col];
                 r += lf[0];
                 g += lf[1];
                 b += lf[2];

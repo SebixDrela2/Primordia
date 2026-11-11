@@ -15,6 +15,8 @@ pub struct LightField {
     pub buf: Vec<[f32; 3]>,
     /// Scratch buffer for the separable blur.
     tmp: Vec<[f32; 3]>,
+    /// Prefix sums for the blur, reused between frames.
+    prefix: Vec<[f32; 3]>,
 }
 
 impl LightField {
@@ -24,6 +26,7 @@ impl LightField {
             h: 0,
             buf: Vec::new(),
             tmp: Vec::new(),
+            prefix: Vec::new(),
         }
     }
 
@@ -39,6 +42,8 @@ impl LightField {
         self.buf.resize(n, [0.0; 3]);
         self.tmp.clear();
         self.tmp.resize(n, [0.0; 3]);
+        self.prefix.clear();
+        self.prefix.resize(n.max(w.max(h)) + 1, [0.0; 3]);
     }
 
     pub fn clear(&mut self) {
@@ -60,8 +65,13 @@ impl LightField {
         e[2] = (e[2] + c[2]).min(3.0);
     }
 
-    /// Separable box blur, run once for a smooth falloff. A running sum
-    /// keeps this O(cells) per pass instead of O(cells * radius).
+    /// Spread the light with a box blur, run once horizontally and once
+    /// vertically.
+    ///
+    /// The edges are clamped and the average is normalised by the number of
+    /// samples that were actually taken. A plain running sum gets the edges
+    /// wrong, and because the field's origin moves with the camera, that
+    /// error showed up as a flash of lighting whenever the view moved.
     pub fn blur(&mut self, radius: usize) {
         if radius == 0 || self.w == 0 || self.h == 0 {
             return;
@@ -70,75 +80,77 @@ impl LightField {
         self.blur_vertical(radius);
     }
 
-    /// Spread the light outwards, keeping the brightest value at each cell.
-    ///
-    /// A box blur would *average* the light, which dilutes a small emitter
-    /// until it is invisible. Taking the maximum instead preserves the
-    /// brightness of the source, so a lava chamber really does light the
-    /// cave around it.
-    pub fn spread(&mut self, radius: usize, decay: f32) {
-        if radius == 0 || self.w == 0 || self.h == 0 {
-            return;
-        }
-        for _ in 0..radius {
-            self.spread_pass(decay);
-        }
-    }
-
-    /// One expansion step: every cell takes the brightest of its neighbours,
-    /// attenuated by `decay`.
-    fn spread_pass(&mut self, decay: f32) {
+    fn blur_horizontal(&mut self, radius: usize) {
         let w = self.w;
         let h = self.h;
-        // Horizontal expansion into the scratch buffer.
+        let r = radius.min(w.saturating_sub(1));
+        if r == 0 {
+            return;
+        }
+        // A prefix sum over the row gives the window total in constant time.
+        // The window is clamped at the edges and the divisor is the number of
+        // samples actually taken, so the result does not depend on where the
+        // field starts. A plain running sum gets the clipped edges subtly
+        // wrong, and because the field's origin moves with the camera, that
+        // error showed up as a flash of lighting whenever the view moved.
+        let mut prefix = std::mem::take(&mut self.prefix);
+        prefix.resize(w + 1, [0.0; 3]);
         for y in 0..h {
             let row = y * w;
+            prefix[0] = [0.0; 3];
             for x in 0..w {
-                let mut best = self.buf[row + x];
-                let left = if x > 0 {
-                    self.buf[row + x - 1]
-                } else {
-                    best
-                };
-                let right = if x + 1 < w {
-                    self.buf[row + x + 1]
-                } else {
-                    best
-                };
-                for i in 0..3 {
-                    let v = left[i].max(right[i]) * decay;
-                    if v > best[i] {
-                        best[i] = v;
-                    }
-                }
-                self.tmp[row + x] = best;
+                let c = self.buf[row + x];
+                let p = prefix[x];
+                prefix[x + 1] = [p[0] + c[0], p[1] + c[1], p[2] + c[2]];
+            }
+            for x in 0..w {
+                let lo = x.saturating_sub(r);
+                let hi = (x + r).min(w - 1);
+                let a = prefix[lo];
+                let b = prefix[hi + 1];
+                let inv = 1.0 / (hi - lo + 1) as f32;
+                self.tmp[row + x] = [
+                    (b[0] - a[0]) * inv,
+                    (b[1] - a[1]) * inv,
+                    (b[2] - a[2]) * inv,
+                ];
             }
         }
-        // Vertical expansion, back into the main buffer. The horizontal pass
-        // already moved the light up and down by one cell, so this pass
-        // doubles the reach in both directions.
+        std::mem::swap(&mut self.buf, &mut self.tmp);
+        self.prefix = prefix;
+    }
+
+    fn blur_vertical(&mut self, radius: usize) {
+        let w = self.w;
+        let h = self.h;
+        let r = radius.min(h.saturating_sub(1));
+        if r == 0 {
+            return;
+        }
+        // A prefix sum down the column.
+        let mut prefix = std::mem::take(&mut self.prefix);
+        prefix.resize(h + 1, [0.0; 3]);
         for x in 0..w {
+            prefix[0] = [0.0; 3];
             for y in 0..h {
-                let mut best = self.tmp[y * w + x];
-                let up = if y > 0 {
-                    self.tmp[(y - 1) * w + x]
-                } else {
-                    best
-                };
-                let down = if y + 1 < h {
-                    self.tmp[(y + 1) * w + x]
-                } else {
-                    best
-                };
-                for i in 0..3 {
-                    let v = up[i].max(down[i]) * decay;
-                    if v > best[i] {
-                        best[i] = v;
-                    }
-                }
-                self.buf[y * w + x] = best;
+                let c = self.buf[y * w + x];
+                let p = prefix[y];
+                prefix[y + 1] = [p[0] + c[0], p[1] + c[1], p[2] + c[2]];
+            }
+            for y in 0..h {
+                let lo = y.saturating_sub(r);
+                let hi = (y + r).min(h - 1);
+                let a = prefix[lo];
+                let b = prefix[hi + 1];
+                let inv = 1.0 / (hi - lo + 1) as f32;
+                self.buf[y * w + x] = [
+                    (b[0] - a[0]) * inv,
+                    (b[1] - a[1]) * inv,
+                    (b[2] - a[2]) * inv,
+                ];
             }
         }
+        self.prefix = prefix;
     }
 
     /// Convert the raw light into the final additive colour, in place.
@@ -154,74 +166,5 @@ impl LightField {
             let lb = c[2].max(c[0] * 0.25);
             *c = [lr * 62.0, lg * 62.0, lb * 62.0];
         }
-    }
-
-    fn blur_horizontal(&mut self, radius: usize) {
-        let w = self.w;
-        let h = self.h;
-        if w == 0 || h == 0 {
-            return;
-        }
-        let r = radius.min(w.saturating_sub(1) / 2);
-        if r == 0 {
-            return;
-        }
-        let win = (2 * r + 1) as f32;
-        for y in 0..h {
-            let row = y * w;
-            // Seed the running sum with the first window.
-            let mut acc = [0.0f32; 3];
-            for x in 0..=r.min(w - 1) {
-                let c = self.buf[row + x];
-                acc[0] += c[0];
-                acc[1] += c[1];
-                acc[2] += c[2];
-            }
-            for x in 0..w {
-                self.tmp[row + x] = [acc[0] / win, acc[1] / win, acc[2] / win];
-                // Slide the window one cell to the right.
-                let out = x.saturating_sub(r);
-                let add = (x + r + 1).min(w - 1);
-                let outc = self.buf[row + out];
-                let addc = self.buf[row + add];
-                acc[0] += addc[0] - outc[0];
-                acc[1] += addc[1] - outc[1];
-                acc[2] += addc[2] - outc[2];
-            }
-        }
-        std::mem::swap(&mut self.buf, &mut self.tmp);
-    }
-
-    fn blur_vertical(&mut self, radius: usize) {
-        let w = self.w;
-        let h = self.h;
-        if w == 0 || h == 0 {
-            return;
-        }
-        let r = radius.min(h.saturating_sub(1) / 2);
-        if r == 0 {
-            return;
-        }
-        let win = (2 * r + 1) as f32;
-        for x in 0..w {
-            let mut acc = [0.0f32; 3];
-            for y in 0..=r.min(h - 1) {
-                let c = self.buf[y * w + x];
-                acc[0] += c[0];
-                acc[1] += c[1];
-                acc[2] += c[2];
-            }
-            for y in 0..h {
-                self.tmp[y * w + x] = [acc[0] / win, acc[1] / win, acc[2] / win];
-                let out = y.saturating_sub(r);
-                let add = (y + r + 1).min(h - 1);
-                let outc = self.buf[out * w + x];
-                let addc = self.buf[add * w + x];
-                acc[0] += addc[0] - outc[0];
-                acc[1] += addc[1] - outc[1];
-                acc[2] += addc[2] - outc[2];
-            }
-        }
-        std::mem::swap(&mut self.buf, &mut self.tmp);
     }
 }

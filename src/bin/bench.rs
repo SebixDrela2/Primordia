@@ -134,6 +134,13 @@ fn main() {
                 creatures.stats.births,
                 creatures.stats.deaths
             );
+            // The five independent environmental pressures, so the difficulty
+            // curve can be read straight off the bench output.
+            let p = world.pressure;
+            println!(
+                "          pressure: scarcity {:.2}  depletion {:.2}  harshness {:.2}  extremes {:.2}  volcanic {:.2}",
+                p.scarcity, p.depletion, p.harshness, p.extremes, p.volcanic
+            );
             println!(
                 "          eats {}  builds {}  trades {}  spells {}  mounts {}  structs {} | workers {} soldiers {} queens {} priests {} merchants {} builders {} explorers {} shamans {}",
                 creatures.eats_total,

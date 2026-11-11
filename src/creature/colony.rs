@@ -30,6 +30,10 @@ impl CreatureSystem {
     }
 
     /// Scatter a burst of short-lived energy motes into the world.
+    ///
+    /// The motes are deliberately *not* light sources: an explosion would
+    /// otherwise dump a dozen glowing cells into the light field and flash
+    /// the whole cave white.
     pub(crate) fn spawn_energy_burst(&mut self, world: &mut World, x: i32, y: i32, count: u32, color: [u8; 3]) {
         let _ = color;
         for _ in 0..count {
@@ -37,13 +41,11 @@ impl CreatureSystem {
             let dist = 0.5 + self.rng.f32() * 2.0;
             let px = (x as f32 + ang.cos() * dist).round() as i32;
             let py = (y as f32 + ang.sin() * dist).round() as i32;
-            if world.get(px, py) != Elem::Empty { continue; }
-            let e = match self.rng.range(10) {
-                0..=4 => Elem::Plasma,
-                5..=7 => Elem::Mana,
-                _ => Elem::Energy,
-            };
-            world.set_xy(px, py, e);
+            if world.get(px, py) != Elem::Empty {
+                continue;
+            }
+            // Smoke spreads out and dies quickly without lighting anything up.
+            world.set_xy(px, py, Elem::Smoke);
         }
     }
 
@@ -60,16 +62,10 @@ impl CreatureSystem {
 
     pub fn populate(&mut self, world: &World, count: usize) {
         for _ in 0..count {
-            if !self.spawn_near_surface(world) {
-                continue;
-            }
-            // Every founder gets a partner, so young colonies can defend
-            // themselves instead of being wiped out one by one.
-            let last = self.list.len() - 1;
-            let (px, py) = (self.list[last].x, self.list[last].y);
-            let blueprint = self.list[last].child_blueprint();
-            let bx = (px + 3.0).min(world.w as f32 - 3.0);
-            self.spawn(world, bx, py, CreatureGenesis::Child(&blueprint));
+            // Every founder starts alone. Handing each one a guaranteed
+            // partner gave the starting teams a free ally, which meant a
+            // species that spawned badly still survived its first fights.
+            self.spawn_near_surface(world);
         }
         self.update_stats();
     }

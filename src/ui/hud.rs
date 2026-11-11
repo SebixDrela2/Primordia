@@ -295,12 +295,26 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         None => "lineage: none".to_string(),
     };
 
+    // The environmental pressure, shown as separate bars. Each one rises for
+    // its own reason, so the player can see which part of the world is
+    // turning against them.
+    let p = &world.pressure;
+    let line7 = format!(
+        "pressure: scarcity {:.0}%  depletion {:.0}%  harshness {:.0}%  extremes {:.0}%  volcanic {:.0}%",
+        p.scarcity * 100.0,
+        p.depletion * 100.0,
+        p.harshness * 100.0,
+        p.extremes * 100.0,
+        p.volcanic * 100.0
+    );
+
     draw_text(&line1, 18.0, 66.0, 17.0, Color::new(0.85, 0.9, 0.95, 0.8));
     draw_text(&line2, 18.0, 88.0, 17.0, Color::new(0.6, 0.66, 0.74, 0.8));
     draw_text(&line3, 18.0, 110.0, 17.0, Color::new(0.7, 0.8, 0.6, 0.85));
     draw_text(&line4, 18.0, 132.0, 17.0, Color::new(0.45, 0.5, 0.58, 0.8));
     draw_text(&line5, 18.0, 154.0, 17.0, Color::new(0.6, 0.5, 0.58, 0.8));
     draw_text(&line6, 18.0, 176.0, 17.0, Color::new(0.55, 0.85, 0.7, 0.85));
+    draw_text(&line7, 18.0, 198.0, 15.0, Color::new(0.85, 0.55, 0.45, 0.8));
 
     let help = "WASD/Arrows: move  |  scroll: zoom  |  P: pause  |  R: reroll  |  K: knowledge  |  +/-: sim speed  |  hover: inspect  |  ESC: quit";
     let dims = measure_text(help, None, 15, 1.0);

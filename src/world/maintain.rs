@@ -5,26 +5,33 @@ impl World {
         let frame = self.frame;
         let w = self.w as i32;
 
+        self.update_pressure();
+
         // Keep the cached ground level fresh (the renderer reads it).
         if frame % 15 == 0 {
             self.update_ground();
         }
 
         // ---- Weather ----
+        // Harshness pressure makes the weather turn violent: storms and
+        // meteors become more likely, and the seasons swing wider.
         if self.weather_timer == 0 {
-            self.weather = match self.rng.range(100) {
-                0..=39 => Weather::Clear,
-                40..=69 => Weather::Rain,
-                70..=81 => Weather::Storm,
-                82..=91 => Weather::Snow,
-                _ => Weather::Meteor,
+            let harsh = self.pressure.harshness;
+            let roll = self.rng.range(100) as f32;
+            self.weather = if roll < 40.0 - harsh * 18.0 {
+                Weather::Clear
+            } else if roll < 70.0 - harsh * 6.0 {
+                Weather::Rain
+            } else if roll < 82.0 + harsh * 10.0 {
+                Weather::Storm
+            } else if roll < 92.0 + harsh * 4.0 {
+                Weather::Snow
+            } else {
+                Weather::Meteor
             };
             self.weather_timer = 500 + self.rng.range(700);
         }
         self.weather_timer = self.weather_timer.saturating_sub(1);
-        if self.lightning_flash > 0 {
-            self.lightning_flash -= 1;
-        }
 
         match self.weather {
             Weather::Rain | Weather::Storm => {
@@ -52,7 +59,6 @@ impl World {
                 }
                 // Storms throw lightning bolts that scorch the ground.
                 if self.weather == Weather::Storm && self.rng.chance(0.02) {
-                    self.lightning_flash = 10;
                     let x = self.rng.range(w as u32) as i32;
                     let surf = self.surface_y(x);
                     for dy in 0..6 {
@@ -81,8 +87,9 @@ impl World {
                 }
             }
             Weather::Meteor => {
-                // Meteors streak down and explode where they land.
-                if self.rng.chance(0.005) {
+                // Meteors streak down and explode where they land. Harsh
+                // weather makes them more frequent.
+                if self.rng.chance(0.005 + self.pressure.harshness * 0.02) {
                     let x = self.rng.range(w as u32) as i32;
                     let surf = self.surface_y(x);
                     let impact_y = surf + self.rng.range(4) as i32;
@@ -132,14 +139,18 @@ impl World {
 
         // Vegetation regrowth. Slower and pressure-sensitive: plants establish
         // near water, so over-grazing causes real scarcity that then recovers.
+        // Scarcity pressure cuts the number of seedlings that survive.
         if frame % 15 == 0 && self.census.plants < 4000 {
-            let batches = if self.census.plants < 1200 {
+            let scarcity = self.pressure.scarcity;
+            let base = if self.census.plants < 1200 {
                 24
             } else if self.census.plants < 3000 {
                 12
             } else {
                 6
             };
+            // Under pressure, fewer seedlings take root.
+            let batches = ((base as f32) * (1.0 - scarcity * 0.75)) as u32;
             for _ in 0..batches {
                 let x = self.rng.range((w - 4) as u32) as i32 + 2;
                 let sy = self.surface_y(x);
@@ -256,10 +267,14 @@ impl World {
             }
         }
 
-        // Slow ore genesis: deep rock occasionally turns into a fresh vein, so
-        // mining is sustainable instead of a one-way drain on the world.
+        // Slow ore genesis. The world's metal is finite: every vein that forms
+        // brings the depletion pressure closer to the end of mining, and a
+        // depleted world stops replacing what the colony digs out.
         if frame % 250 == 0 {
-            for _ in 0..3 {
+            let depletion = self.pressure.depletion;
+            // A heavily depleted world forms almost no new ore.
+            let attempts = ((3.0 * (1.0 - depletion)) as u32).max(1);
+            for _ in 0..attempts {
                 let x = self.rng.range(self.w as u32) as i32;
                 let sy = self.surface_y(x);
                 let y = sy + 8 + self.rng.range((self.h as i32 - sy - 10).max(1) as u32) as i32;
@@ -288,12 +303,113 @@ impl World {
             }
         }
 
+        // Volcanic pressure: the deep rock heats up. Magma creeps further up
+        // the shafts as the run goes on, so the deep mines get more dangerous
+        // the longer a colony stays alive.
+        if frame % 600 == 0 && frame > 0 {
+            let volcanic = self.pressure.volcanic;
+            if volcanic > 0.05 && self.rng.chance(volcanic * 0.5) {
+                let x = self.rng.range(w as u32) as i32;
+                // Start from the deepest rock and creep upwards.
+                let mut y = self.h as i32 - 8;
+                while y > self.surface_y(x) + 20 {
+                    if self.get(x, y) == Elem::Stone {
+                        self.set_xy(x, y, Elem::Magma);
+                        break;
+                    }
+                    y -= 1;
+                }
+            }
+        }
+
         // Trim runaway particle counts (firestorms can fill the sky)
         if frame % 300 == 0 {
             let total = self.census.particles as usize;
             if total > (self.w * self.h * 85) / 100 {
                 self.compact();
             }
+        }
+    }
+
+    /// Advance the environmental pressure.
+    ///
+    /// Each pressure rises for its own reason and is measured against its own
+    /// part of the world, so the difficulty curve is the sum of several
+    /// independent trends rather than one number scaled up.
+    pub(crate) fn update_pressure(&mut self) {
+        let frame = self.frame;
+        let p = &mut self.pressure;
+
+        // --- Scarcity: the surface is picked clean ------------------------
+        // Measured against the plant population, but *relative* to what this
+        // world has recently been able to support. The capacity is a
+        // high-water mark that decays slowly, so:
+        //   - a world that is grazed below its own capacity feels scarcity;
+        //   - a world that is genuinely dry has a low capacity and does not
+        //     spiral into permanent famine for having few plants;
+        //   - the pressure eases again once the vegetation recovers.
+        let plants = self.census.plants as f32;
+        // Learn the capacity: climb quickly to the peak, forget it slowly.
+        if plants > self.plant_capacity {
+            self.plant_capacity = plants;
+        } else if frame % 600 == 0 {
+            self.plant_capacity = (self.plant_capacity * 0.995).max(plants);
+        }
+        // Fraction of the world's own capacity that is still standing.
+        let cover = if self.plant_capacity > 50.0 {
+            (plants / self.plant_capacity).clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+        if cover < 0.6 {
+            // Below 60% cover the surface is being eaten into. The rate scales
+            // with how far below the threshold the cover has fallen, so a
+            // lightly grazed world barely notices and a stripped one hurts.
+            p.scarcity = (p.scarcity + (0.6 - cover) * 0.0012).min(1.0);
+        } else if cover > 0.85 {
+            // Above 85% cover the surface is healthy again.
+            p.scarcity = (p.scarcity - 0.0006).max(0.0);
+        }
+
+        // --- Depletion: the ore is finite ---------------------------------
+        // Every ore genesis event is one step closer to the end of the
+        // world's metal, so the pressure only ever rises.
+        if frame % 250 == 0 {
+            p.depletion = (p.depletion + 0.012).min(1.0);
+        }
+
+        // --- Harshness: the weather turns violent --------------------------
+        // Driven by the violent weather that actually happens. The world gets
+        // harsher the more time it spends being battered: storms wear the
+        // climate down faster than meteor showers, and a clear spell lets it
+        // recover a little.
+        //
+        // This is a feedback loop with a real mechanism: harsh weather
+        // makes storms more likely (see the weather roll), and storms make
+        // the world harsher.
+        let severity = match self.weather {
+            Weather::Storm => 0.00055,
+            Weather::Meteor => 0.00030,
+            Weather::Snow => 0.00008,
+            _ => 0.0,
+        };
+        if severity > 0.0 {
+            p.harshness = (p.harshness + severity).min(1.0);
+        } else if self.weather == Weather::Clear {
+            p.harshness = (p.harshness - 0.00018).max(0.0);
+        }
+
+        // --- Extremes: the seasons swing wider -----------------------------
+        // Rises with each season that turns over, so a long run has harsher
+        // winters and fiercer summers than a short one.
+        if frame % 7200 == 0 && frame > 0 {
+            p.extremes = (p.extremes + 0.25).min(1.0);
+        }
+
+        // --- Volcanic: the deep rock heats up ------------------------------
+        // Rises steadily. The deeper you go, the more lava you meet.
+        if frame % 1200 == 0 && frame > 0 {
+            p.volcanic = (p.volcanic + 0.09).min(1.0);
         }
     }
 

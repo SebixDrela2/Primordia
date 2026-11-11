@@ -7,9 +7,12 @@ impl CreatureSystem {
         // Advance day/night cycle (full cycle = 7200 ticks ~ 2 min at 60fps)
         self.day_night += 0.000139;
         if self.day_night > 1.0 { self.day_night -= 1.0; }
-        // Temperature follows season + day/night
+        // Temperature follows season + day/night. The extremes pressure
+        // widens the swing: later in a run the summers are fiercer and the
+        // winters harder, without changing the base seasonal temperatures.
         let base_temp = match self.season { 0 => 18.0, 1 => 26.0, 2 => 16.0, _ => 6.0 };
-        let day_variance = (self.day_night * std::f32::consts::PI * 2.0).sin() * 6.0;
+        let swing = 6.0 + world.pressure.extremes * 16.0;
+        let day_variance = (self.day_night * std::f32::consts::PI * 2.0).sin() * swing;
         self.temperature = base_temp + day_variance;
         // Season progression
         self.season_timer += 1;
@@ -213,8 +216,10 @@ impl CreatureSystem {
 
                 let (steer_x, steer_y, speed_mult_extra) =
                     act_steer(c, &out, &scan, &agents);
-                c.vx = (out[0] * 2.2 + steer_x * 2.0).clamp(-2.6, 2.6);
-                c.vy = (out[1] * 2.2 + steer_y * 2.0 + 0.5).clamp(-2.6, 2.6);
+                // Creatures move at a walking pace. The old clamp of 2.6 cells
+                // per step made them dart across the screen.
+                c.vx = (out[0] * 0.8 + steer_x * 0.8).clamp(-MAX_SPEED, MAX_SPEED);
+                c.vy = (out[1] * 0.8 + steer_y * 0.8 + 0.2).clamp(-MAX_SPEED, MAX_SPEED);
 
 
                 act_move(world, c, speed_mult_extra);
@@ -291,6 +296,7 @@ impl CreatureSystem {
                             });
                             c.reputation = (c.reputation as i32 + 1).clamp(-100, 100) as i16;
                             c.energy = (c.energy + 5.0).min(c.max_energy);
+                            c.energy = (c.energy - energy_cost::TRADE).max(0.0);
                             break;
                         }
                     }
@@ -316,6 +322,7 @@ impl CreatureSystem {
                                 world.mine_budget -= 1;
                                 world.set_xy(tx, ty, Elem::Empty);
                                 c.tool_durability = c.tool_durability.saturating_sub(5);
+                                c.energy = (c.energy - energy_cost::DIG).max(0.0);
                                 c.inventory[0] = (c.inventory[0].saturating_add(2)).min(255);
                                 break;
                             }
@@ -385,6 +392,7 @@ impl CreatureSystem {
                         });
                         c.bombs -= 1;
                         c.craft_cooldown = 25;
+                        c.energy = (c.energy - energy_cost::BOMB).max(0.0);
                         self.events.push(SimEvent::Shoot {
                             x: c.x,
                             y: c.y,
@@ -405,6 +413,7 @@ impl CreatureSystem {
                             heal_targets.push((aid, ax, ay));
                             c.salves -= 1;
                             c.craft_cooldown = 30;
+                            c.energy = (c.energy - energy_cost::SALVE).max(0.0);
                             self.events.push(SimEvent::Heal {
                                 x: ax,
                                 y: ay,
@@ -417,6 +426,7 @@ impl CreatureSystem {
 
                 // Spell casting effects
                 if cast_spell {
+                    c.energy = (c.energy - energy_cost::SPELL).max(0.0);
                     c.spell_cooldown = 30;
                     c.mana = (c.mana - 10.0).max(0.0);
                     c.spell_cd[c.active_spell as usize] = 60;

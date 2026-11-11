@@ -92,9 +92,12 @@ pub(crate) fn act_move(world: &mut World, c: &mut Creature, behaviour_speed: f32
                 // Movement with collision (mounted moves faster)
                 let mut speed_mult = behaviour_speed;
                 if c.mount_kind != MountKind::None && c.mount_stamina > 0.0 {
-                    speed_mult = 1.6 * behaviour_speed;
+                    speed_mult = MOUNT_SPEED_BONUS * behaviour_speed;
                     c.mount_stamina = (c.mount_stamina - 0.3).max(0.0);
                 }
+                // Moving costs energy, but only for the distance covered.
+                let distance = (c.vx.abs() + c.vy.abs()) * speed_mult;
+                c.energy = (c.energy - distance * energy_cost::MOVE).max(0.0);
                 let nx = c.x + c.vx * speed_mult;
                 let ny = c.y + c.vy * speed_mult;
 
@@ -114,6 +117,7 @@ pub(crate) fn act_move(world: &mut World, c: &mut Creature, behaviour_speed: f32
                 if !ok && can_dig(world.get(tx, ty), c.tool) {
                     world.set_xy(tx, ty, Elem::Empty);
                     c.stamina = (c.stamina - 0.35).max(0.0);
+                    c.energy = (c.energy - energy_cost::SHOVE).max(0.0);
                     ok = true;
                 }
                 if ok {
@@ -126,6 +130,7 @@ pub(crate) fn act_move(world: &mut World, c: &mut Creature, behaviour_speed: f32
                     if !okx && can_dig(world.get(ax, ay), c.tool) {
                         world.set_xy(ax, ay, Elem::Empty);
                         c.stamina = (c.stamina - 0.35).max(0.0);
+                        c.energy = (c.energy - energy_cost::SHOVE).max(0.0);
                         okx = true;
                     }
                     if okx {
@@ -137,6 +142,7 @@ pub(crate) fn act_move(world: &mut World, c: &mut Creature, behaviour_speed: f32
                     if !oky && can_dig(world.get(bx, by), c.tool) {
                         world.set_xy(bx, by, Elem::Empty);
                         c.stamina = (c.stamina - 0.35).max(0.0);
+                        c.energy = (c.energy - energy_cost::SHOVE).max(0.0);
                         oky = true;
                     }
                     if oky {
@@ -277,7 +283,7 @@ pub(crate) fn act_mine(world: &mut World, c: &mut Creature, out: &[f32]) {
                         let me = world.get(mx, my);
                         world.set_xy(mx, my, Elem::Empty);
                         c.stamina = (c.stamina - 0.8).max(0.0);
-                        c.energy -= 0.8;
+                        c.energy = (c.energy - energy_cost::MINE).max(0.0);
                         c.carried = (c.carried + 15.0).min(CARRY_CAP);
                         // Every excavation also yields a little stone.
                         c.inventory[0] = c.inventory[0].saturating_add(1).min(255);
@@ -329,7 +335,7 @@ pub(crate) fn act_build(
                     && (c.age * 17 + c.id * 23) % 100 < 1;
                 let built = (nn_wants_build || exploratory_build) && c.carried >= 20.0 && c.build_cooldown == 0;
                 if built {
-                    c.energy -= 8.0;
+                    c.energy = (c.energy - energy_cost::BUILD).max(0.0);
                     let gx = c.x.round() as i32;
                     let gy = c.y.round() as i32;
                     let bx = c.base_x.round() as i32;
@@ -488,6 +494,9 @@ pub(crate) fn act_craft(c: &mut Creature, out: &[f32], events: &mut Vec<SimEvent
                 let wants_craft = nn_wants_craft || exploratory_craft;
                 let tool_before = c.tool;
                 if wants_craft {
+                    // Crafting burns energy even if the materials are
+                    // missing, because the attempt itself is the work.
+                    c.energy = (c.energy - energy_cost::CRAFT).max(0.0);
                     // Pickaxe: 5 stone + 2 wood (tech 0)
                     if c.tool == Tool::None && c.inventory[0] >= 5 && c.inventory[6] >= 2 {
                         c.inventory[0] = c.inventory[0].saturating_sub(5);
@@ -715,7 +724,7 @@ pub(crate) fn act_combat(
                             elem,
                         });
                         c.fire_cooldown = if c.tool == Tool::Bow { 40 } else { 55 };
-                        c.energy = (c.energy - 4.0).max(0.0);
+                        c.energy = (c.energy - energy_cost::SHOOT).max(0.0);
                         events.push(SimEvent::Shoot {
                             x: c.x,
                             y: c.y,

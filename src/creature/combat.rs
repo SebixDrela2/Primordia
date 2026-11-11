@@ -113,12 +113,19 @@ impl CreatureSystem {
                             self.list[j].health -= 55.0;
                         }
                     }
-                    // Scorch the ground and release energy.
+                    // Scorch the ground. The scorch is ash and charcoal rather
+                    // than fire: a block of fire would be a burst of light
+                    // sources and would flash the whole cave white.
                     self.spawn_energy_burst(world, tx, ty, 16, b.color);
                     for dx in -1..=1 {
                         for dy in -1..=1 {
                             if world.get(tx + dx, ty + dy) == Elem::Empty {
-                                world.set_xy(tx + dx, ty + dy, Elem::Fire);
+                                let e = if self.rng.chance(0.5) {
+                                    Elem::Smoke
+                                } else {
+                                    Elem::Charcoal
+                                };
+                                world.set_xy(tx + dx, ty + dy, e);
                             }
                         }
                     }
@@ -257,7 +264,10 @@ impl CreatureSystem {
                     }
                     if attacker.active_spell == Spell::Fireball && attacker.spell_cd[1] == 0 { dmg += 20.0; }
                     self.list[j].health -= dmg;
-                    self.list[a].energy = (self.list[a].energy + 20.0).min(self.list[a].max_energy);
+                    // Melee costs energy: swinging is work, and it used to
+                    // hand the attacker energy instead.
+                    self.list[a].energy =
+                        (self.list[a].energy - energy_cost::ATTACK).max(0.0);
                     self.events.push(SimEvent::Hit {
                         x: self.list[j].x,
                         y: self.list[j].y,

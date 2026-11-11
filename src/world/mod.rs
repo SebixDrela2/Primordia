@@ -111,6 +111,42 @@ pub const DIRS8: [(i32, i32); 8] = [
     (-1, 1),
 ];
 
+/// The environmental pressure on the world.
+///
+/// Difficulty is deliberately **not** one number that gets multiplied into
+/// everything. Each kind of pressure rises for its own reason, is driven by
+/// its own part of the world, and hurts in its own way. The player can watch
+/// the HUD and see exactly which pressure is rising and why.
+#[derive(Clone, Copy, Default)]
+pub struct Pressure {
+    /// Food and water are running out: the surface is being picked clean.
+    /// Rises while the vegetation is below what the world used to support,
+    /// and recovers slowly when the vegetation comes back.
+    pub scarcity: f32,
+    /// The ore is being mined faster than the geology can replace it.
+    /// Rises every time ore forms, because every vein that appears is one
+    /// step closer to the end of the world's metal.
+    pub depletion: f32,
+    /// The weather is turning violent: storms and meteors grow more frequent.
+    /// Rises with the time the world spends in violent weather.
+    pub harshness: f32,
+    /// The temperature swings wider: harder winters, fiercer summers.
+    /// Rises with every season that turns over.
+    pub extremes: f32,
+    /// The deep rock is heating up: more magma, more lava, less safe mining.
+    /// Rises steadily as the run goes on.
+    pub volcanic: f32,
+}
+
+impl Pressure {
+    /// How hard the world is overall, in the range 0..=1. This is a summary
+    /// for the HUD only; the simulation uses the individual pressures.
+    pub fn overall(&self) -> f32 {
+        let sum = self.scarcity + self.depletion + self.harshness + self.extremes + self.volcanic;
+        (sum / 5.0).clamp(0.0, 1.0)
+    }
+}
+
 #[derive(Default)]
 pub struct Census {
     pub particles: u32,
@@ -170,13 +206,21 @@ pub struct World {
     pub weather_timer: u32,
     /// Recent meteor impacts (x, y) so the renderer can flash explosions.
     pub meteor_events: Vec<(f32, f32)>,
-    /// Frames left of a lightning flash (storms only).
-    pub lightning_flash: u32,
     pub rng: Rng,
     pub frame: u64,
     /// Per-step budget for destructive resource gathering so creatures
     /// cannot strip-mine the entire world. Reset at the start of each step.
     pub mine_budget: i32,
+    /// The environmental pressure on the world. See `Pressure`.
+    pub pressure: Pressure,
+    /// How many plants this world has recently been able to support.
+    ///
+    /// The surface does not have a fixed carrying capacity: a wet world grows
+    /// more vegetation than a dry one, and a world that has been grazed hard
+    /// takes time to recover. Scarcity is therefore measured against this
+    /// learned high-water mark rather than against a hard-coded number, so
+    /// the pressure reflects the world's *own* productivity being eaten into.
+    pub plant_capacity: f32,
     pub census: Census,
 }
 

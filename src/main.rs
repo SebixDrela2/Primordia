@@ -390,9 +390,15 @@ async fn main() {
             region_w = vis_w;
             region_h = vis_h;
             region_pixels = vec![0u8; (region_w * region_h * 4) as usize];
-            region_image = Image::gen_image_color(region_w as u16, region_h as u16, WHITE);
+            // Start from a dark colour, not white: the region is re-rendered
+            // below, but a resized region is briefly shown before that
+            // happens, and white made zooming flash a white screen.
+            region_image = Image::gen_image_color(region_w as u16, region_h as u16, Color::new(0.0, 0.0, 0.0, 0.0));
             region_texture = Texture2D::from_image(&region_image);
             region_texture.set_filter(FilterMode::Nearest);
+            // The region has to be repainted straight away, whatever the
+            // simulation is doing.
+            force_render = true;
         }
 
         // Re-render the world only when the simulation actually advanced (or
