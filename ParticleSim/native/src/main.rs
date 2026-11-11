@@ -4,7 +4,7 @@ mod render;
 mod rng;
 mod world;
 
-use creature::{CreatureSystem, RevivalGenome, Role};
+use creature::{CreatureSystem, RevivalGenome, Role, SimEvent};
 use elements::Elem;
 use macroquad::prelude::*;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -177,6 +177,166 @@ impl Telemetry {
     }
 }
 
+/// Short-lived visual feedback for everything that happens in the sim.
+enum EffectKind {
+    Ring { color: [u8; 3], max_r: f32, width: f32 },
+    Spark { color: [u8; 3], vx: f32, vy: f32, size: f32 },
+    Text { color: [u8; 3], text: String },
+}
+
+struct Effect {
+    kind: EffectKind,
+    x: f32,
+    y: f32,
+    t: f32,
+    life: f32,
+}
+
+struct Effects {
+    items: Vec<Effect>,
+}
+
+impl Effects {
+    fn new() -> Self {
+        Self { items: Vec::new() }
+    }
+
+    fn ring(&mut self, x: f32, y: f32, color: [u8; 3], max_r: f32, life: f32) {
+        self.items.push(Effect {
+            kind: EffectKind::Ring {
+                color,
+                max_r,
+                width: 2.0,
+            },
+            x,
+            y,
+            t: 0.0,
+            life,
+        });
+    }
+
+    fn spark(&mut self, x: f32, y: f32, color: [u8; 3], vx: f32, vy: f32, size: f32, life: f32) {
+        self.items.push(Effect {
+            kind: EffectKind::Spark {
+                color,
+                vx,
+                vy,
+                size,
+            },
+            x,
+            y,
+            t: 0.0,
+            life,
+        });
+    }
+
+    fn text(&mut self, x: f32, y: f32, color: [u8; 3], text: String) {
+        self.items.push(Effect {
+            kind: EffectKind::Text { color, text },
+            x,
+            y,
+            t: 0.0,
+            life: 1.3,
+        });
+    }
+
+    /// Radial spray of sparks (used for deaths and impacts).
+    fn burst(&mut self, x: f32, y: f32, color: [u8; 3], count: usize, speed: f32) {
+        for i in 0..count {
+            let a = (i as f32 / count.max(1) as f32) * std::f32::consts::TAU;
+            let jitter = ((i * 37) % 11) as f32 / 11.0 - 0.5;
+            let s = speed * (0.6 + jitter);
+            self.spark(
+                x,
+                y,
+                color,
+                a.cos() * s,
+                a.sin() * s,
+                2.0,
+                0.55 + jitter.abs() * 0.3,
+            );
+        }
+    }
+
+    fn update(&mut self, dt: f32) {
+        for e in &mut self.items {
+            e.t += dt;
+        }
+        self.items.retain(|e| e.t < e.life);
+        if self.items.len() > 600 {
+            let excess = self.items.len() - 600;
+            self.items.drain(0..excess);
+        }
+    }
+
+    fn draw(&self, cam_x: f32, cam_y: f32, scale_x: f32, scale_y: f32) {
+        for e in &self.items {
+            let p = (e.t / e.life).clamp(0.0, 1.0);
+            let fade = (1.0 - p).clamp(0.0, 1.0);
+            let sx = (e.x - cam_x) * scale_x;
+            let sy = (e.y - cam_y) * scale_y;
+            match &e.kind {
+                EffectKind::Ring {
+                    color,
+                    max_r,
+                    width,
+                } => {
+                    // Ease-out expansion.
+                    let r = (max_r * scale_x).max(1.0) * (1.0 - (1.0 - p) * (1.0 - p));
+                    draw_circle_lines(
+                        sx,
+                        sy,
+                        r,
+                        *width,
+                        Color::new(
+                            color[0] as f32 / 255.0,
+                            color[1] as f32 / 255.0,
+                            color[2] as f32 / 255.0,
+                            fade * 0.9,
+                        ),
+                    );
+                }
+                EffectKind::Spark {
+                    color,
+                    vx,
+                    vy,
+                    size,
+                } => {
+                    let px = (e.x + vx * e.t - cam_x) * scale_x;
+                    let py = (e.y + vy * e.t - cam_y) * scale_y;
+                    let s = (size * scale_x).max(1.0) * (1.0 - p * 0.5);
+                    draw_circle(
+                        px,
+                        py,
+                        s,
+                        Color::new(
+                            color[0] as f32 / 255.0,
+                            color[1] as f32 / 255.0,
+                            color[2] as f32 / 255.0,
+                            fade,
+                        ),
+                    );
+                }
+                EffectKind::Text { color, text } => {
+                    let dims = measure_text(text, None, 12, 1.0);
+                    draw_text(
+                        text,
+                        sx - dims.width / 2.0,
+                        sy - p * 16.0,
+                        12.0,
+                        Color::new(
+                            color[0] as f32 / 255.0,
+                            color[1] as f32 / 255.0,
+                            color[2] as f32 / 255.0,
+                            fade,
+                        ),
+                    );
+                }
+            }
+        }
+    }
+}
+
 /// Full-screen state shown when one species has wiped out all others (or the
 /// whole population died out).
 struct VictoryScreen {
@@ -213,8 +373,13 @@ async fn main() {
 
     let mut ui = UiState::new();
 
-    // Simulation speed multiplier (1.0 = normal, press + / - to change)
-    let mut sim_speed: f32 = 1.0;
+    // Simulation speed multiplier (1.0 = normal, press + / - to change).
+    // PRIMORDIA_SPEED can be set to start at a different speed.
+    let mut sim_speed: f32 = std::env::var("PRIMORDIA_SPEED")
+        .ok()
+        .and_then(|v| v.parse::<f32>().ok())
+        .unwrap_or(1.0)
+        .clamp(0.25, 16.0);
     // P toggles pause
     let mut paused = false;
     // Scroll wheel zoom (1.0 = default view)
@@ -224,8 +389,13 @@ async fn main() {
     let mut revival: u32 = 1;
     let mut champion: Option<RevivalGenome> = None;
     let mut victory: Option<VictoryScreen> = None;
+    // Snapshot of the most recent species' genome, used if the whole
+    // population dies out (the last lineage still gets a revival).
+    let mut fallback_champion: Option<RevivalGenome> = None;
+    let mut last_species: Option<u32> = None;
     let mut telemetry = Telemetry::new();
     telemetry.reset(1);
+    let mut effects = Effects::new();
     let mut force_render = true;
 
     loop {
@@ -344,9 +514,68 @@ async fn main() {
         }
         telemetry.tick(dt);
 
+        // ---- Turn simulation events into animations ----
+        for ev in creatures.events.drain(..) {
+            match ev {
+                SimEvent::Hit {
+                    x,
+                    y,
+                    color,
+                    damage,
+                } => {
+                    effects.ring(x, y, color, 7.0, 0.35);
+                    if damage >= 20.0 {
+                        effects.text(x, y, [255, 210, 120], format!("-{}", damage as i32));
+                    }
+                }
+                SimEvent::Shoot { x, y, color } => {
+                    effects.ring(x, y, color, 6.0, 0.25);
+                }
+                SimEvent::Craft { x, y, color } => {
+                    effects.ring(x, y, color, 12.0, 0.7);
+                    effects.text(x, y, color, "CRAFT".to_string());
+                }
+                SimEvent::Build { x, y, color } => {
+                    effects.ring(x, y, color, 16.0, 0.8);
+                    effects.text(x, y, color, "BUILT".to_string());
+                }
+                SimEvent::Trade { x, y, color } => {
+                    effects.ring(x, y, color, 9.0, 0.5);
+                    effects.text(x, y, color, "TRADE".to_string());
+                }
+                SimEvent::Birth { x, y, color } => {
+                    effects.ring(x, y, color, 10.0, 0.6);
+                    effects.text(x, y, color, "BORN".to_string());
+                }
+                SimEvent::Death {
+                    x,
+                    y,
+                    color,
+                    size,
+                } => {
+                    effects.ring(x, y, color, 22.0 + size * 8.0, 0.9);
+                    effects.ring(x, y, [255, 255, 255], 12.0 + size * 4.0, 0.5);
+                    effects.burst(x, y, color, 14, 7.0);
+                    effects.text(x, y, [255, 130, 130], "KO".to_string());
+                }
+            }
+        }
+        effects.update(dt);
+
         // ---- Species domination / extinction -> victory screen ----
         if victory.is_none() {
+            // Keep a running snapshot of the dominant lineage so a total
+            // extinction can still revive the last species to stand.
+            if let Some(sp) = dominant_species(&creatures) {
+                if last_species != Some(sp) || fallback_champion.is_none() {
+                    last_species = Some(sp);
+                    fallback_champion = creatures.champion_from(sp);
+                }
+            }
+
             if creatures.list.is_empty() {
+                // Total extinction: the last species to hold on still carries
+                // its genome into the next revival.
                 victory = Some(VictoryScreen {
                     winner: "NO SURVIVORS".to_string(),
                     color: [90, 100, 110],
@@ -405,6 +634,12 @@ async fn main() {
                 if won {
                     revival += 1;
                 }
+                // An extinct run still passes the torch to the last lineage.
+                if champion.is_none() {
+                    champion = fallback_champion.take();
+                }
+                last_species = None;
+                fallback_champion = None;
                 cam_x = 0.0;
                 cam_y = 0.0;
                 zoom = 1.0;
@@ -594,6 +829,72 @@ async fn main() {
             }
         }
 
+        // ---- Shots in flight ----
+        let vscale_x = scr_w / view_w;
+        let vscale_y = scr_h / view_h;
+        for p in &creatures.projectiles {
+            let sx = (p.x - cam_x) * vscale_x;
+            let sy = (p.y - cam_y) * vscale_y;
+            let px = (p.px - cam_x) * vscale_x;
+            let py = (p.py - cam_y) * vscale_y;
+            let c = p.elem.color();
+            let glow = Color::new(
+                c[0] as f32 / 255.0,
+                c[1] as f32 / 255.0,
+                c[2] as f32 / 255.0,
+                1.0,
+            );
+            draw_line(
+                px,
+                py,
+                sx,
+                sy,
+                2.0,
+                Color::new(
+                    c[0] as f32 / 255.0,
+                    c[1] as f32 / 255.0,
+                    c[2] as f32 / 255.0,
+                    0.4,
+                ),
+            );
+            draw_circle(
+                sx,
+                sy,
+                5.0,
+                Color::new(
+                    c[0] as f32 / 255.0,
+                    c[1] as f32 / 255.0,
+                    c[2] as f32 / 255.0,
+                    0.22,
+                ),
+            );
+            draw_circle(sx, sy, 2.2, glow);
+        }
+
+        // ---- Turret markers ----
+        for s in &creatures.structures {
+            if !s.armed {
+                continue;
+            }
+            let sx = (s.x - cam_x) * vscale_x;
+            let sy = (s.y - cam_y) * vscale_y;
+            draw_circle_lines(
+                sx,
+                sy,
+                8.0,
+                1.5,
+                Color::new(
+                    s.color[0] as f32 / 255.0,
+                    s.color[1] as f32 / 255.0,
+                    s.color[2] as f32 / 255.0,
+                    0.7,
+                ),
+            );
+        }
+
+        // ---- Interaction animations ----
+        effects.draw(cam_x, cam_y, vscale_x, vscale_y);
+
         draw_minimap(&creatures, cam_x, cam_y, view_w, view_h);
         draw_hud(&world, &creatures, cam_x, cam_y, seed, sim_speed, paused, zoom, revival);
         if screen_width() >= 1080.0 {
@@ -615,6 +916,19 @@ async fn main() {
 
         next_frame().await;
     }
+}
+
+/// The species with the most living members (ties broken by lowest id).
+fn dominant_species(creatures: &CreatureSystem) -> Option<u32> {
+    let mut counts: Vec<(u32, u32)> = Vec::new();
+    for c in &creatures.list {
+        match counts.iter_mut().find(|(id, _)| *id == c.species) {
+            Some(e) => e.1 += 1,
+            None => counts.push((c.species, 1)),
+        }
+    }
+    counts.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    counts.first().map(|(id, _)| *id)
 }
 
 /// Bottom-left minimap: species dots plus the current camera viewport.
@@ -799,8 +1113,8 @@ fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f32, s
         season_name, time_of_day, creatures.temperature, stats.avg_mana, stats.spells_cast, stats.trades, sim_speed, zoom
     );
     let line4 = format!(
-        "camera: ({:.0},{:.0})   fps {}   births {}   deaths {}  structs {}  mounts {}",
-        cam_x, cam_y, get_fps(), stats.births, stats.deaths, stats.structures, stats.mounts
+        "camera: ({:.0},{:.0})   fps {}   births {}   deaths {}  structs {}  towers {}  shots {}",
+        cam_x, cam_y, get_fps(), stats.births, stats.deaths, stats.structures, stats.towers, stats.shots
     );
     let line5 = format!(
         "hunger {:.0}  thirst {:.0}  stamina {:.0}  diseases {}",

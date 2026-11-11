@@ -219,6 +219,61 @@ impl Elem {
         }
     }
 
+    /// Elements that have a branch in `World::try_reaction`. Kept in sync
+    /// with the reaction match in `world.rs`.
+    pub fn is_reactive(self) -> bool {
+        matches!(
+            self,
+            Elem::Water
+                | Elem::Lava
+                | Elem::Magma
+                | Elem::Acid
+                | Elem::Ice
+                | Elem::Plant
+                | Elem::Fungus
+                | Elem::Moss
+                | Elem::Roots
+                | Elem::Fire
+                | Elem::Oil
+                | Elem::Sulfur
+                | Elem::Mercury
+                | Elem::Plasma
+                | Elem::Chlorine
+                | Elem::Methane
+                | Elem::Oxygen
+                | Elem::Gunpowder
+                | Elem::Fertilizer
+                | Elem::Virus
+                | Elem::Bacteria
+                | Elem::Egg
+                | Elem::Corpse
+                | Elem::Mana
+                | Elem::Soul
+                | Elem::Rune
+                | Elem::Ward
+        )
+    }
+
+    /// True when a cell can never change on its own: no reaction, no
+    /// behaviour and no lifetime. The world step skips these entirely, which
+    /// is what keeps the simulation fast (most of the world is stone).
+    pub fn is_inert(self) -> bool {
+        !self.is_reactive()
+            && self.behavior() == Behavior::Static
+            && self.lifetime() == u32::MAX
+    }
+
+    /// Lookup table: is this element byte inert? Built once at startup.
+    pub fn inert_table() -> [bool; 80] {
+        let mut t = [false; 80];
+        let mut i = 0;
+        while i < 80 {
+            t[i] = Elem::from_u8(i as u8).is_inert();
+            i += 1;
+        }
+        t
+    }
+
     pub fn behavior(self) -> Behavior {
         match self {
             Elem::Sand | Elem::Sulfur | Elem::Salt | Elem::Ash | Elem::Dust | Elem::Gunpowder | Elem::Fertilizer => Behavior::Fall,

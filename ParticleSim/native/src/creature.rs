@@ -16,6 +16,21 @@ const CARRY_CAP: f32 = 400.0;
 const MANA_REGEN: f32 = 0.15;
 const STAMINA_REGEN: f32 = 0.2;
 
+/// Distance from a point to a line segment. Used for swept projectile hits so
+/// fast shots cannot tunnel through creatures.
+fn segment_distance(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
+    let dx = bx - ax;
+    let dy = by - ay;
+    let len2 = dx * dx + dy * dy;
+    if len2 <= f32::EPSILON {
+        return ((px - ax).powi(2) + (py - ay).powi(2)).sqrt();
+    }
+    let t = (((px - ax) * dx + (py - ay) * dy) / len2).clamp(0.0, 1.0);
+    let cx = ax + t * dx;
+    let cy = ay + t * dy;
+    ((px - cx).powi(2) + (py - cy).powi(2)).sqrt()
+}
+
 // ---------------------------------------------------------------------------
 // Tiny feed-forward network
 // ---------------------------------------------------------------------------
@@ -61,14 +76,24 @@ impl Net {
     }
 
     pub fn forward(&self, input: &[f32]) -> Vec<f32> {
-        let mut act = input.to_vec();
+        let mut act = Vec::with_capacity(input.len());
+        let mut next = Vec::with_capacity(self.sizes[self.sizes.len() - 1]);
+        self.forward_into(input, &mut act, &mut next);
+        act
+    }
+
+    /// Allocation-free forward pass: the caller reuses the scratch buffers.
+    pub fn forward_into(&self, input: &[f32], act: &mut Vec<f32>, next: &mut Vec<f32>) {
+        act.clear();
+        act.extend_from_slice(input);
         let last = self.w.len() - 1;
         for layer in 0..self.w.len() {
             let out_n = self.sizes[layer + 1];
             let in_n = self.sizes[layer];
             let ws = &self.w[layer];
             let bs = &self.b[layer];
-            let mut next = vec![0.0f32; out_n];
+            next.clear();
+            next.resize(out_n, 0.0);
             for o in 0..out_n {
                 let mut sum = bs[o];
                 let row = o * in_n;
@@ -77,9 +102,8 @@ impl Net {
                 }
                 next[o] = if layer == last { sum.tanh() } else { sum.max(0.0) };
             }
-            act = next;
+            std::mem::swap(act, next);
         }
-        act
     }
 
     pub fn mutate(&mut self, rng: &mut Rng, rate: f32, strength: f32) {
@@ -265,6 +289,44 @@ pub enum Buildable {
     Bridge = 7,
 }
 
+/// A shot in flight (arrows, mana bolts, tower fire).
+pub struct Projectile {
+    pub x: f32,
+    pub y: f32,
+    pub px: f32,
+    pub py: f32,
+    pub vx: f32,
+    pub vy: f32,
+    pub life: u32,
+    pub damage: f32,
+    pub species: u32,
+    pub color: [u8; 3],
+    pub elem: Elem,
+}
+
+/// A player-built structure that remembers who owns it, so turrets know
+/// which creatures to shoot at.
+pub struct Structure {
+    pub x: f32,
+    pub y: f32,
+    pub species: u32,
+    pub color: [u8; 3],
+    pub hp: f32,
+    pub cooldown: u32,
+    pub armed: bool,
+}
+
+/// Things that happened, so the renderer can animate them.
+pub enum SimEvent {
+    Hit { x: f32, y: f32, color: [u8; 3], damage: f32 },
+    Shoot { x: f32, y: f32, color: [u8; 3] },
+    Craft { x: f32, y: f32, color: [u8; 3] },
+    Build { x: f32, y: f32, color: [u8; 3] },
+    Trade { x: f32, y: f32, color: [u8; 3] },
+    Birth { x: f32, y: f32, color: [u8; 3] },
+    Death { x: f32, y: f32, color: [u8; 3], size: f32 },
+}
+
 // ---------------------------------------------------------------------------
 // Vehicle / mount
 // ---------------------------------------------------------------------------
@@ -296,6 +358,8 @@ pub struct Creature {
     pub offspring: u32,
     pub kills: u32,
     pub cooldown: u32,
+    /// Cooldown between ranged shots.
+    pub fire_cooldown: u32,
     pub size: f32,
     pub last_x: f32,
     pub last_y: f32,
@@ -400,6 +464,8 @@ pub struct CreatureStats {
     pub avg_hunger: f32,
     pub avg_thirst: f32,
     pub avg_stamina: f32,
+    pub shots: u32,
+    pub towers: u32,
 }
 
 pub struct CreatureSystem {
@@ -422,6 +488,12 @@ pub struct CreatureSystem {
     pub temperature: f32, // world temperature affecting creatures
     pub season: u8, // 0=spring,1=summer,2=autumn,3=winter
     pub season_timer: u64,
+    /// Shots currently in flight.
+    pub projectiles: Vec<Projectile>,
+    /// Player-built structures (turrets) with an owner.
+    pub structures: Vec<Structure>,
+    /// Events for the renderer, drained every frame by the UI.
+    pub events: Vec<SimEvent>,
 }
 
 struct Vehicle {
@@ -466,6 +538,38 @@ impl CreatureSystem {
             temperature: 20.0,
             season: 0,
             season_timer: 0,
+            projectiles: Vec::new(),
+            structures: Vec::new(),
+            events: Vec::new(),
+        }
+    }
+
+    /// Scatter a burst of short-lived energy motes into the world.
+    fn spawn_energy_burst(&mut self, world: &mut World, x: i32, y: i32, count: u32, color: [u8; 3]) {
+        let _ = color;
+        for _ in 0..count {
+            let ang = self.rng.f32() * std::f32::consts::TAU;
+            let dist = 0.5 + self.rng.f32() * 2.0;
+            let px = (x as f32 + ang.cos() * dist).round() as i32;
+            let py = (y as f32 + ang.sin() * dist).round() as i32;
+            if world.get(px, py) != Elem::Empty { continue; }
+            let e = match self.rng.range(10) {
+                0..=4 => Elem::Plasma,
+                5..=7 => Elem::Mana,
+                _ => Elem::Energy,
+            };
+            world.set_xy(px, py, e);
+        }
+    }
+
+    /// Scatter a puff of smoke/steam alongside an impact (used when a shot
+    /// hits terrain).
+    fn spawn_impact_puff(&mut self, world: &mut World, x: i32, y: i32, count: u32) {
+        for _ in 0..count {
+            let px = x + self.rng.range_i(-1, 2);
+            let py = y + self.rng.range_i(-1, 2);
+            if world.get(px, py) != Elem::Empty { continue; }
+            world.set_xy(px, py, Elem::Smoke);
         }
     }
 
@@ -720,6 +824,7 @@ impl CreatureSystem {
             offspring: 0,
             kills: 0,
             cooldown: 150,
+            fire_cooldown: 0,
             size,
             last_x: x,
             last_y: y,
@@ -797,6 +902,13 @@ impl CreatureSystem {
         let mut spells_cast_total: u32 = 0;
         let mut spell_targets: Vec<(usize, usize, f32)> = Vec::new();
         let mut disease_targets: Vec<usize> = Vec::new();
+        let mut shots: Vec<Projectile> = Vec::new();
+        let mut shots_fired = 0u32;
+        // Reused scratch buffers: allocating these per creature was the
+        // single biggest cost of the simulation step.
+        let mut input_buf = vec![0.0f32; INPUTS];
+        let mut net_act: Vec<f32> = Vec::with_capacity(INPUTS);
+        let mut net_next: Vec<f32> = Vec::with_capacity(24);
         let positions: Vec<(usize, u32, f32, f32, u32)> =
             self.list.iter().enumerate().map(|(i, c)| (i, c.id, c.x, c.y, c.species)).collect();
         let pop_now = self.list.len();
@@ -828,6 +940,7 @@ impl CreatureSystem {
 
                 // Cooldowns
                 if c.cooldown > 0 { c.cooldown -= 1; }
+                if c.fire_cooldown > 0 { c.fire_cooldown -= 1; }
                 if c.build_cooldown > 0 { c.build_cooldown -= 1; }
                 if c.craft_cooldown > 0 { c.craft_cooldown -= 1; }
                 if c.spell_cooldown > 0 { c.spell_cooldown -= 1; }
@@ -845,8 +958,17 @@ impl CreatureSystem {
                     c.mood_timer = (self.rng.range(120) + 60) as u16;
                 } else { c.mood_timer -= 1; }
 
-                let input = Self::sense(&positions, c, world, self.day_night, self.temperature, self.season);
-                let out = c.net.forward(&input);
+                Self::sense(
+                    &positions,
+                    c,
+                    world,
+                    self.day_night,
+                    self.temperature,
+                    self.season,
+                    &mut input_buf,
+                );
+                c.net.forward_into(&input_buf, &mut net_act, &mut net_next);
+                let out = &net_act;
 
                 // Outputs: [0]=move_x, [1]=move_y, [2]=eat, [3]=reproduce, [4]=attack,
                 // [5]=build, [6]=craft, [7]=cast_spell, [8]=mount/dismount, [9]=trade,
@@ -1027,7 +1149,7 @@ impl CreatureSystem {
                 if (wants_mine || (exploratory_mine && world.mine_budget > 0)) && c.stamina > 5.0 {
                     let gx = c.x.round() as i32;
                     let gy = c.y.round() as i32;
-                    if let Some((mx, my)) = world.find_resource(gx, gy, 4) {
+                    if let Some((mx, my)) = world.find_resource(gx, gy, 8) {
                         world.mine_budget -= 1;
                         let me = world.get(mx, my);
                         world.set_xy(mx, my, Elem::Empty);
@@ -1076,6 +1198,8 @@ impl CreatureSystem {
                     let by = c.base_y.round() as i32;
                     let dist_to_base = ((gx - bx).pow(2) + (gy - by).pow(2)) as f32;
                     let mut placed = false;
+                    let mut place_x = gx;
+                    let mut place_y = gy;
 
                     // Choose structure type based on tech/carried
                     let want_wall = c.inventory[0] >= 3 && c.tech_level < 2;
@@ -1083,15 +1207,29 @@ impl CreatureSystem {
                     let want_chest = c.inventory[1] >= 3 && c.carried > 150.0;
                     let want_farm = c.inventory[6] >= 4 && c.tech_level >= 1;
                     let want_temple = c.inventory[4] >= 2 && c.tech_level >= 3 && c.role == Role::Priest;
-                    let want_tower = c.inventory[0] >= 10 && c.tech_level >= 2 && c.role == Role::Explorer;
+                    // A turret needs a stockpile: 8 wood and tech 1.
+                    let want_tower = c.tech_level >= 1
+                        && c.inventory[6] >= 8
+                        && matches!(c.role, Role::Explorer | Role::Soldier | Role::Builder | Role::Worker);
 
-                    let chosen = if want_wall { Buildable::Wall }
-                        else if want_door { Buildable::Door }
+                    let chosen = if want_tower { Buildable::Tower }
+                        else if want_temple { Buildable::Temple }
                         else if want_chest { Buildable::Chest }
                         else if want_farm { Buildable::Farm }
-                        else if want_temple { Buildable::Temple }
-                        else if want_tower { Buildable::Tower }
+                        else if want_door { Buildable::Door }
+                        else if want_wall { Buildable::Wall }
                         else { Buildable::Bridge };
+
+                    let struct_elem = match chosen {
+                        Buildable::Wall => Elem::Wall,
+                        Buildable::Door => Elem::Door,
+                        Buildable::Chest => Elem::Chest,
+                        Buildable::Furnace => Elem::Furnace,
+                        Buildable::Farm => Elem::Farm,
+                        Buildable::Temple => Elem::Temple,
+                        Buildable::Tower => Elem::Tower,
+                        Buildable::Bridge => Elem::Bridge,
+                    };
 
                     // Try base perimeter first if near base
                     if dist_to_base < (BASE_RADIUS * BASE_RADIUS) as f32 {
@@ -1100,7 +1238,9 @@ impl CreatureSystem {
                                 let tx = bx + (r as f32 * (angle as f32 * 0.26).cos()) as i32;
                                 let ty = by + (r as f32 * (angle as f32 * 0.26).sin()) as i32;
                                 if world.get(tx, ty) == Elem::Empty && !world.is_blocked(tx, ty) {
-                                    world.set_xy(tx, ty, Elem::Wall);
+                                    world.set_xy(tx, ty, struct_elem);
+                                    place_x = tx;
+                                    place_y = ty;
                                     c.carried = (c.carried - 15.0).max(0.0);
                                     c.build_cooldown = 10;
                                     placed = true;
@@ -1119,7 +1259,9 @@ impl CreatureSystem {
                             let tx = gx + dx;
                             let ty = gy + dy;
                             if world.get(tx, ty) == Elem::Empty && !world.is_blocked(tx, ty) {
-                                world.set_xy(tx, ty, Elem::Wall);
+                                world.set_xy(tx, ty, struct_elem);
+                                place_x = tx;
+                                place_y = ty;
                                 c.carried = (c.carried - 15.0).max(0.0);
                                 c.build_cooldown = 10;
                                 built_something = true;
@@ -1137,7 +1279,9 @@ impl CreatureSystem {
                                 let tx = gx + dx;
                                 let ty = gy + dy;
                                 if world.get(tx, ty) == Elem::Empty && !world.is_blocked(tx, ty) {
-                                    world.set_xy(tx, ty, Elem::Wall);
+                                    world.set_xy(tx, ty, struct_elem);
+                                    place_x = tx;
+                                    place_y = ty;
                                     c.carried = (c.carried - 15.0).max(0.0);
                                     c.build_cooldown = 10;
                                     built_something = true;
@@ -1149,6 +1293,35 @@ impl CreatureSystem {
                             if placed { break; }
                         }
                     }
+
+                    if placed {
+                        if chosen == Buildable::Tower {
+                            // Turrets are armed: they will shoot at other species.
+                            // A colony keeps a limited battery of them.
+                            let mine = self
+                                .structures
+                                .iter()
+                                .filter(|s| s.species == c.species)
+                                .count();
+                            c.inventory[6] = c.inventory[6].saturating_sub(8);
+                            if mine < 6 {
+                                self.structures.push(Structure {
+                                    x: place_x as f32,
+                                    y: place_y as f32,
+                                    species: c.species,
+                                    color: c.team_color,
+                                    hp: 120.0,
+                                    cooldown: 40,
+                                    armed: true,
+                                });
+                            }
+                        }
+                        self.events.push(SimEvent::Build {
+                            x: place_x as f32,
+                            y: place_y as f32,
+                            color: c.team_color,
+                        });
+                    }
                 }
 
                 // Tool crafting (output[6] = craft)
@@ -1156,111 +1329,112 @@ impl CreatureSystem {
                 let exploratory_craft = c.tool == Tool::None && c.craft_cooldown == 0
                     && (c.age * 13 + c.id * 17) % 25 < 1;
                 let wants_craft = nn_wants_craft || exploratory_craft;
+                let tool_before = c.tool;
                 if wants_craft {
                     // Pickaxe: 5 stone + 2 wood (tech 0)
                     if c.tool == Tool::None && c.inventory[0] >= 5 && c.inventory[6] >= 2 {
-                        c.inventory[0] -= 5;
-                        c.inventory[6] -= 2;
+                        c.inventory[0] = c.inventory[0].saturating_sub(5);
+                        c.inventory[6] = c.inventory[6].saturating_sub(2);
                         c.tool = Tool::Pickaxe;
                         c.tool_durability = 1000;
                         c.craft_cooldown = 30;
                     }
                     // Sword: 3 metal + 2 wood (tech 1)
                     else if c.tool == Tool::None && c.tech_level >= 1 && c.inventory[1] >= 3 && c.inventory[6] >= 2 {
-                        c.inventory[1] -= 3;
-                        c.inventory[6] -= 2;
+                        c.inventory[1] = c.inventory[1].saturating_sub(3);
+                        c.inventory[6] = c.inventory[6].saturating_sub(2);
                         c.tool = Tool::Sword;
                         c.tool_durability = 800;
                         c.craft_cooldown = 30;
                     }
                     // Hammer: 5 stone + 3 metal (tech 1) - better building
                     else if c.tool == Tool::None && c.tech_level >= 1 && c.inventory[0] >= 5 && c.inventory[1] >= 3 {
-                        c.inventory[0] -= 5;
-                        c.inventory[1] -= 3;
+                        c.inventory[0] = c.inventory[0].saturating_sub(5);
+                        c.inventory[1] = c.inventory[1].saturating_sub(3);
                         c.tool = Tool::Hammer;
                         c.tool_durability = 1500;
                         c.craft_cooldown = 30;
                     }
                     // Drill: 3 copper + 2 metal (tech 2) - fast mining
                     else if c.tool == Tool::None && c.tech_level >= 2 && c.inventory[2] >= 3 && c.inventory[1] >= 2 {
-                        c.inventory[2] -= 3;
-                        c.inventory[1] -= 2;
+                        c.inventory[2] = c.inventory[2].saturating_sub(3);
+                        c.inventory[1] = c.inventory[1].saturating_sub(2);
                         c.tool = Tool::Drill;
                         c.tool_durability = 600;
                         c.craft_cooldown = 40;
                     }
                     // Scanner: 2 gold + 1 crystal (tech 3) - long range sensing
                     else if c.tool == Tool::None && c.tech_level >= 3 && c.inventory[3] >= 2 && c.inventory[4] >= 1 {
-                        c.inventory[3] -= 2;
-                        c.inventory[4] -= 1;
+                        c.inventory[3] = c.inventory[3].saturating_sub(2);
+                        c.inventory[4] = c.inventory[4].saturating_sub(1);
                         c.tool = Tool::Scanner;
                         c.tool_durability = 2000;
                         c.craft_cooldown = 50;
                     }
                     // Bow: 3 wood + 2 string(plant) (tech 1)
                     else if c.tool == Tool::None && c.tech_level >= 1 && c.inventory[6] >= 3 && c.inventory[6] >= 2 {
-                        c.inventory[6] -= 5;
+                        c.inventory[6] = c.inventory[6].saturating_sub(5);
                         c.tool = Tool::Bow;
                         c.tool_durability = 500;
                         c.craft_cooldown = 30;
                     }
                     // Spear: 2 wood + 1 stone (tech 0)
                     else if c.tool == Tool::None && c.inventory[6] >= 2 && c.inventory[0] >= 1 {
-                        c.inventory[6] -= 2;
-                        c.inventory[0] -= 1;
+                        c.inventory[6] = c.inventory[6].saturating_sub(2);
+                        c.inventory[0] = c.inventory[0].saturating_sub(1);
                         c.tool = Tool::Spear;
                         c.tool_durability = 400;
                         c.craft_cooldown = 20;
                     }
                     // Shield: 3 wood + 2 metal (tech 1)
                     else if c.tool == Tool::None && c.tech_level >= 1 && c.inventory[6] >= 3 && c.inventory[1] >= 2 {
-                        c.inventory[6] -= 3;
-                        c.inventory[1] -= 2;
+                        c.inventory[6] = c.inventory[6].saturating_sub(3);
+                        c.inventory[1] = c.inventory[1].saturating_sub(2);
                         c.tool = Tool::Shield;
                         c.tool_durability = 700;
                         c.craft_cooldown = 30;
                     }
                     // Staff: 1 wood + 1 crystal (tech 3) - for shaman spells
                     else if c.tool == Tool::None && c.tech_level >= 3 && c.inventory[6] >= 1 && c.inventory[4] >= 1 {
-                        c.inventory[6] -= 1;
-                        c.inventory[4] -= 1;
+                        c.inventory[6] = c.inventory[6].saturating_sub(1);
+                        c.inventory[4] = c.inventory[4].saturating_sub(1);
                         c.tool = Tool::Staff;
                         c.tool_durability = 1200;
                         c.craft_cooldown = 40;
                     }
                     // Amulet: 1 gold + 1 gem (tech 4)
                     else if c.tool == Tool::None && c.tech_level >= 4 && c.inventory[3] >= 1 && c.inventory[5] >= 1 {
-                        c.inventory[3] -= 1;
-                        c.inventory[5] -= 1;
+                        c.inventory[3] = c.inventory[3].saturating_sub(1);
+                        c.inventory[5] = c.inventory[5].saturating_sub(1);
                         c.tool = Tool::Amulet;
                         c.tool_durability = 1500;
                         c.craft_cooldown = 50;
                     }
                     // Backpack: 4 leather + 2 wood (tech 2) - more carry
                     else if c.tool == Tool::None && c.tech_level >= 2 && c.inventory[6] >= 2 {
-                        c.inventory[6] -= 4;
+                        c.inventory[6] = c.inventory[6].saturating_sub(4);
                         c.tool = Tool::Backpack;
                         c.tool_durability = 800;
                         c.craft_cooldown = 40;
                     }
                     // Cart: 5 wood + 3 metal (tech 2)
                     else if c.tool == Tool::None && c.tech_level >= 2 && c.inventory[6] >= 5 && c.inventory[1] >= 3 {
-                        c.inventory[6] -= 5;
-                        c.inventory[1] -= 3;
+                        c.inventory[6] = c.inventory[6].saturating_sub(5);
+                        c.inventory[1] = c.inventory[1].saturating_sub(3);
                         c.tool = Tool::Cart;
                         c.tool_durability = 1000;
                         c.craft_cooldown = 60;
                     }
                     // Boat: 6 wood + 1 rope (tech 2)
                     else if c.tool == Tool::None && c.tech_level >= 2 && c.inventory[6] >= 6 {
-                        c.inventory[6] -= 6;
+                        c.inventory[6] = c.inventory[6].saturating_sub(6);
                         c.tool = Tool::Boat;
                         c.tool_durability = 900;
                         c.craft_cooldown = 60;
                     }
                     // Glider: 4 wood + 2 cloth (tech 3)
                     else if c.tool == Tool::None && c.tech_level >= 3 && c.inventory[6] >= 4 {
-                        c.inventory[6] -= 4;
+                        c.inventory[6] = c.inventory[6].saturating_sub(4);
                         c.tool = Tool::Glider;
                         c.tool_durability = 700;
                         c.craft_cooldown = 70;
@@ -1268,6 +1442,13 @@ impl CreatureSystem {
                 }
 
                 // Tool durability decay
+                if c.tool != tool_before {
+                    self.events.push(SimEvent::Craft {
+                        x: c.x,
+                        y: c.y,
+                        color: c.team_color,
+                    });
+                }
                 if c.tool != Tool::None {
                     if c.tool_durability > 0 {
                         c.tool_durability = c.tool_durability.saturating_sub(1);
@@ -1277,7 +1458,7 @@ impl CreatureSystem {
                 }
 
                 // Tech progression based on resources gathered
-                if c.tech_level == 0 && c.inventory[2] >= 1 { c.tech_level = 1; }
+                if c.tech_level == 0 && (c.inventory[2] >= 1 || c.inventory[1] >= 1) { c.tech_level = 1; }
                 else if c.tech_level == 1 && c.inventory[1] >= 3 { c.tech_level = 2; }
                 else if c.tech_level == 2 && c.inventory[3] >= 1 { c.tech_level = 3; }
                 else if c.tech_level == 3 && c.inventory[4] >= 1 { c.tech_level = 4; }
@@ -1285,6 +1466,56 @@ impl CreatureSystem {
                 // Attack intent (output[4] = attack)
                 if out[4] > 0.45 {
                     wants_attack = true;
+                }
+
+                // Ranged attack. A creature that managed to craft a bow or a
+                // staff shoots at the nearest enemy instead of closing in.
+                let ranged_range = match c.tool {
+                    Tool::Bow => 30.0,
+                    Tool::Staff => 24.0,
+                    _ => 0.0,
+                };
+                if ranged_range > 0.0 && c.fire_cooldown == 0 && c.energy > 40.0 {
+                    let mut target: Option<(f32, f32, f32)> = None;
+                    for &(_, oid, ox, oy, ospecies) in &positions {
+                        if oid == c.id || ospecies == c.species { continue; }
+                        let dx = ox - c.x;
+                        let dy = oy - c.y;
+                        let d = (dx * dx + dy * dy).sqrt();
+                        if d < ranged_range && target.map_or(true, |t| d < t.2) {
+                            target = Some((dx, dy, d));
+                        }
+                    }
+                    if let Some((dx, dy, d)) = target {
+                        let inv = 1.0 / d.max(0.001);
+                        let (ux, uy) = (dx * inv, dy * inv);
+                        let (speed, dmg, life, elem) = if c.tool == Tool::Bow {
+                            (3.2, 26.0, 34, Elem::Wood)
+                        } else {
+                            (2.6, 34.0, 30, Elem::Mana)
+                        };
+                        shots.push(Projectile {
+                            x: c.x,
+                            y: c.y,
+                            px: c.x,
+                            py: c.y,
+                            vx: ux * speed,
+                            vy: uy * speed,
+                            life,
+                            damage: dmg,
+                            species: c.species,
+                            color: c.team_color,
+                            elem,
+                        });
+                        shots_fired += 1;
+                        c.fire_cooldown = if c.tool == Tool::Bow { 40 } else { 55 };
+                        c.energy = (c.energy - 4.0).max(0.0);
+                        self.events.push(SimEvent::Shoot {
+                            x: c.x,
+                            y: c.y,
+                            color: c.team_color,
+                        });
+                    }
                 }
 
                 // Cast spell (output[7] = cast, [11] = switch spell)
@@ -1326,6 +1557,11 @@ impl CreatureSystem {
                         let d = ((ox - c.x).powi(2) + (oy - c.y).powi(2)).sqrt();
                         if d < 6.0 && ospecies != c.species {
                             traded = true;
+                            self.events.push(SimEvent::Trade {
+                                x: (c.x + ox) * 0.5,
+                                y: (c.y + oy) * 0.5,
+                                color: c.team_color,
+                            });
                             c.reputation = (c.reputation as i32 + 1).clamp(-100, 100) as i16;
                             c.energy = (c.energy + 10.0).min(c.max_energy);
                             break;
@@ -1514,6 +1750,126 @@ impl CreatureSystem {
             }
         }
 
+        // ---- Turrets of extinct species decay away ----
+        if self.tick % 60 == 0 {
+            let alive: Vec<u32> = self.list.iter().map(|c| c.species).collect();
+            let mut removed: Vec<Structure> = Vec::new();
+            self.structures.retain(|s| {
+                if alive.contains(&s.species) {
+                    true
+                } else {
+                    removed.push(Structure {
+                        x: s.x,
+                        y: s.y,
+                        species: s.species,
+                        color: s.color,
+                        hp: s.hp,
+                        cooldown: s.cooldown,
+                        armed: false,
+                    });
+                    false
+                }
+            });
+            for s in removed {
+                let tx = s.x.round() as i32;
+                let ty = s.y.round() as i32;
+                if world.get(tx, ty) == Elem::Tower {
+                    world.set_xy(tx, ty, Elem::Empty);
+                }
+            }
+        }
+
+        // ---- Turrets fire at other species ----
+        for s in self.structures.iter_mut() {
+            if !s.armed { continue; }
+            if s.cooldown > 0 {
+                s.cooldown -= 1;
+                continue;
+            }
+            let mut target: Option<(f32, f32, f32)> = None;
+            for other in self.list.iter() {
+                if other.species == s.species { continue; }
+                let dx = other.x - s.x;
+                let dy = other.y - s.y;
+                let d = (dx * dx + dy * dy).sqrt();
+                if d < 48.0 && target.map_or(true, |t| d < t.2) {
+                    target = Some((dx, dy, d));
+                }
+            }
+            if let Some((dx, dy, d)) = target {
+                let inv = 1.0 / d.max(0.001);
+                shots.push(Projectile {
+                    x: s.x,
+                    y: s.y,
+                    px: s.x,
+                    py: s.y,
+                    vx: dx * inv * 3.6,
+                    vy: dy * inv * 3.6,
+                    life: 45,
+                    damage: 30.0,
+                    species: s.species,
+                    color: s.color,
+                    elem: Elem::Energy,
+                });
+                shots_fired += 1;
+                s.cooldown = 55;
+                self.events.push(SimEvent::Shoot {
+                    x: s.x,
+                    y: s.y,
+                    color: s.color,
+                });
+            }
+        }
+
+        // ---- Projectiles in flight ----
+        let current: Vec<Projectile> = std::mem::take(&mut self.projectiles);
+        let mut survivors: Vec<Projectile> = Vec::new();
+        for mut p in current {
+            p.px = p.x;
+            p.py = p.y;
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life = p.life.saturating_sub(1);
+
+            let tx = p.x.round() as i32;
+            let ty = p.y.round() as i32;
+            if world.is_blocked(tx, ty) {
+                // Impact: a puff of smoke where the shot hit rock.
+                self.spawn_impact_puff(world, tx, ty, 2);
+                continue;
+            }
+
+            let mut hit: Option<usize> = None;
+            for (j, other) in self.list.iter().enumerate() {
+                if other.species == p.species { continue; }
+                if other.health <= 0.0 { continue; }
+                if segment_distance(other.x, other.y, p.px, p.py, p.x, p.y) < other.size.max(1.6) {
+                    hit = Some(j);
+                    break;
+                }
+            }
+            if let Some(j) = hit {
+                self.list[j].health -= p.damage;
+                self.events.push(SimEvent::Hit {
+                    x: p.x,
+                    y: p.y,
+                    color: p.color,
+                    damage: p.damage,
+                });
+                self.spawn_energy_burst(world, tx, ty, 4, p.color);
+                continue;
+            }
+
+            if p.life == 0 {
+                self.spawn_impact_puff(world, tx, ty, 1);
+                continue;
+            }
+            survivors.push(p);
+        }
+        self.projectiles = survivors;
+        self.projectiles.extend(shots);
+        self.stats.shots += shots_fired;
+
         // Resolve attacks - soldiers target enemy queens/bases, workers defend
         for &a in &attackers {
             let (ax, ay, a_species, a_role) = {
@@ -1553,6 +1909,12 @@ impl CreatureSystem {
                     if attacker.active_spell == Spell::Fireball && attacker.spell_cd[1] == 0 { dmg += 20.0; }
                     self.list[j].health -= dmg;
                     self.list[a].energy = (self.list[a].energy + 20.0).min(self.list[a].max_energy);
+                    self.events.push(SimEvent::Hit {
+                        x: self.list[j].x,
+                        y: self.list[j].y,
+                        color: self.list[a].team_color,
+                        damage: dmg,
+                    });
                     if self.list[j].health <= 0.0 {
                         self.list[a].kills += 1;
                         self.list[a].energy = (self.list[a].energy + 140.0).min(self.list[a].max_energy);
@@ -1563,8 +1925,27 @@ impl CreatureSystem {
 
         // Remove the dead
         for &i in dead.iter().rev() {
-            let c = &self.list[i];
-            world.scavenge(c.x.round() as i32, c.y.round() as i32);
+            let (cx, cy, color, size, dx, dy) = {
+                let c = &self.list[i];
+                (
+                    c.x.round() as i32,
+                    c.y.round() as i32,
+                    c.team_color,
+                    c.size,
+                    c.x,
+                    c.y,
+                )
+            };
+            world.scavenge(cx, cy);
+            // A dying organism bursts into a spray of energy particles.
+            let burst = 8 + self.rng.range(9);
+            self.spawn_energy_burst(world, cx, cy, burst, color);
+            self.events.push(SimEvent::Death {
+                x: dx,
+                y: dy,
+                color,
+                size,
+            });
             self.list.remove(i);
             self.deaths_total += 1;
         }
@@ -1576,7 +1957,13 @@ impl CreatureSystem {
             let cx = x + self.rng.range_i(-4, 5) as f32;
             let cy = y + self.rng.range_i(-4, 5) as f32;
             if world.is_blocked(cx.round() as i32, cy.round() as i32) { continue; }
-            if self.spawn(world, cx, cy, CreatureGenesis::Child(&child)) { }
+            if self.spawn(world, cx, cy, CreatureGenesis::Child(&child)) {
+                self.events.push(SimEvent::Birth {
+                    x: cx,
+                    y: cy,
+                    color: child.team_color,
+                });
+            }
         }
 
         // No automatic re-seeding: species must be able to go extinct (and one
@@ -1613,8 +2000,8 @@ impl CreatureSystem {
         }
     }
 
-    fn sense(positions: &[(usize, u32, f32, f32, u32)], c: &Creature, world: &World, day_night: f32, temperature: f32, season: u8) -> Vec<f32> {
-        let mut input = vec![0.0f32; INPUTS];
+    fn sense(positions: &[(usize, u32, f32, f32, u32)], c: &Creature, world: &World, day_night: f32, temperature: f32, season: u8, input: &mut [f32]) {
+        input.fill(0.0);
         let cx = c.x.round() as i32;
         let cy = c.y.round() as i32;
 
@@ -1778,16 +2165,18 @@ impl CreatureSystem {
         input[138] = if season == 1 { 1.0 } else { 0.0 };
         input[139] = if season == 2 { 1.0 } else { 0.0 };
         input[140] = if season == 3 { 1.0 } else { 0.0 };
-
-        input
     }
 
     pub fn update_stats(&mut self) {
+        let keep_shots = self.stats.shots;
+        let keep_towers = self.structures.len() as u32;
         let pop = self.list.len();
         if pop == 0 {
             self.stats = CreatureStats {
                 population: 0,
                 species: 0,
+                shots: keep_shots,
+                towers: keep_towers,
                 ..Default::default()
             };
             self.stats.births = self.births_total;
@@ -1893,6 +2282,8 @@ impl CreatureSystem {
         self.stats = CreatureStats {
             population: pop as u32,
             species: species_ids.len() as u32,
+            shots: keep_shots,
+            towers: keep_towers,
             avg_fitness: fit / pop as f32,
             avg_energy: energy / pop as f32,
             max_generation: max_gen,
@@ -1959,6 +2350,7 @@ impl Creature {
             offspring: 0,
             kills: 0,
             cooldown: 0,
+            fire_cooldown: 0,
             size: self.size,
             last_x: self.x,
             last_y: self.y,

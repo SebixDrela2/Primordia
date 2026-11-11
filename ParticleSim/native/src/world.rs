@@ -37,7 +37,12 @@ pub struct World {
     pub col: Vec<[u8; 3]>,
     pub heat: Vec<u8>,
     pub age: Vec<u32>,
-    pub order: Vec<u32>,
+    /// Indices of the cells that can still change. Rebuilt each step from a
+    /// cheap scan so the simulation never touches the (vast) inert bulk of
+    /// the world.
+    pub active: Vec<u32>,
+    /// Lookup: is this element byte completely inert?
+    pub inert: [bool; 80],
     pub rng: Rng,
     pub frame: u64,
     /// Per-step budget for destructive resource gathering so creatures
@@ -49,10 +54,6 @@ pub struct World {
 impl World {
     pub fn new(w: usize, h: usize, seed: u64) -> Self {
         let n = w * h;
-        let mut order = Vec::with_capacity(n);
-        for i in 0..n {
-            order.push(i as u32);
-        }
         World {
             w,
             h,
@@ -60,7 +61,8 @@ impl World {
             col: vec![[10, 14, 23]; n],
             heat: vec![0; n],
             age: vec![0; n],
-            order,
+            active: Vec::with_capacity(n / 8),
+            inert: Elem::inert_table(),
             rng: Rng::new(seed),
             frame: 0,
             mine_budget: 0,
@@ -191,11 +193,13 @@ impl World {
 
                 if depth > 6 {
                     let r = self.rng.f32();
-                    if r < 0.004 {
+                    if r < 0.020 {
                         e = Elem::Metal;
-                    } else if r < 0.008 {
+                    } else if r < 0.032 {
+                        e = Elem::Copper;
+                    } else if r < 0.035 {
                         e = Elem::Glass;
-                    } else if r < 0.010 {
+                    } else if r < 0.037 {
                         e = Elem::Ice;
                     }
                 }
@@ -2170,12 +2174,23 @@ impl World {
 
     pub fn step(&mut self) {
         self.frame += 1;
-        self.mine_budget = 1;
-        let n = self.order.len();
-        self.rng.shuffle(&mut self.order);
+        self.mine_budget = 3;
 
-        for k in 0..n {
-            let i = self.order[k] as usize;
+        // Rebuild the list of cells that can actually change. The vast bulk of
+        // the world is stone/ore, which never moves and never reacts, so
+        // touching only the live cells is a huge win.
+        self.active.clear();
+        let n = self.w * self.h;
+        for i in 0..n {
+            let k = self.kind[i];
+            if k != Elem::Empty as u8 && !self.inert[k as usize] {
+                self.active.push(i as u32);
+            }
+        }
+        self.rng.shuffle(&mut self.active);
+
+        for k in 0..self.active.len() {
+            let i = self.active[k] as usize;
             let e = Elem::from_u8(self.kind[i]);
             if e == Elem::Empty {
                 continue;
