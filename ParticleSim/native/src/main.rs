@@ -4,7 +4,7 @@ mod render;
 mod rng;
 mod world;
 
-use creature::{CreatureSystem, RevivalGenome};
+use creature::{CreatureSystem, RevivalGenome, Role};
 use elements::Elem;
 use macroquad::prelude::*;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -79,6 +79,104 @@ impl UiState {
     }
 }
 
+/// Rolling ecology history for the sparkline + event feed.
+struct Telemetry {
+    pop: Vec<f32>,
+    species: Vec<f32>,
+    events: Vec<(String, f32)>,
+    last_sample: f32,
+    known: Vec<(u32, String)>,
+    last_season: u8,
+    initialized: bool,
+}
+
+impl Telemetry {
+    fn new() -> Self {
+        Self {
+            pop: Vec::new(),
+            species: Vec::new(),
+            events: Vec::new(),
+            last_sample: -1.0,
+            known: Vec::new(),
+            last_season: 0,
+            initialized: false,
+        }
+    }
+
+    fn reset(&mut self, revival: u32) {
+        self.pop.clear();
+        self.species.clear();
+        self.known.clear();
+        self.events.clear();
+        self.last_sample = -1.0;
+        self.last_season = 0;
+        self.initialized = false;
+        self.push(format!("REVIVAL {}  -  new lineage", revival));
+    }
+
+    fn push(&mut self, msg: String) {
+        self.events.push((msg, 0.0));
+        if self.events.len() > 8 {
+            self.events.remove(0);
+        }
+    }
+
+    fn tick(&mut self, dt: f32) {
+        for e in &mut self.events {
+            e.1 += dt;
+        }
+    }
+
+    fn observe(&mut self, now: f32, creatures: &CreatureSystem) {
+        if self.last_sample < 0.0 || now - self.last_sample >= 0.4 {
+            self.last_sample = now;
+
+            self.pop.push(creatures.stats.population as f32);
+            self.species.push(creatures.stats.species as f32);
+            if self.pop.len() > 240 {
+                self.pop.remove(0);
+                self.species.remove(0);
+            }
+
+            let mut current: Vec<(u32, String)> = Vec::new();
+            for c in &creatures.list {
+                if !current.iter().any(|(id, _)| *id == c.species) {
+                    let end = c.name.iter().position(|&b| b == 0).unwrap_or(c.name.len());
+                    current.push((
+                        c.species,
+                        String::from_utf8_lossy(&c.name[..end]).to_string(),
+                    ));
+                }
+            }
+
+            if self.initialized {
+                let extinct: Vec<String> = self
+                    .known
+                    .iter()
+                    .filter(|(id, _)| !current.iter().any(|(cid, _)| cid == id))
+                    .map(|(id, name)| format!("SPECIES {} EXTINCT  -  {}", id, name))
+                    .collect();
+                for msg in extinct {
+                    self.push(msg);
+                }
+            }
+            self.known = current;
+            self.initialized = true;
+
+            if creatures.season != self.last_season {
+                self.last_season = creatures.season;
+                let s = match creatures.season {
+                    0 => "SPRING",
+                    1 => "SUMMER",
+                    2 => "AUTUMN",
+                    _ => "WINTER",
+                };
+                self.push(format!("{} BEGINS", s));
+            }
+        }
+    }
+}
+
 /// Full-screen state shown when one species has wiped out all others (or the
 /// whole population died out).
 struct VictoryScreen {
@@ -126,8 +224,13 @@ async fn main() {
     let mut revival: u32 = 1;
     let mut champion: Option<RevivalGenome> = None;
     let mut victory: Option<VictoryScreen> = None;
+    let mut telemetry = Telemetry::new();
+    telemetry.reset(1);
+    let mut force_render = true;
 
     loop {
+        let now = get_time() as f32;
+
         if is_key_pressed(KeyCode::Escape) || is_key_pressed(KeyCode::Q) {
             std::process::exit(0);
         }
@@ -144,6 +247,8 @@ async fn main() {
             // A manual reroll starts a brand new lineage.
             revival = 1;
             champion = None;
+            force_render = true;
+            telemetry.reset(1);
         }
 
         // K: toggle knowledge window
@@ -213,6 +318,7 @@ async fn main() {
         let sim_dt = (get_frame_time().min(0.1) as f64) * (sim_speed as f64);
         let fixed_step = 1.0 / 60.0;
         let max_steps = (4.0 * sim_speed) as u32;
+        let mut steps_taken = 0u32;
         if paused {
             unsafe { ACCUM = 0.0; }
         } else {
@@ -225,11 +331,18 @@ async fn main() {
                     ACCUM -= fixed_step;
                     steps += 1;
                 }
+                steps_taken = steps as u32;
                 if steps == max_steps {
                     ACCUM = 0.0;
                 }
             }
         }
+
+        // ---- Rolling ecology telemetry ----
+        if victory.is_none() {
+            telemetry.observe(now, &creatures);
+        }
+        telemetry.tick(dt);
 
         // ---- Species domination / extinction -> victory screen ----
         if victory.is_none() {
@@ -296,6 +409,8 @@ async fn main() {
                 cam_y = 0.0;
                 zoom = 1.0;
                 paused = false;
+                force_render = true;
+                telemetry.reset(revival);
                 unsafe {
                     ACCUM = 0.0;
                 }
@@ -333,12 +448,21 @@ async fn main() {
             }
         }
 
-        // Render full world to pixel buffer
-        render::render_world(&world, &creatures, &mut pixels);
-
-        // Update texture with full world
-        image.bytes.copy_from_slice(&pixels);
-        texture.update(&image);
+        // Re-render the world only when the simulation actually advanced (or
+        // after a reroll / revival). Pausing and panning then costs nothing.
+        if steps_taken > 0 || force_render {
+            render::render_world(
+                &world,
+                &creatures,
+                &mut pixels,
+                now,
+                creatures.day_night,
+                creatures.season,
+            );
+            image.bytes.copy_from_slice(&pixels);
+            texture.update(&image);
+            force_render = false;
+        }
 
         // Draw only the camera view portion
         let src_x = cam_x;
@@ -359,62 +483,122 @@ async fn main() {
         );
 
         // Draw creature bodies and names (only those in view)
-        for c in &creatures.list {
-            let cx = c.x.round() as i32;
-            let cy = c.y.round() as i32;
-            let in_view = (cx as f32) >= cam_x
-                && (cx as f32) < (cam_x + view_w)
-                && (cy as f32) >= cam_y
-                && (cy as f32) < (cam_y + view_h);
-            // Only draw if in camera view
-            if in_view {
-                
-                // Draw creature body
-                let scale_x = screen_width() / view_w;
-                let scale_y = screen_height() / view_h;
-                let radius = c.size.ceil() as f32;
-                let sx = (cx as f32 - cam_x) * scale_x;
-                let sy = (cy as f32 - cam_y) * scale_y;
-                let r = radius * scale_x.min(scale_y);
-                draw_circle(sx, sy, r.max(2.0), Color::new(
-                    c.team_color[0] as f32 / 255.0,
-                    c.team_color[1] as f32 / 255.0,
-                    c.team_color[2] as f32 / 255.0,
-                    0.9,
-                ));
-                // Bright core
-                draw_circle(sx, sy, (r * 0.3).max(1.0), Color::new(1.0, 1.0, 0.95, 0.9));
+        let show_all_names = zoom >= 2.5;
+        let hovered_creature = match ui.hover {
+            HoverTarget::Creature { id } => Some(id),
+            _ => None,
+        };
+        let scr_w = screen_width();
+        let scr_h = screen_height();
 
-                // Draw name
-                let mut end = 10;
-                for i in 0..10 {
-                    if c.name[i] == 0 {
-                        end = i;
-                        break;
-                    }
+        for c in &creatures.list {
+            let in_view = (c.x) >= cam_x
+                && (c.x) < (cam_x + view_w)
+                && (c.y) >= cam_y
+                && (c.y) < (cam_y + view_h);
+            if !in_view {
+                continue;
+            }
+
+            let scale_x = scr_w / view_w;
+            let scale_y = scr_h / view_h;
+            let s = scale_x.min(scale_y);
+            let sx = (c.x - cam_x) * scale_x;
+            let sy = (c.y - cam_y) * scale_y;
+            let r = (c.size * s).max(2.5);
+            let base = Color::new(
+                c.team_color[0] as f32 / 255.0,
+                c.team_color[1] as f32 / 255.0,
+                c.team_color[2] as f32 / 255.0,
+                0.92,
+            );
+            let core = Color::new(1.0, 1.0, 0.95, 0.92);
+
+            // Role silhouettes make the colony readable at a glance.
+            match c.role {
+                Role::Soldier => {
+                    let angle = c.vy.atan2(c.vx) - std::f32::consts::FRAC_PI_2;
+                    draw_poly(sx, sy, 3, r * 1.3, angle, base);
+                    draw_circle(sx, sy, (r * 0.32).max(1.0), core);
                 }
+                Role::Queen => {
+                    draw_circle(sx, sy, r * 1.15, base);
+                    draw_circle_lines(sx, sy, r * 1.65, 1.6, base);
+                    draw_circle(sx, sy, (r * 0.4).max(1.2), Color::new(1.0, 0.93, 0.55, 0.95));
+                }
+                Role::Priest | Role::Shaman => {
+                    draw_poly(sx, sy, 4, r * 1.25, std::f32::consts::FRAC_PI_4, base);
+                    draw_circle(sx, sy, (r * 0.3).max(1.0), core);
+                }
+                Role::Builder | Role::Merchant => {
+                    draw_poly(sx, sy, 6, r * 1.18, 0.0, base);
+                    draw_circle(sx, sy, (r * 0.28).max(1.0), core);
+                }
+                Role::Explorer => {
+                    draw_poly(sx, sy, 3, r * 1.2, std::f32::consts::PI, base);
+                    draw_circle(sx, sy, (r * 0.28).max(1.0), core);
+                }
+                Role::Worker => {
+                    draw_circle(sx, sy, r, base);
+                    draw_circle(sx, sy, (r * 0.3).max(1.0), core);
+                }
+            }
+
+            // Damage bar (only when hurt).
+            let hp = (c.health / 100.0).clamp(0.0, 1.0);
+            if hp < 0.999 {
+                let bw = (r * 2.6).max(6.0);
+                let by = sy - r - 6.0;
+                draw_rectangle(sx - bw / 2.0, by, bw, 2.0, Color::new(0.0, 0.0, 0.0, 0.55));
+                let col = if hp > 0.6 {
+                    Color::new(0.32, 0.85, 0.42, 0.9)
+                } else if hp > 0.3 {
+                    Color::new(0.95, 0.75, 0.22, 0.9)
+                } else {
+                    Color::new(0.92, 0.26, 0.2, 0.9)
+                };
+                draw_rectangle(sx - bw / 2.0, by, bw * hp, 2.0, col);
+            }
+
+            // Hover ring.
+            if hovered_creature == Some(c.id) {
+                draw_circle_lines(
+                    sx,
+                    sy,
+                    (r * 2.5).max(8.0),
+                    2.0,
+                    Color::new(1.0, 1.0, 1.0, 0.8),
+                );
+            }
+
+            // Names only for queens, the hovered creature, tiny populations,
+            // or when zoomed in. Keeps the view clean and avoids text churn.
+            let show_name = show_all_names
+                || c.role == Role::Queen
+                || hovered_creature == Some(c.id)
+                || creatures.list.len() <= 12;
+            if show_name {
+                let end = c.name.iter().position(|&b| b == 0).unwrap_or(c.name.len());
                 let name_str = core::str::from_utf8(&c.name[..end]).unwrap_or("");
                 if !name_str.is_empty() {
-                    let dims = measure_text(name_str, None, 8, 1.0);
-                    let sx = (cx as f32 - cam_x) * scale_x - dims.width * scale_x / 2.0;
-                    let sy = (cy as f32 - cam_y - 6.0) * scale_y;
+                    let font = (9.0 * s).clamp(9.0, 16.0);
+                    let dims = measure_text(name_str, None, font as u16, 1.0);
                     draw_text(
                         name_str,
-                        sx,
-                        sy,
-                        8.0 * scale_x.min(scale_y),
-                        Color::new(
-                            c.team_color[0] as f32 / 255.0,
-                            c.team_color[1] as f32 / 255.0,
-                            c.team_color[2] as f32 / 255.0,
-                            0.95,
-                        ),
+                        sx - dims.width / 2.0,
+                        sy - r - 7.0,
+                        font,
+                        Color::new(base.r, base.g, base.b, 0.95),
                     );
                 }
             }
         }
 
+        draw_minimap(&creatures, cam_x, cam_y, view_w, view_h);
         draw_hud(&world, &creatures, cam_x, cam_y, seed, sim_speed, paused, zoom, revival);
+        if screen_width() >= 1080.0 {
+            draw_telemetry(&telemetry, screen_width() - 332.0, 18.0);
+        }
 
         // Draw hover tooltip
         draw_tooltip(&world, &creatures, &ui, mx, my);
@@ -430,6 +614,160 @@ async fn main() {
         }
 
         next_frame().await;
+    }
+}
+
+/// Bottom-left minimap: species dots plus the current camera viewport.
+fn draw_minimap(
+    creatures: &CreatureSystem,
+    cam_x: f32,
+    cam_y: f32,
+    view_w: f32,
+    view_h: f32,
+) {
+    let mw = 180.0f32;
+    let mh = mw * (H as f32 / W as f32);
+    let x = 18.0;
+    let y = screen_height() - mh - 44.0;
+    if y < 180.0 {
+        return; // too little vertical space; don't cover the HUD
+    }
+
+    draw_rectangle(
+        x - 3.0,
+        y - 3.0,
+        mw + 6.0,
+        mh + 6.0,
+        Color::new(0.02, 0.03, 0.05, 0.82),
+    );
+    draw_rectangle(x, y, mw, mh, Color::new(0.04, 0.06, 0.09, 0.9));
+    draw_rectangle_lines(x, y, mw, mh, 1.0, Color::new(0.3, 0.5, 0.7, 0.55));
+
+    for c in &creatures.list {
+        let px = x + (c.x / W as f32).clamp(0.0, 1.0) * mw;
+        let py = y + (c.y / H as f32).clamp(0.0, 1.0) * mh;
+        let color = Color::new(
+            c.team_color[0] as f32 / 255.0,
+            c.team_color[1] as f32 / 255.0,
+            c.team_color[2] as f32 / 255.0,
+            0.95,
+        );
+        draw_rectangle(px - 1.0, py - 1.0, 2.0, 2.0, color);
+    }
+
+    let vx = x + (cam_x / W as f32) * mw;
+    let vy = y + (cam_y / H as f32) * mh;
+    draw_rectangle_lines(
+        vx,
+        vy,
+        (view_w / W as f32) * mw,
+        (view_h / H as f32) * mh,
+        1.5,
+        Color::new(0.13, 0.83, 0.93, 0.85),
+    );
+
+    draw_text("MAP", x + 5.0, y + 13.0, 11.0, Color::new(0.6, 0.7, 0.8, 0.6));
+}
+
+/// Top-right ecology panel: population/species sparkline plus recent events.
+fn draw_telemetry(t: &Telemetry, x: f32, y: f32) {
+    let w = 314.0f32;
+    let h = 226.0f32;
+
+    draw_rectangle(x, y, w, h, Color::new(0.03, 0.05, 0.08, 0.84));
+    draw_rectangle_lines(x, y, w, h, 1.5, Color::new(0.13, 0.83, 0.93, 0.35));
+
+    let pop_now = t.pop.last().copied().unwrap_or(0.0);
+    let sp_now = t.species.last().copied().unwrap_or(0.0);
+    draw_text("ECOLOGY", x + 12.0, y + 20.0, 14.0, Color::new(0.13, 0.83, 0.93, 0.9));
+    draw_text(
+        &format!("pop {:.0}", pop_now),
+        x + 96.0,
+        y + 20.0,
+        12.0,
+        Color::new(0.35, 0.9, 1.0, 0.9),
+    );
+    draw_text(
+        &format!("species {:.0}", sp_now),
+        x + 184.0,
+        y + 20.0,
+        12.0,
+        Color::new(0.95, 0.78, 0.35, 0.9),
+    );
+
+    let gx = x + 12.0;
+    let gy = y + 30.0;
+    let gw = w - 24.0;
+    let gh = 78.0;
+    draw_rectangle(gx, gy, gw, gh, Color::new(0.02, 0.03, 0.05, 0.9));
+    draw_rectangle_lines(gx, gy, gw, gh, 1.0, Color::new(0.2, 0.3, 0.4, 0.45));
+
+    let n = t.pop.len().min(160);
+    if n >= 2 {
+        let start = t.pop.len() - n;
+        let pop_max = t.pop[start..]
+            .iter()
+            .copied()
+            .fold(1.0f32, f32::max)
+            .max(10.0);
+        let step = gw / (n - 1) as f32;
+        let pop_color = Color::new(0.25, 0.85, 0.98, 0.85);
+        let sp_color = Color::new(0.98, 0.78, 0.32, 0.8);
+
+        let mut prev_pop: Option<(f32, f32)> = None;
+        let mut prev_sp: Option<(f32, f32)> = None;
+        for i in 0..n {
+            let px = gx + i as f32 * step;
+            let pv = t.pop[start + i];
+            let sv = t.species[start + i];
+            let py = gy + gh - (pv / pop_max).clamp(0.0, 1.0) * (gh - 6.0) - 3.0;
+            let sy = gy + gh - (sv / 36.0).clamp(0.0, 1.0) * (gh - 6.0) - 3.0;
+            if let Some((ox, oy)) = prev_pop {
+                draw_line(ox, oy, px, py, 1.5, pop_color);
+            }
+            if let Some((ox, oy)) = prev_sp {
+                draw_line(ox, oy, px, sy, 1.5, sp_color);
+            }
+            prev_pop = Some((px, py));
+            prev_sp = Some((px, sy));
+        }
+    } else {
+        draw_text(
+            "collecting samples...",
+            gx + 8.0,
+            gy + 20.0,
+            11.0,
+            Color::new(0.5, 0.58, 0.66, 0.8),
+        );
+    }
+
+    let ey = gy + gh + 18.0;
+    draw_text("EVENTS", x + 12.0, ey, 11.0, Color::new(0.55, 0.62, 0.7, 0.85));
+    let mut yy = ey + 15.0;
+    let mut any = false;
+    for (msg, age) in t.events.iter().rev() {
+        let alpha = (1.0 - age / 16.0).clamp(0.25, 1.0);
+        draw_text(
+            msg,
+            x + 12.0,
+            yy,
+            11.0,
+            Color::new(0.8, 0.86, 0.92, alpha),
+        );
+        yy += 14.0;
+        any = true;
+        if yy > y + h - 8.0 {
+            break;
+        }
+    }
+    if !any {
+        draw_text(
+            "hover to inspect - K for knowledge",
+            x + 12.0,
+            yy,
+            11.0,
+            Color::new(0.5, 0.58, 0.66, 0.7),
+        );
     }
 }
 
@@ -475,7 +813,7 @@ fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f32, s
     draw_text(&line4, 18.0, 132.0, 17.0, Color::new(0.45, 0.5, 0.58, 0.8));
     draw_text(&line5, 18.0, 154.0, 17.0, Color::new(0.6, 0.5, 0.58, 0.8));
 
-    let help = "WASD/Arrows: move  •  scroll: zoom  •  P: pause  •  R: reroll  •  K: knowledge  •  +/-: sim speed  •  hover: inspect  •  ESC: quit";
+    let help = "WASD/Arrows: move  |  scroll: zoom  |  P: pause  |  R: reroll  |  K: knowledge  |  +/-: sim speed  |  hover: inspect  |  ESC: quit";
     let dims = measure_text(help, None, 15, 1.0);
     draw_text(
         help,

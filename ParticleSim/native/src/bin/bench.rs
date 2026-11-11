@@ -297,7 +297,7 @@ fn main() {
 
     // Write a PNG snapshot of the final frame
     let mut buf = vec![0u8; (W * H * 4) as usize];
-    render::render_world(&world, &creatures, &mut buf);
+    render::render_world(&world, &creatures, &mut buf, 0.0, 0.25, 0);
 
     let file = std::fs::File::create(&out).expect("create png");
     let writer = BufWriter::new(file);
