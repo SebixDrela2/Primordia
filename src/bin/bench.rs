@@ -14,9 +14,8 @@ mod rng;
 #[path = "../world/mod.rs"]
 mod world;
 
-use creature::{CreatureSystem, Role, Tool, Spell, MountKind};
+use creature::{CreatureSystem, Role};
 use elements::Elem;
-use std::fs;
 use std::io::BufWriter;
 use std::time::{SystemTime, UNIX_EPOCH, Instant};
 use std::process;

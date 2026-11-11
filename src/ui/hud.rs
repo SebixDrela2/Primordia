@@ -1,6 +1,5 @@
 use crate::creature::CreatureSystem;
 use crate::world::World;
-use crate::H;
 use crate::W;
 use macroquad::prelude::*;
 

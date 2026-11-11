@@ -289,10 +289,6 @@ pub struct RevivalGenome {
 
 pub use actions::*;
 pub use brain::*;
-pub use colony::*;
-pub use combat::*;
 pub use enums::*;
 pub use names::*;
 pub use senses::*;
-pub use stats::*;
-pub use step::*;

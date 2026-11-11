@@ -4,7 +4,7 @@ mod render;
 mod rng;
 mod world;
 
-use creature::{CreatureSystem, RevivalGenome, Role, SimEvent};
+use creature::{CreatureSystem, RevivalGenome};
 use elements::Elem;
 use macroquad::prelude::*;
 use std::time::{SystemTime, UNIX_EPOCH};
