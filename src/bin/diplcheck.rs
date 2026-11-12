@@ -105,6 +105,7 @@ fn main() {
     println!("  tributes:    {}", d.stats.tributes);
     println!("  betrayals:   {}", d.stats.betrayals);
     println!("  raids:       {}", d.stats.raids);
+    println!("  truces:      {}", d.stats.truces);
     println!("  negotiations:{}", d.stats.negotiations);
     println!("  envoys:      {}", d.stats.envoys);
     println!("  peak pairs:  {}", peak_relations);
@@ -149,6 +150,22 @@ fn main() {
                 // skips allies by construction.
                 break;
             }
+        }
+    }
+
+    // 5. A war must be able to end. If any war was declared in this run,
+    //    at least one of them has to have been worn down into a truce:
+    //    otherwise the world would only ever get more bloody.
+    if d.stats.wars > 0 && d.stats.truces == 0 {
+        println!("FAIL: {} wars declared but no war ever ended in a truce", d.stats.wars);
+        failures += 1;
+    }
+
+    // 6. A truce must leave the pair out of the war state.
+    for r in d.relations.iter() {
+        if r.has(Treaty::Ceasefire) && r.state == RelationState::War {
+            println!("FAIL: ceasefire signed while still at war");
+            failures += 1;
         }
     }
 

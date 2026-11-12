@@ -639,10 +639,19 @@ impl CreatureSystem {
                     }
                 }
             }
+            // Wars that neither side can afford any more simply stop. The
+            // weariness climbs with the length of the war, so a long war
+            // ends in a tired truce rather than a bloodbath.
+            let mut exhausted: Vec<(u32, u32)> = Vec::new();
             for r in self.diplomacy.relations.iter_mut() {
                 if r.state == RelationState::War {
-                    r.war_weariness = (r.war_weariness + 0.01).min(1.0);
+                    // The longer the war goes on, the less either side wants
+                    // it. A truce comes after a few thousand ticks of it.
+                    r.war_weariness = (r.war_weariness + 0.03).min(1.0);
                     r.trust = (r.trust - 0.15).max(-100.0);
+                    if r.war_weariness >= 0.85 {
+                        exhausted.push((r.a, r.b));
+                    }
                 } else {
                     let anchor = if r.has(Treaty::Alliance) {
                         45.0
@@ -679,6 +688,37 @@ impl CreatureSystem {
                     }
                     r.trust = r.trust.clamp(-100.0, 100.0);
                 }
+            }
+
+            // A war that has gone on too long ends in a tired truce. The
+            // colony that is losing takes it as a defeat and the winner
+            // takes it as a win, but nobody is wiped out.
+            for (a, b) in exhausted {
+                if self.diplomacy.get(a, b).map(|r| r.state) != Some(RelationState::War) {
+                    continue;
+                }
+                let power_a = self.species_power(a);
+                let power_b = self.species_power(b);
+                let winner = if power_a > power_b { a } else { b };
+                let loser = if winner == a { b } else { a };
+                self.break_treaty(a, b, Treaty::Alliance, self.tick);
+                self.sign_treaty(a, b, Treaty::Ceasefire, self.tick);
+                {
+                    let rel = self.diplomacy.get_mut(a, b);
+                    rel.state = RelationState::Cordial;
+                    rel.war_weariness = 0.0;
+                    rel.trust = (rel.trust + 8.0).clamp(-100.0, 100.0);
+                }
+                self.diplomacy.stats.truces += 1;
+                let name_a = self.species_name(a);
+                let name_b = self.species_name(b);
+                self.diplomacy.log_event(
+                    format!("{} and {} lay down arms, worn out by the war", name_a, name_b),
+                    self.species_color(winner),
+                    self.tick,
+                );
+                // The side that lost has to pay for the ruin.
+                self.adjust_trust(loser, winner, -12.0);
             }
         }
 

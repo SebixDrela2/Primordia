@@ -15,6 +15,8 @@ pub struct VictoryScreen {
     pub     alliances: u32,
     pub     wars: u32,
     pub     treaties: u32,
+    /// How many wars ended in a tired truce.
+    pub     truces: u32,
     /// The traits the winning lineage evolved.
     pub     traits: Vec<&'static str>,
     /// What the winning species worked out for itself.
@@ -106,8 +108,8 @@ pub fn draw_victory(v: &VictoryScreen) {
 
     // The diplomatic record of the run: it says how the winner got here.
     let diplo = format!(
-        "{} alliances   {} wars fought   {} treaties signed",
-        v.alliances, v.wars, v.treaties
+        "{} alliances   {} wars fought   {} treaties signed   {} truces",
+        v.alliances, v.wars, v.treaties, v.truces
     );
     let dd = measure_text(&diplo, None, 14, 1.0);
     draw_text(

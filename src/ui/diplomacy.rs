@@ -36,7 +36,10 @@ pub fn draw_diplomacy_panel(c: &CreatureSystem, x: f32, y: f32) {
         Color::new(0.8, 0.86, 0.92, 0.85),
     );
     draw_text(
-        &format!("envoys {}   talks {}", s.envoys, s.negotiations),
+        &format!(
+            "envoys {}   talks {}   truces {}",
+            s.envoys, s.negotiations, s.truces
+        ),
         x + 104.0,
         y + 35.0,
         11.0,

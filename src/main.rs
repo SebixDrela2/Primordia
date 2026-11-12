@@ -365,6 +365,7 @@ async fn main() {
                     alliances: 0,
                     wars: 0,
                     treaties: 0,
+                    truces: 0,
                     traits: Vec::new(),
                     discoveries: Vec::new(),
                 });
@@ -424,6 +425,7 @@ async fn main() {
                         alliances,
                         wars,
                         treaties,
+                        truces: creatures.diplomacy.stats.truces,
                         traits,
                         discoveries,
                     });

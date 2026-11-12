@@ -240,6 +240,8 @@ pub struct DiplomacyStats {
     pub negotiations: u32,
     pub betrayals: u32,
     pub raids: u32,
+    /// How many wars have ended in a tired truce.
+    pub truces: u32,
 }
 
 /// The whole diplomatic state of the world.
