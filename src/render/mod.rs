@@ -454,7 +454,6 @@ fn paint(
 
             if e == empty {
                 let surf = ground[x as usize] as f32;
-                let n = noise(x, y);
                 if (y as f32) < surf {
                     // ---- Sky ----
                     // The gradient was worked out per column, so a pixel only
@@ -468,9 +467,9 @@ fn paint(
 
                     // A sparse field of stars appears as night falls.
                     if day < 0.38 {
-                        let n = noise(x, y);
-                        if n > 0.9968 {
-                            let star = 90.0 + 110.0 * n;
+                        let sn = noise(x, y);
+                        if sn > 0.9968 {
+                            let star = 90.0 + 110.0 * sn;
                             r = r.max(star * 0.85);
                             g = g.max(star * 0.9);
                             b = b.max(star);
@@ -559,7 +558,7 @@ fn paint(
                     // ---- Cave / underground void ----
                     let depth = ((y as f32 - surf) / (h as f32 - surf).max(1.0)).clamp(0.0, 1.0);
                     let base = 9.0 - depth * 4.0;
-                    let warmth = n * 1.5;
+                    let warmth = noise(x, y) * 1.5;
                     buf[o] = clamp_u8(base * 0.7 + warmth);
                     buf[o + 1] = clamp_u8(base * 0.9 + warmth);
                     buf[o + 2] = clamp_u8(base * 1.2 + warmth);
@@ -621,6 +620,17 @@ fn paint(
                     r += sky[0] * 0.02;
                     g += sky[1] * 0.02;
                     b += sky[2] * 0.03;
+                    // Foam where the water meets the land. The shore is
+                    // checked against the four neighbours, which is cheap
+                    // because only the water pixels pay for it.
+                    if is_shore(kind, w, h, x, y, empty, Elem::Water as u8) {
+                        let surf = ((x as f32 * 0.31) + (y as f32 * 0.19) - time * 2.4).sin() * 0.5
+                            + 0.5;
+                        let foam = (0.35 + 0.65 * surf) * 46.0;
+                        r += foam * 0.9;
+                        g += foam * 0.95;
+                        b += foam;
+                    }
                 }
                 Fx::Flicker => {
                     let flicker =
@@ -699,6 +709,33 @@ fn paint(
             buf[o + 3] = 255;
         }
     }
+}
+
+/// Is this water cell touching the shore?
+///
+/// The foam of a breaking wave only shows on the cells that touch the
+/// land, so the four neighbours are looked at. Only the water pixels pay
+/// for the check.
+#[inline]
+fn is_shore(
+    kind: &[u8],
+    w: usize,
+    h: usize,
+    x: i32,
+    y: i32,
+    empty: u8,
+    water: u8,
+) -> bool {
+    let xi = x as usize;
+    let yi = y as usize;
+    let row = yi * w;
+    // The land is anything that is neither empty nor more water.
+    let land = |k: u8| k != empty && k != water;
+    let left = xi > 0 && land(kind[row + xi - 1]);
+    let right = xi + 1 < w && land(kind[row + xi + 1]);
+    let up = yi > 0 && land(kind[row - w + xi]);
+    let down = yi + 1 < h && land(kind[row + w + xi]);
+    left || right || up || down
 }
 
 #[inline]

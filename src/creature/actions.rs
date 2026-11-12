@@ -8,6 +8,7 @@ pub(crate) fn act_steer(
     out: &[f32],
     scan: &LocalScan,
     agents: &[(u32, f32, f32, u32, u8, f32)],
+    grid: &SpatialGrid,
     foreign_bases: &[(u32, f32, f32)],
     ds: &DiplomaticSense,
     weather: crate::world::Weather,
@@ -61,9 +62,15 @@ pub(crate) fn act_steer(
                 // closer to the bones.
                 let hunt_range = if place.hunting { 48.0 } else { 34.0 };
                 let mut prey: Option<(f32, f32, f32)> = None;
-                for &(id, ox, oy, ospecies, _orole, _ohp) in agents {
+                // The nearest creatures are looked for through the spatial
+                // grid: walking the whole population for every animal was
+                // the last O(n^2) loop in the simulation.
+                let search = flee_range.max(hunt_range) as usize;
+                grid.near(c.x, c.y, search, |idx| {
+                    let a = &agents[idx as usize];
+                    let (id, ox, oy, ospecies) = (a.0, a.1, a.2, a.3);
                     if id == c.id || ospecies == c.species {
-                        continue;
+                        return;
                     }
                     let dx = ox - c.x;
                     let dy = oy - c.y;
@@ -74,7 +81,7 @@ pub(crate) fn act_steer(
                     if d < hunt_range && prey.map_or(true, |t| d < t.2) {
                         prey = Some((dx, dy, d));
                     }
-                }
+                });
 
                 // --- Hunt: stalk the nearest creature of another kind ---
                 //
@@ -195,9 +202,11 @@ pub(crate) fn act_steer(
                 // here is what brings two animals together at all.
                 if out[outputs::SEEK_MATE] > 0.35 {
                     let mut best: Option<(f32, f32, f32)> = None;
-                    for &(id, ox, oy, ospecies, _orole, _ohp) in agents {
+                    grid.near(c.x, c.y, 40, |idx| {
+                        let a = &agents[idx as usize];
+                        let (id, ox, oy, ospecies) = (a.0, a.1, a.2, a.3);
                         if id == c.id || ospecies != c.species {
-                            continue;
+                            return;
                         }
                         let dx = ox - c.x;
                         let dy = oy - c.y;
@@ -205,7 +214,7 @@ pub(crate) fn act_steer(
                         if d < 40.0 && best.map_or(true, |t| d < t.2) {
                             best = Some((dx, dy, d));
                         }
-                    }
+                    });
                     if let Some((dx, dy, d)) = best {
                         if d > 2.0 {
                             steer_x += dx / d;
@@ -833,16 +842,22 @@ pub(crate) fn act_combat(
                 // Defend (output[19]): strike at anything closing in on the
                 // colony, even without a general attack impulse.
                 if out[19] > 0.3 {
-                    for &(id, ox, oy, ospecies, _orole, _ohp) in agents {
-                        if id == c.id || ospecies == c.species {
-                            continue;
+                    // Anything of another kind that comes close to the
+                    // colony is a target for the defenders.
+                    let mut intruder_near = false;
+                    grid.near(c.base_x, c.base_y, 30, |idx| {
+                        let a = &agents[idx as usize];
+                        if a.0 == c.id || a.3 == c.species {
+                            return;
                         }
-                        let bx = ox - c.base_x;
-                        let by = oy - c.base_y;
+                        let bx = a.1 - c.base_x;
+                        let by = a.2 - c.base_y;
                         if bx * bx + by * by < 900.0 {
-                            wants_attack = true;
-                            break;
+                            intruder_near = true;
                         }
+                    });
+                    if intruder_near {
+                        wants_attack = true;
                     }
                 }
 

@@ -493,6 +493,7 @@ impl CreatureSystem {
                     &out,
                     &scan,
                     &agents,
+                    &grid,
                     &centroids,
                     &ds,
                     world.weather,
