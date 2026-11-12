@@ -471,30 +471,42 @@ impl CreatureSystem {
                     .map(|(_, n)| *n)
                     .unwrap_or(0);
 
-                Self::sense(
-                    &agents,
-                    &grid,
-                    c,
-                    world,
-                    self.day_night,
-                    self.temperature,
-                    self.season,
-                    &scan,
-                    &shot_positions,
-                    own_towers,
-                    total_towers.saturating_sub(own_towers),
-                    own_pop,
-                    (pop_now as u32).saturating_sub(own_pop),
-                    &ds,
-                    near_beacon,
-                    discoveries_by_species
-                        .get(c.species as usize)
-                        .copied()
-                        .unwrap_or(0),
-                    &mut input_buf,
-                );
-                c.net.forward_into(&input_buf, &mut net_act, &mut net_next);
-                let out = &net_act;
+                // The brain is only re-thought every other tick: a creature
+                // moves slowly, so yesterday's decision is still a good one.
+                // Halving the work here is the single biggest saving in the
+                // simulation.
+                if self.tick % 2 == 0 || !c.brain_ready {
+                    Self::sense(
+                        &agents,
+                        &grid,
+                        c,
+                        world,
+                        self.day_night,
+                        self.temperature,
+                        self.season,
+                        &scan,
+                        &shot_positions,
+                        own_towers,
+                        total_towers.saturating_sub(own_towers),
+                        own_pop,
+                        (pop_now as u32).saturating_sub(own_pop),
+                        &ds,
+                        near_beacon,
+                        discoveries_by_species
+                            .get(c.species as usize)
+                            .copied()
+                            .unwrap_or(0),
+                        &mut input_buf,
+                    );
+                    c.net.forward_into(&input_buf, &mut net_act, &mut net_next);
+                    c.out_cache.copy_from_slice(&net_act);
+                    c.brain_ready = true;
+                }
+                // A copy, so the behaviour helpers can still change the
+                // creature while they read its decision.
+                let mut out_buf = [0.0f32; OUTPUTS];
+                out_buf.copy_from_slice(&c.out_cache);
+                let out: &[f32] = &out_buf;
 
                 // ---- Diplomacy: the creature decides whether it wants to
                 // talk, and to whom ----

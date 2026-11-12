@@ -17,6 +17,8 @@
   evolution sector headless and asserts its invariants (the stages are
   reached, the temperament stays in range, a species specialises and
   learns, and young are born to two parents).
+- `cargo run --release --bin prof` prints the per-step cost of the world,
+  the creatures and (with `PRIMORDIA_RENDER_TIMING=1`) the renderer.
 - `PRIMORDIA_SNAPSHOT=shot.png PRIMORDIA_SNAPSHOT_AFTER=60 primordia`
   makes the game write a picture of itself and exit. Add
   `PRIMORDIA_PANEL=diplomacy` to open the diplomacy panel in it.

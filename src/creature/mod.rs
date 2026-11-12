@@ -211,6 +211,10 @@ pub struct Creature {
     pub cooldown: u32,
     /// Cooldown between ranged shots.
     pub fire_cooldown: u32,
+    /// The creature's last decision, reused between brain ticks.
+    pub out_cache: [f32; OUTPUTS],
+    /// Has the brain run at least once for this creature?
+    pub brain_ready: bool,
     pub size: f32,
     pub last_x: f32,
     pub last_y: f32,

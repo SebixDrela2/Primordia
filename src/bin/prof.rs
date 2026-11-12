@@ -23,25 +23,22 @@ fn main() {
         w.step();
         cs.step(&mut w);
     }
+    let pop = cs.list.len();
 
-    let mut r = render::Renderer::new();
-    let mut buf = vec![0u8; 1280 * 720 * 4];
-
+    let n = 1200;
     let t = Instant::now();
-    for i in 0..20 {
-        r.render_region(
-            &w, &cs, &mut buf, 0, 0, 1280, 470, i as f32 * 0.016, 0.3, 0, world::Weather::Clear,
-        );
+    for _ in 0..n {
+        w.step();
     }
-    let sky = t.elapsed().as_secs_f64() * 1000.0 / 20.0;
-
+    let world_ms = t.elapsed().as_secs_f64() * 1000.0 / n as f64;
     let t = Instant::now();
-    for i in 0..20 {
-        r.render_region(
-            &w, &cs, &mut buf, 0, 470, 1280, 250, i as f32 * 0.016, 0.3, 0, world::Weather::Clear,
-        );
+    for _ in 0..n {
+        cs.step(&mut w);
     }
-    let ground = t.elapsed().as_secs_f64() * 1000.0 / 20.0;
+    let creature_ms = t.elapsed().as_secs_f64() * 1000.0 / n as f64;
 
-    println!("sky {:.3} ms   ground {:.3} ms", sky, ground);
+    println!(
+        "pop {} | world {:.3} ms | creature {:.3} ms",
+        pop, world_ms, creature_ms
+    );
 }
