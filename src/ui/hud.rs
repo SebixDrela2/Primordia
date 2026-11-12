@@ -282,8 +282,7 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
     let line5 = format!(
         "hunger {:.0}  thirst {:.0}  stamina {:.0}  diseases {}",
         stats.avg_hunger, stats.avg_thirst, stats.avg_stamina, stats.diseases
-    );
-    let line6 = match leader {
+    );    let line6 = match leader {
         Some(sp) => format!(
             "lineage {} evolved: {}",
             sp,

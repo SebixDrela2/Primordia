@@ -324,6 +324,36 @@ pub enum Buildable {
     Temple = 5,
     Tower = 6,
     Bridge = 7,
+    /// A trading post.
+    Market = 8,
+    /// A craftsman's hall.
+    Workshop = 9,
+    /// A food store.
+    Granary = 10,
+    /// A signal beacon.
+    Beacon = 11,
+}
+
+/// The kinds of structure a colony can raise.
+///
+/// The number is stored in `Structure::kind`.
+pub mod structure_kind {
+    /// A plain building with no special effect.
+    pub const PLAIN: u8 = 0;
+    /// An armed tower.
+    pub const TURRET: u8 = 1;
+    /// A temple: it steadies the colony.
+    pub const TEMPLE: u8 = 2;
+    /// A farm plot.
+    pub const FARM: u8 = 3;
+    /// A market: trade beside it is more profitable.
+    pub const MARKET: u8 = 4;
+    /// A workshop: tools are made faster beside it.
+    pub const WORKSHOP: u8 = 5;
+    /// A granary: the colony does not go hungry beside it.
+    pub const GRANARY: u8 = 6;
+    /// A beacon: the colony sees further from it.
+    pub const BEACON: u8 = 7;
 }
 
 /// A shot in flight (arrows, mana bolts, tower fire).

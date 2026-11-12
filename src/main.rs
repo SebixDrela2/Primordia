@@ -4,7 +4,7 @@ mod render;
 mod rng;
 mod world;
 
-use creature::{CreatureSystem, RevivalGenome};
+use creature::{CreatureSystem, RevivalGenome, SimEvent};
 use elements::Elem;
 use macroquad::prelude::*;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -44,6 +44,58 @@ fn get_random_seed() -> u64 {
 mod ui;
 use ui::*;
 
+/// A monotonic clock for measuring how long the game has been running.
+///
+/// The system clock can jump (a time sync, a manual change), which would
+/// make a timed screenshot fire at the wrong moment or not at all.
+fn now_snapshot() -> std::time::Instant {
+    std::time::Instant::now()
+}
+
+/// Save the current frame to a PNG file.
+///
+/// This is used by the screenshot tooling: `PRIMORDIA_SNAPSHOT=out.png`
+/// makes the game write a picture of itself and exit after a while.
+fn save_screenshot(path: &str) {
+    let screen = get_screen_data();
+    let w = screen.width as usize;
+    let h = screen.height as usize;
+    if w == 0 || h == 0 {
+        return;
+    }
+    let file = match std::fs::File::create(path) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("screenshot: cannot create {}: {}", path, e);
+            return;
+        }
+    };
+    let writer = std::io::BufWriter::new(file);
+    let mut encoder = png::Encoder::new(writer, w as u32, h as u32);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut png_writer = match encoder.write_header() {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("screenshot: cannot write header: {}", e);
+            return;
+        }
+    };
+    // The framebuffer comes back bottom-up, so the rows are flipped before
+    // they are written out.
+    let stride = w * 4;
+    let mut flipped: Vec<u8> = vec![0u8; stride * h];
+    for y in 0..h {
+        let src = (h - 1 - y) * stride;
+        let dst = y * stride;
+        flipped[dst..dst + stride].copy_from_slice(&screen.bytes[src..src + stride]);
+    }
+    if let Err(e) = png_writer.write_image_data(&flipped) {
+        eprintln!("screenshot: cannot write pixels: {}", e);
+    }
+    eprintln!("screenshot written to {}", path);
+}
+
 #[macroquad::main(window_conf)]
 async fn main() {
     let seed = get_random_seed();
@@ -71,6 +123,14 @@ async fn main() {
     {
         ui.diplomacy_open = true;
     }
+    // PRIMORDIA_SNAPSHOT=out.png writes a picture of the game after
+    // PRIMORDIA_SNAPSHOT_AFTER seconds and closes the window.
+    let snapshot = std::env::var("PRIMORDIA_SNAPSHOT").ok();
+    let snapshot_after = std::env::var("PRIMORDIA_SNAPSHOT_AFTER")
+        .ok()
+        .and_then(|v| v.parse::<f32>().ok())
+        .unwrap_or(30.0);
+    let snapshot_at = snapshot.as_ref().map(|_| now_snapshot());
 
     // The renderer owns all its scratch buffers, so rendering never
     // allocates once the world exists.
@@ -526,6 +586,7 @@ async fn main() {
 
         draw_minimap(
             &creatures,
+            &world,
             view_x,
             view_y,
             view_w,
@@ -555,6 +616,16 @@ async fn main() {
         // Victory / extinction overlay sits on top of everything.
         if let Some(v) = &victory {
             draw_victory(v);
+        }
+
+        // The screenshot hook: write a picture of the game and stop.
+        if let (Some(path), Some(at)) = (&snapshot, snapshot_at) {
+            let elapsed = now_snapshot().duration_since(at).as_secs_f32();
+            if elapsed >= snapshot_after {
+                eprintln!("screenshot after {:.1}s", elapsed);
+                save_screenshot(path);
+                break;
+            }
         }
 
         next_frame().await;

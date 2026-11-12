@@ -255,10 +255,21 @@ impl CreatureSystem {
                     }
                 }
 
+                // The land under its feet.
+                //
+                // A colony that settles beside a crystal grove, a hot
+                // spring, a bone field, rich soil or an old ruin does
+                // better than one that does not.
+                let place = world.landmark_bonus(c.x, c.y);
+
                 // Needs decay
                 // Hardy species tire of hunger more slowly.
                 let hardy = if c.traits & trait_bits::HARDY != 0 { 0.7 } else { 1.0 };
                 c.hunger = (c.hunger + 0.06 * hardy).clamp(0.0, 100.0);
+                // Rich soil means the colony does not go hungry.
+                if place.food {
+                    c.hunger = (c.hunger - 0.035).clamp(0.0, 100.0);
+                }
                 // The rain quenches a thirst that would otherwise build up.
                 c.thirst = (c.thirst + 0.045 * hardy / world.weather.thirst_factor())
                     .clamp(0.0, 100.0);
@@ -276,19 +287,56 @@ impl CreatureSystem {
                 }
                 // A temple nearby steadies the colony: less hunger, faster
                 // recovery.
+                //
+                // The other buildings of the settlement do their own work: a
+                // market makes trade profitable, a workshop makes tools
+                // faster, a granary keeps the colony fed and a beacon lets
+                // the colony see much further.
                 let mut morale = false;
+                let mut near_market = false;
+                let mut near_workshop = false;
+                let mut near_granary = false;
+                let mut near_beacon = false;
                 let sidx = (c.species as usize).min(structures_by_species.len() - 1);
                 for &si in structures_by_species[sidx].iter() {
                     let s = &self.structures[si];
-                    if s.kind == 2
-                        && (s.x - c.x).powi(2) + (s.y - c.y).powi(2) < 625.0
-                    {
-                        morale = true;
-                        break;
+                    let d2 = (s.x - c.x).powi(2) + (s.y - c.y).powi(2);
+                    match s.kind {
+                        structure_kind::TEMPLE => {
+                            if d2 < 625.0 {
+                                morale = true;
+                            }
+                        }
+                        structure_kind::MARKET => {
+                            if d2 < 900.0 {
+                                near_market = true;
+                            }
+                        }
+                        structure_kind::WORKSHOP => {
+                            if d2 < 900.0 {
+                                near_workshop = true;
+                            }
+                        }
+                        structure_kind::GRANARY => {
+                            if d2 < 900.0 {
+                                near_granary = true;
+                            }
+                        }
+                        structure_kind::BEACON => {
+                            if d2 < 2500.0 {
+                                near_beacon = true;
+                            }
+                        }
+                        _ => {}
                     }
                 }
                 if morale {
                     c.hunger = (c.hunger - 0.03).clamp(0.0, 100.0);
+                }
+                // A granary keeps the colony fed: beside one, hunger builds
+                // far more slowly.
+                if near_granary {
+                    c.hunger = (c.hunger - 0.05).clamp(0.0, 100.0);
                 }
                 // An alliance is worth feeling: the allies cover each
                 // other's wounds, so a creature with a partner heals a
@@ -301,7 +349,8 @@ impl CreatureSystem {
                     c.stamina = (c.stamina + STAMINA_REGEN).clamp(0.0, c.max_stamina);
                     c.energy = (c.energy + 0.02).min(c.max_energy);
                 } else {
-                    c.energy -= 0.08;
+                    // The weather makes every day harder.
+                    c.energy -= 0.08 * world.weather.energy_factor();
                 }
                 // A creature heals back towards the limit its body allows.
                 // A juvenile that has just become an adult spends a long
@@ -311,8 +360,9 @@ impl CreatureSystem {
                     c.health = (c.health + 0.05).min(cap);
                 }
                 // The cold bites. A species that has never felt a winter
-                // suffers for it, and the ember people suffer more.
-                if self.temperature < 4.0 {
+                // suffers for it, and the ember people suffer more. A hot
+                // spring keeps the cold out.
+                if self.temperature < 4.0 && !place.warmth {
                     let chill = (4.0 - self.temperature) * c.affinity.cold_vulnerability();
                     c.health -= chill * 0.012;
                 }
@@ -324,7 +374,8 @@ impl CreatureSystem {
                         c.health -= 0.6;
                     }
                 }
-                c.mana = (c.mana + MANA_REGEN * c.affinity.mana_factor()).clamp(0.0, c.max_mana);
+                c.mana = (c.mana + MANA_REGEN * c.affinity.mana_factor() * place.mana)
+                    .clamp(0.0, c.max_mana);
 
                 // Cooldowns
                 if c.cooldown > 0 { c.cooldown -= 1; }
@@ -374,6 +425,7 @@ impl CreatureSystem {
                     own_pop,
                     (pop_now as u32).saturating_sub(own_pop),
                     &ds,
+                    near_beacon,
                     &mut input_buf,
                 );
                 c.net.forward_into(&input_buf, &mut net_act, &mut net_next);
@@ -404,11 +456,12 @@ impl CreatureSystem {
                 }
 
                 let (steer_x, steer_y, speed_mult_extra) =
-                    act_steer(c, &out, &scan, &agents, &centroids, &ds);
+                    act_steer(c, &out, &scan, &agents, &centroids, &ds, world.weather, &place);
                 // Creatures move at a walking pace. The old clamp of 2.6 cells
                 // per step made them dart across the screen. A juvenile moves
-                // slower still, and a hollow-boned one moves faster.
-                let speed_cap = c.speed_cap();
+                // slower still, a hollow-boned one faster, and the wind and
+                // the rain slow everybody down.
+                let speed_cap = c.speed_cap() * world.weather.speed_factor() * c.disease_speed_factor();
                 c.vx = (out[0] * 0.8 + steer_x * 0.8).clamp(-speed_cap, speed_cap);
                 c.vy = (out[1] * 0.8 + steer_y * 0.8 + 0.2).clamp(-speed_cap, speed_cap);
 
@@ -427,8 +480,7 @@ impl CreatureSystem {
                 built_something = built;
                 structures_total += built_count;
 
-                act_craft(c, &out, &mut self.events);
-
+                act_craft(c, &out, &mut self.events, near_workshop, place.craft);
                 // ---- What the colony learns from what it does ----
                 //
                 // Doing a thing again and again teaches the colony how to
@@ -531,6 +583,8 @@ impl CreatureSystem {
                             // better terms still.
                             let gain = if pact { 18.0 } else { 5.0 }
                                 * c.culture_factor(Culture::Commerce);
+                            // A market makes the exchange worth much more.
+                            let gain = if near_market { gain * 1.6 } else { gain };
                             c.energy = (c.energy + gain).min(c.max_energy);
                             c.energy = (c.energy - energy_cost::TRADE).max(0.0);
                             // Trading warms the relations up: a pact is
@@ -751,6 +805,9 @@ impl CreatureSystem {
                 }
 
                 // Disease spread
+                //
+                // A disease jumps to a neighbour of another species: the
+                // sick ones and the well ones meet at the border.
                 if c.disease != Disease::None && self.rng.chance(0.02) {
                     for &(list_idx, oid, ox, oy, ospecies) in &positions {
                         if oid == c.id { continue; }
@@ -760,9 +817,10 @@ impl CreatureSystem {
                         }
                     }
                 }
+                // The disease does its work: it burns energy, takes health
+                // and slows the host down.
                 if c.disease != Disease::None {
-                    c.health -= 0.5;
-                    c.energy -= 0.3;
+                    c.apply_disease();
                 }
 
                 // Fitness: colony success metrics
@@ -834,6 +892,41 @@ impl CreatureSystem {
                 }
             }
             self.update_migrations(120);
+        }
+
+        // ---- The plagues spread through the colonies ----
+        self.spread_diseases(&grid);
+
+        // ---- An outbreak ----
+        //
+        // Diseases do not only come from venom and curses: a crowded
+        // colony breeds them. Every so often one animal falls ill, and
+        // from there the disease does its own work.
+        if self.tick % 400 == 0 && self.list.len() > 20 {
+            let sick = self.list.iter().filter(|c| c.disease != Disease::None).count();
+            // A colony that is already suffering is not ready for another
+            // outbreak.
+            if sick * 6 < self.list.len() && self.rng.chance(0.25) {
+                let victim = self.rng.range(self.list.len() as u32) as usize;
+                if self.list[victim].disease == Disease::None {
+                    let options = [
+                        Disease::Flu,
+                        Disease::Plague,
+                        Disease::Infection,
+                        Disease::Parasite,
+                        Disease::Madness,
+                    ];
+                    let pick = options[self.rng.range(options.len() as u32) as usize];
+                    self.list[victim].disease = pick;
+                    self.plagues_started += 1;
+                    self.list[victim].disease_timer = Plague::from(pick).duration();
+                    self.events.push(SimEvent::Plague {
+                        x: self.list[victim].x,
+                        y: self.list[victim].y,
+                        color: self.list[victim].team_color,
+                    });
+                }
+            }
         }
 
         // ---- What the colony learned ----

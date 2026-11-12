@@ -114,6 +114,19 @@ pub enum Elem {
     Food,
     Snow,
     Crop,
+    // Settlement (built by creatures, or found in ruins)
+    /// A trading post: the colony does better business beside it.
+    Market,
+    /// A craftsman's hall: tools are made faster beside it.
+    Workshop,
+    /// A food store: the colony does not go hungry beside it.
+    Granary,
+    /// A signal beacon: the colony sees further from it.
+    Beacon,
+    /// A hearth: the colony does not suffer from the cold beside it.
+    Hearth,
+    /// An animal totem: a symbol of the tribe.
+    Totem,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -153,7 +166,7 @@ impl Elem {
     }
 
     /// The largest valid element discriminant (inclusive).
-    pub const MAX: u8 = Elem::Crop as u8;
+    pub const MAX: u8 = Elem::Totem as u8;
 
     // ------------------------------------------------------------------
     // Lookup tables

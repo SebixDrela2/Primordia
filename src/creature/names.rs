@@ -54,3 +54,40 @@ pub(crate) fn species_team_color(rng: &mut Rng, species: u32) -> [u8; 3] {
     [r.max(80), g.max(80), b.max(80)]
 }
 
+/// The name of a species.
+///
+/// The name is generated from the species id, so it never changes: the
+/// lineage that was called the Karthani on the first day is still called
+/// the Karthani when it has split and started a dynasty of its own.
+pub fn species_name_for(species: u32) -> String {
+    const ONSET: &[&str] = &[
+        "K", "V", "Th", "Gr", "Ul", "Br", "Sk", "Z", "Dr", "Kh", "Mor", "Ash", "Tor", "Nal",
+        "Ves", "Cor", "Zan", "Rhu", "Bel", "Dra",
+    ];
+    const NUCLEUS: &[&str] = &[
+        "ar", "or", "ith", "un", "el", "an", "ur", "os", "ir", "ak", "esh", "yn", "ag", "il",
+        "ond", "esh", "ai", "ul", "om", "esh",
+    ];
+    const CODA: &[&str] = &[
+        "ni", "ra", "the", "ndar", "kesh", "mir", "loth", "var", "sh", "nak", "dai", "mor",
+        "rin", "gal", "thas", "vor",
+    ];
+    let mut rng = Rng::new(
+        species.wrapping_mul(0x9E37_79B9) as u64 ^ 0x51ED_C0DE_u64,
+    );
+    let mut name = String::new();
+    name.push_str(ONSET[rng.range(ONSET.len() as u32) as usize]);
+    name.push_str(NUCLEUS[rng.range(NUCLEUS.len() as u32) as usize]);
+    // Most species names have a third syllable; some have none, and a few
+    // have a fourth.
+    let roll = rng.range(10);
+    if roll < 8 {
+        name.push_str(CODA[rng.range(CODA.len() as u32) as usize]);
+    }
+    if roll == 9 {
+        name.push_str(CODA[rng.range(CODA.len() as u32) as usize]);
+        name.push_str(CODA[rng.range(CODA.len() as u32) as usize]);
+    }
+    name
+}
+

@@ -15,6 +15,7 @@
 
 mod actions;
 mod brain;
+mod building;
 mod colony;
 mod combat;
 mod diplomacy;
@@ -23,6 +24,7 @@ mod heritage;
 mod mating;
 mod names;
 mod personality;
+mod plague;
 mod senses;
 mod speciation;
 mod stats;
@@ -179,6 +181,8 @@ pub enum SimEvent {
     /// A group of animals has left its colony and become a species of
     /// its own.
     Speciation { x: f32, y: f32, color: [u8; 3] },
+    /// A disease has broken out in a colony.
+    Plague { x: f32, y: f32, color: [u8; 3] },
 }
 
 /// Uniform spatial hash so neighbour queries do not scan the whole colony.
@@ -399,6 +403,8 @@ pub struct CreatureSystem {
     pub splits_total: u32,
     /// How many groups have left their colonies in this run.
     pub migrations_started: u32,
+    /// How many disease outbreaks have begun in this run.
+    pub plagues_started: u32,
 }
 
 struct Vehicle {
@@ -433,11 +439,13 @@ pub struct RevivalGenome {
 
 pub use actions::*;
 pub use brain::*;
+pub use building::*;
 pub use diplomacy::*;
 pub use enums::*;
 pub use heritage::*;
 pub use mating::*;
 pub use names::*;
 pub use personality::*;
+pub use plague::*;
 pub use senses::*;
 pub use speciation::*;

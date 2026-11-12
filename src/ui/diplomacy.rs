@@ -71,8 +71,7 @@ pub fn draw_diplomacy_panel(c: &CreatureSystem, x: f32, y: f32) {
             };
             (score, r)
         })
-        .collect();
-    rows.sort_by_key(|(score, r)| (*score, -(r.trust.abs() as i32)));
+        .collect();    rows.sort_by_key(|(score, r)| (*score, -(r.trust.abs() as i32)));
 
     if rows.is_empty() {
         draw_text(
@@ -91,8 +90,8 @@ pub fn draw_diplomacy_panel(c: &CreatureSystem, x: f32, y: f32) {
             break;
         }
         shown += 1;
-        let an = c.species_name(r.a);
-        let bn = c.species_name(r.b);
+        let an = c.lineage_name(r.a);
+        let bn = c.lineage_name(r.b);
         let col = r.state.color();
         let tint = Color::new(col[0] as f32 / 255.0, col[1] as f32 / 255.0, col[2] as f32 / 255.0, 0.95);
 

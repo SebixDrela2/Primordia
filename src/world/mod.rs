@@ -9,6 +9,7 @@
 //! - elements_extreme.rs   rare / extreme element placement
 //! - vaults.rs             rare vaults
 //! - structures.rs         generated ruins and surface structures
+//! - landmarks.rs          the places worth living in
 //! - physics.rs            the per-step cell update
 //! - behaviors.rs          how each element moves
 //! - reactions.rs          chemical reactions and explosions
@@ -22,6 +23,7 @@ mod census;
 mod elements_extreme;
 mod elements_placement;
 mod generation;
+mod landmarks;
 mod maintain;
 mod physics;
 mod query;
@@ -29,6 +31,8 @@ mod reactions;
 mod structures;
 mod terrain;
 mod vaults;
+
+pub use landmarks::*;
 
 use crate::elements::{Behavior, Elem};
 use crate::rng::Rng;
@@ -285,6 +289,9 @@ pub struct World {
     /// the pressure reflects the world's *own* productivity being eaten into.
     pub plant_capacity: f32,
     pub census: Census,
+    /// The places worth living in. A colony that settles beside one of
+    /// them does better than a colony that does not.
+    pub landmarks: Vec<LandmarkSite>,
 }
 
 

@@ -102,6 +102,13 @@ impl Elem {
             Elem::Virus => [255, 80, 80],
             Elem::Bacteria => [200, 180, 100],
             Elem::Food => [200, 180, 120],
+            // Settlement
+            Elem::Market => [190, 150, 90],
+            Elem::Workshop => [150, 130, 110],
+            Elem::Granary => [160, 140, 80],
+            Elem::Beacon => [255, 170, 90],
+            Elem::Hearth => [230, 120, 60],
+            Elem::Totem => [180, 120, 200],
         }
     }
 
@@ -125,6 +132,9 @@ impl Elem {
             Elem::Ward => [0.30, 0.70, 0.70],
             Elem::Portal => [0.70, 0.45, 0.70],
             Elem::Circuit => [0.20, 0.48, 0.70],
+            Elem::Beacon => [1.00, 0.62, 0.22],
+            Elem::Hearth => [1.00, 0.45, 0.12],
+            Elem::Totem => [0.50, 0.26, 0.72],
             Elem::Void => [0.0, 0.0, 0.0],
             _ => [0.0, 0.0, 0.0],
         }
@@ -167,6 +177,10 @@ impl Elem {
                 | Elem::Iron
                 | Elem::Wood
                 | Elem::Ember
+                | Elem::Market
+                | Elem::Workshop
+                | Elem::Granary
+                | Elem::Totem
         )
     }
 
@@ -226,6 +240,7 @@ impl Elem {
             Elem::Copper | Elem::Tin | Elem::Bronze | Elem::Wire | Elem::Gold | Elem::Silver => 22,
             Elem::Glass | Elem::Crystal | Elem::Gem | Elem::Diamond | Elem::Obsidian => 18,
             Elem::Circuit | Elem::Tool | Elem::Machine | Elem::Door | Elem::Chest | Elem::Forge | Elem::Farm | Elem::Temple | Elem::Bridge | Elem::Road => 24,
+            Elem::Market | Elem::Workshop | Elem::Granary | Elem::Beacon | Elem::Hearth | Elem::Totem => 22,
             Elem::Rune | Elem::Ward | Elem::Portal | Elem::Egg => 15,
             Elem::Corpse => 12,
             Elem::Virus | Elem::Bacteria | Elem::Food => 1,
@@ -452,6 +467,12 @@ impl Elem {
                 | Elem::Tower
                 | Elem::Bridge
                 | Elem::Road
+                | Elem::Market
+                | Elem::Workshop
+                | Elem::Granary
+                | Elem::Beacon
+                | Elem::Hearth
+                | Elem::Totem
                 | Elem::Plant
                 | Elem::Fungus
                 | Elem::Moss
@@ -717,6 +738,12 @@ impl Elem {
             Elem::Virus => "Virus",
             Elem::Bacteria => "Bacteria",
             Elem::Food => "Food",
+            Elem::Market => "Market",
+            Elem::Workshop => "Workshop",
+            Elem::Granary => "Granary",
+            Elem::Beacon => "Beacon",
+            Elem::Hearth => "Hearth",
+            Elem::Totem => "Totem",
         }
     }
 
@@ -819,6 +846,12 @@ impl Elem {
             Elem::Virus => "Microscopic disease. Spreads rapidly through organic matter.",
             Elem::Bacteria => "Microbe that decomposes meat and food.",
             Elem::Food => "Prepared nourishment for creatures.",
+            Elem::Market => "A trading post. Trade beside it is far more profitable.",
+            Elem::Workshop => "A craftsman's hall. Tools are made faster beside it.",
+            Elem::Granary => "A food store. The colony does not go hungry beside it.",
+            Elem::Beacon => "A signal beacon. The colony sees much further from it.",
+            Elem::Hearth => "A hearth. The cold does not bite beside it.",
+            Elem::Totem => "An animal totem: the symbol of a tribe, raised at its heart.",
         }
     }
 
@@ -905,6 +938,12 @@ impl Elem {
             | Elem::Road => "Constructed",
             Elem::Rune | Elem::Ward | Elem::Portal => "Magical",
             Elem::Egg | Elem::Corpse | Elem::Virus | Elem::Bacteria | Elem::Food | Elem::Crop => "Biological",
+            Elem::Market
+            | Elem::Workshop
+            | Elem::Granary
+            | Elem::Beacon
+            | Elem::Hearth
+            | Elem::Totem => "Settlement",
         }
     }
 }

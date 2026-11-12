@@ -215,6 +215,9 @@ impl CreatureSystem {
                 let c = &self.list[a];
                 (c.x, c.y, c.species, c.role, c.squad_id)
             };
+            // A colony that has learned to hunt is looking for food, not
+            // for a fight: it goes after the weakest animal it can find.
+            let hunter = self.list[a].knows(Culture::Hunting);
             let mut best: Option<(usize, f32)> = None;
             grid.near(ax, ay, 16, |ji| {
                 let j = ji as usize;
@@ -223,7 +226,11 @@ impl CreatureSystem {
                 }
                 let other = &self.list[j];
                 if other.species == a_species {
-                    return;
+                    // Madness drives a creature to attack its own kind.
+                    // Nothing else does.
+                    if !self.list[a].is_mad() {
+                        return;
+                    }
                 }
                 // Allies are never attacked. Breaking the treaty turns the
                 // ally back into a normal enemy, so it only has to be torn
@@ -237,6 +244,17 @@ impl CreatureSystem {
                     (Role::Soldier, Role::Worker) => 20.0,
                     (Role::Worker, _) => 50.0,
                     _ => 30.0,
+                };
+                // A hunter prefers the easy prey: a worker or a young animal
+                // is a meal, a soldier is a fight.
+                let priority = if hunter {
+                    match other.role {
+                        Role::Worker => priority * 0.4,
+                        Role::Queen => priority * 1.5,
+                        _ => priority,
+                    }
+                } else {
+                    priority
                 };
                 // A species we are formally at war with comes first: the
                 // war is the reason the creature is swinging at all.
@@ -343,6 +361,13 @@ impl CreatureSystem {
                     if self.list[j].health <= 0.0 {
                         self.list[a].kills += 1;
                         self.list[a].energy = (self.list[a].energy + 140.0).min(self.list[a].max_energy);
+                        // A hunter feeds on what it has killed: the kill is
+                        // the meal, and the carcass is only what is left.
+                        if hunter {
+                            self.list[a].energy =
+                                (self.list[a].energy + 160.0).min(self.list[a].max_energy);
+                            self.list[a].hunger = (self.list[a].hunger - 45.0).clamp(0.0, 100.0);
+                        }
                         // A corpse between two species is how a rivalry
                         // starts. Every kill costs the two species a little
                         // trust, which is what eventually tips a truce into

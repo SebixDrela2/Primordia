@@ -120,7 +120,12 @@ pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx
 
             let mut lines: Vec<String> = Vec::new();
             lines.push(format!("{}  (id {})", name_str, c.id));
-            lines.push(format!("species {}  gen {}  role {}", c.species, c.generation, role_str));
+            lines.push(format!(
+                "the {}  gen {}  role {}",
+                crate::creature::species_name_for(c.species),
+                c.generation,
+                role_str
+            ));
             lines.push(format!("energy {:.0}/{:.0}  health {:.0}  fitness {:.2}",
                 c.energy, c.max_energy, c.health, c.fitness));
             lines.push(format!("age {}  size {:.1}  tech {}", c.age, c.size, c.tech_level));
@@ -147,7 +152,12 @@ pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx
                 lines.push(format!("colony knows: {}", culture.join(", ")));
             }
             if c.disease != creature::Disease::None {
-                lines.push(format!("disease: {:?}", c.disease));
+                let plague = creature::Plague::from(c.disease);
+                lines.push(format!(
+                    "disease: {} ({})",
+                    plague.name(),
+                    plague.blurb()
+                ));
             }
             // The diplomatic standing of this creature and its species.
             if c.role == creature::Role::Envoy || c.pacts_signed > 0 {
@@ -174,8 +184,8 @@ pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx
                         format!(" [{}]", treaties.join(", "))
                     };
                     format!(
-                        "vs species {}: {} trust {:.0}{}",
-                        other,
+                        "vs the {}: {} trust {:.0}{}",
+                        crate::creature::species_name_for(other),
                         r.state.name(),
                         r.trust,
                         extra
@@ -243,7 +253,7 @@ pub fn draw_tooltip_box(lines: Vec<String>, mx: f32, my: f32) {
 }
 
 /// Draw the knowledge window: an encyclopedia of all discovered elements and creatures.
-pub fn draw_knowledge_window(_world: &World, creatures: &CreatureSystem, ui: &UiState) {
+pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiState) {
     let w = 520.0;
     let h = screen_height() * 0.85;
     let x = screen_width() - w - 20.0;
@@ -281,7 +291,62 @@ pub fn draw_knowledge_window(_world: &World, creatures: &CreatureSystem, ui: &Ui
 
     let mut yy = ay + 14.0;
 
-    // ---- Living species and the traits they evolved ----
+    // ---- The landmarks and who has claimed them ----
+    if !world.landmarks.is_empty() {
+        yy += 8.0;
+        draw_text(
+            "LANDMARKS",
+            x + 16.0,
+            yy,
+            16.0,
+            Color::new(0.85, 0.9, 0.95, 0.9),
+        );
+        yy += 22.0;
+        for l in world.landmarks.iter() {
+            // Who lives here?
+            let mut occupants: Vec<(u32, u32)> = Vec::new();
+            for c in &creatures.list {
+                if c.role == creature::Role::Queen
+                    && ((c.base_x - l.x).powi(2) + (c.base_y - l.y).powi(2)).sqrt()
+                        <= l.kind.radius() * 1.6
+                {
+                    let n = creatures
+                        .list
+                        .iter()
+                        .filter(|o| o.species == c.species)
+                        .count() as u32;
+                    occupants.push((c.species, n));
+                }
+            }
+            occupants.sort_by(|a, b| b.1.cmp(&a.1));
+            let holders: Vec<String> = occupants
+                .iter()
+                .take(3)
+                .map(|(sp, n)| {
+                    format!("{} ({})", creature::species_name_for(*sp), n)
+                })
+                .collect();
+            draw_text(
+                &format!("{}: {}", l.kind.name(), l.kind.blurb()),
+                x + 24.0,
+                yy + 8.0,
+                12.0,
+                Color::new(0.75, 0.85, 0.95, 0.9),
+            );
+            if !holders.is_empty() {
+                draw_text(
+                    &format!("held by {}", holders.join(", ")),
+                    x + 40.0,
+                    yy + 22.0,
+                    11.0,
+                    Color::new(0.6, 0.7, 0.8, 0.8),
+                );
+            }
+            yy += 36.0;
+        }
+        yy += 6.0;
+    }
+
     {
         // (species, members, traits, colour, affinity, culture)
         let mut counts: Vec<(u32, u32, u16, [u8; 3], Affinity, u16)> = Vec::new();
@@ -322,7 +387,7 @@ pub fn draw_knowledge_window(_world: &World, creatures: &CreatureSystem, ui: &Ui
                     ),
                 );
                 draw_text(
-                    &format!("species {}", sp),
+                    &format!("the {}", crate::creature::species_name_for(*sp)),
                     x + 40.0,
                     yy + 8.0,
                     13.0,
@@ -349,14 +414,20 @@ pub fn draw_knowledge_window(_world: &World, creatures: &CreatureSystem, ui: &Ui
                     .iter()
                     .map(|cu| cu.name())
                     .collect();
+                // A colony that has learned to hunt is a predator, and the
+                // player should be able to see that at a glance.
+                let hunting = culture_list(*culture)
+                    .iter()
+                    .any(|cu| *cu == creature::Culture::Hunting);
                 let extra = format!(
-                    "adapted to: {}   practices: {}",
+                    "adapted to: {}   practices: {}{}",
                     affinity.name(),
                     if practices.is_empty() {
                         "none yet".to_string()
                     } else {
                         practices.join(", ")
-                    }
+                    },
+                    if hunting { "   [PREDATOR]" } else { "" }
                 );
                 draw_text(
                     &extra,

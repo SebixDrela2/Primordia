@@ -231,6 +231,7 @@ impl CreatureSystem {
         species_population: u32,
         rival_population: u32,
         ds: &DiplomaticSense,
+        near_beacon: bool,
         input: &mut [f32],
     ) {
         input.fill(0.0);
@@ -297,6 +298,11 @@ impl CreatureSystem {
         let mut vision = if ds.alliances > 0.0 { 34.0 } else { 20.0 };
         if c.traits & trait_bits::HIVEMIND != 0 {
             vision *= 1.6;
+        }
+        // A beacon is a signal fire on a high place: the colony sees
+        // further from it.
+        if near_beacon {
+            vision *= 1.5;
         }
         vision *= c.vision_factor(day_night);
         grid.near(c.x, c.y, vision as usize, |idx| {

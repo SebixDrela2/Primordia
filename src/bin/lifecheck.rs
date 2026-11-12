@@ -51,10 +51,25 @@ fn main() {
     let mut saw_affinity = false;
     let mut saw_culture = false;
     let mut max_trait_count = 0u32;
+    // Every colony that has settled beside a landmark: (x, y, species).
+    let mut landmark_claims: Vec<(f32, f32, u32)> = Vec::new();
 
     for i in 0..steps {
         world.step();
         creatures.step(&mut world);
+
+        // Record the colonies that have settled.
+        for c in &creatures.list {
+            if c.role != creature::Role::Queen {
+                continue;
+            }
+            let claimed = landmark_claims
+                .iter()
+                .any(|(x, y, sp)| *sp == c.species && (*x - c.base_x).abs() < 1.0);
+            if !claimed {
+                landmark_claims.push((c.base_x, c.base_y, c.species));
+            }
+        }
 
         for c in &creatures.list {
             match c.stage {
@@ -109,8 +124,13 @@ fn main() {
                 .iter()
                 .map(|m| m.distance)
                 .fold(0.0f32, f32::max);
+            let sick = creatures
+                .list
+                .iter()
+                .filter(|c| c.disease != creature::Disease::None)
+                .count();
             println!(
-                "  step {:5}  pop {:3}  species {:2}  biggest {:3}  over-cap {:2}  young {:3}  old {:2}  pairs {:4}  splits {:2}  started {:2}  far {:5.0}  practices {}  traits/species {}",
+                "  step {:5}  pop {:3}  species {:2}  biggest {:3}  over-cap {:2}  young {:3}  old {:2}  pairs {:4}  splits {:2}  started {:2}  far {:5.0}  sick {:3}  plagues {:2}  practices {}  traits/species {}",
                 i,
                 creatures.list.len(),
                 s.species,
@@ -122,6 +142,8 @@ fn main() {
                 creatures.splits_total,
                 creatures.migrations_started,
                 far,
+                sick,
+                creatures.plagues_started,
                 s.practices,
                 max_trait_count,
             );
@@ -160,6 +182,37 @@ fn main() {
     println!("  practices:     {}", s.practices);
     println!("  envoys:        {}", s.envoys);
     println!("  most traits:   {}", max_trait_count);
+    println!("  splits:        {}", creatures.splits_total);
+    println!("  plagues:       {}", creatures.plagues_started);
+
+    // ---- The landmarks and who settled beside them ----
+    println!("\n--- landmarks ---");
+    for l in world.landmarks.iter() {
+        let names: Vec<String> = landmark_claims
+            .iter()
+            .filter(|(lx, ly, _)| {
+                ((lx - l.x).powi(2) + (ly - l.y).powi(2)).sqrt() <= l.kind.radius() * 1.6
+            })
+            .map(|(_, _, sp)| creature::species_name_for(*sp))
+            .collect();
+        println!(
+            "  {:<14} at ({:4.0},{:4.0})  radius {:4.0}  settled by: {}",
+            l.kind.name(),
+            l.x,
+            l.y,
+            l.kind.radius(),
+            if names.is_empty() {
+                "nobody".to_string()
+            } else {
+                names.join(", ")
+            }
+        );
+    }
+    println!(
+        "  landmarks claimed: {} of {}",
+        landmark_claims.len(),
+        world.landmarks.len()
+    );
 
     // ---- Invariants ----
     if !saw_juvenile {

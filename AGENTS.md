@@ -17,6 +17,9 @@
   evolution sector headless and asserts its invariants (the stages are
   reached, the temperament stays in range, a species specialises and
   learns, and young are born to two parents).
+- `PRIMORDIA_SNAPSHOT=shot.png PRIMORDIA_SNAPSHOT_AFTER=60 primordia`
+  makes the game write a picture of itself and exit. Add
+  `PRIMORDIA_PANEL=diplomacy` to open the diplomacy panel in it.
 
 ## Code size rules
 - **No file may exceed ~1000 lines.** A file may run slightly over that
@@ -32,10 +35,11 @@
 - Current layout:
   - `src/elements/`  mod.rs (enum + lookup tables), properties.rs
   - `src/world/`   cell, terrain, generation, element placement, vaults,
-                   structures, physics, behaviors, reactions, maintain,
-                   census, query
+                   structures, landmarks, physics, behaviors, reactions,
+                   maintain, census, query
   - `src/creature/` brain, enums, names, senses, colony, step, actions,
-                   combat, diplomacy, personality, heritage, mating, stats
+                   building, combat, diplomacy, personality, heritage,
+                   mating, speciation, plague, stats
   - `src/ui/`      effects, hud, knowledge, minimap, victory, actors,
                    diplomacy
   - `src/render/`  mod.rs (pixel loop), fx.rs (element effects),
@@ -76,4 +80,15 @@
   elemental affinity and the culture the species has learned) and
   **personality** (the individual's own temperament). A child of two
   parents blends all three.
+- A species can split: a colony that has outgrown its ground sends some
+  of its members away, and if they travel far enough they become a
+  species of their own with a new id, a new colour and a fresh
+  diplomatic record. The run may have at most six splits.
+- A colony can be destroyed from the inside: diseases spread through it,
+  slow the sick, drain them and — in the case of madness — turn them
+  against their own kind.
+- The world is not uniform: crystal groves, hot springs, bone fields,
+  fertile soil and old ruins are worth settling beside, and a colony that
+  can have one takes it. Two colonies that want the same grove fight over
+  it.
 

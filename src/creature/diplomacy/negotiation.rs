@@ -186,6 +186,12 @@ impl CreatureSystem {
             })
             .unwrap_or_else(|| format!("species {}", species))
     }
+
+    /// The name of a *lineage*: the name the species is known by, which is
+    /// the same for every member of it.
+    pub fn lineage_name(&self, species: u32) -> String {
+        species_name_for(species)
+    }
 }
 
 /// Find the nearest creature of another species that a creature could talk

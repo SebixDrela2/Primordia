@@ -1,5 +1,6 @@
 use crate::creature::CreatureSystem;
 use crate::world;
+use crate::world::World;
 use crate::{H, W};
 use macroquad::prelude::*;
 
@@ -75,6 +76,7 @@ pub fn dominant_species(creatures: &CreatureSystem) -> Option<u32> {
 /// Bottom-left minimap: terrain, species dots and the current camera viewport.
 pub fn draw_minimap(
     creatures: &CreatureSystem,
+    world: &World,
     cam_x: f32,
     cam_y: f32,
     view_w: f32,
@@ -109,6 +111,21 @@ pub fn draw_minimap(
     );
     draw_rectangle(x, y, mw, mh, Color::new(0.02, 0.04, 0.07, 0.25));
     draw_rectangle_lines(x, y, mw, mh, 1.0, Color::new(0.3, 0.5, 0.7, 0.55));
+
+    // The landmarks: the places worth fighting over.
+    for l in &world.landmarks {
+        let px = x + (l.x / W as f32).clamp(0.0, 1.0) * mw;
+        let py = y + (l.y / H as f32).clamp(0.0, 1.0) * mh;
+        let col = match l.kind {
+            crate::world::Landmark::CrystalGrove => Color::new(0.45, 0.75, 1.0, 0.9),
+            crate::world::Landmark::HotSpring => Color::new(1.0, 0.55, 0.35, 0.9),
+            crate::world::Landmark::BoneField => Color::new(0.85, 0.85, 0.75, 0.9),
+            crate::world::Landmark::FertileSoil => Color::new(0.45, 0.9, 0.45, 0.9),
+            crate::world::Landmark::OldRuin => Color::new(0.8, 0.5, 0.95, 0.9),
+        };
+        draw_circle(px, py, 3.0, col);
+        draw_circle_lines(px, py, 4.5, 1.0, col);
+    }
 
     for c in &creatures.list {
         let px = x + (c.x / W as f32).clamp(0.0, 1.0) * mw;

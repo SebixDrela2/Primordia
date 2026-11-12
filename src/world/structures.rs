@@ -86,6 +86,35 @@ impl World {
                 }
             }
         }
+
+        // The scattered remains of older settlements: a hearth still
+        // burning somewhere, a totem raised by a tribe that is long gone.
+        // These are what the first creatures find, and what they learn to
+        // build for themselves.
+        for _ in 0..5 {
+            let x = self.rng.range(w as u32) as i32;
+            let surface = self.surface_y(x);
+            let y = surface - 1 - self.rng.range(2) as i32;
+            if y < 2 || self.get(x, y) != Elem::Empty {
+                continue;
+            }
+            match self.rng.range(4) {
+                0 => self.set_xy(x, y, Elem::Hearth),
+                1 => self.set_xy(x, y, Elem::Totem),
+                2 => self.set_xy(x, y, Elem::Granary),
+                _ => self.set_xy(x, y, Elem::Market),
+            }
+            // A little of the old settlement around it.
+            for (dx, dy) in DIRS8 {
+                if self.rng.chance(0.35) {
+                    let px = x + dx;
+                    let py = y + dy;
+                    if py > 1 && self.get(px, py) == Elem::Empty {
+                        self.set_xy(px, py, Elem::Brick);
+                    }
+                }
+            }
+        }
     }
 
     pub(crate) fn generate_surface_structures(&mut self, w: i32, h: i32) {

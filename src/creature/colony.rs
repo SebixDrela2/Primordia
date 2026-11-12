@@ -33,6 +33,7 @@ impl CreatureSystem {
             migrations: Vec::new(),
             splits_total: 0,
             migrations_started: 0,
+            plagues_started: 0,
         }
     }
 
@@ -52,6 +53,48 @@ impl CreatureSystem {
         } else {
             self.culture_pool.push((species, bit));
         }
+    }
+
+    /// A place for a new colony to settle: a landmark that nobody has
+    /// claimed yet.
+    ///
+    /// A landmark is worth having, so a colony that can have one takes it.
+    /// The second colony to arrive has to make do with ordinary ground.
+    fn find_landmark_spot(&mut self, world: &World) -> Option<(f32, f32)> {
+        if !self.rng.chance(0.6) {
+            return None;
+        }
+        let mut rng = std::mem::replace(&mut self.rng, Rng::new(1));
+        let mut found = None;
+        for l in world.landmarks.iter() {
+            if found.is_some() {
+                break;
+            }
+            // Is the landmark already taken?
+            let taken = self.list.iter().any(|c| {
+                c.role == Role::Queen
+                    && ((c.base_x - l.x).powi(2) + (c.base_y - l.y).powi(2)).sqrt()
+                        < l.kind.radius() * 1.6
+            });
+            if taken {
+                continue;
+            }
+            // Find a spot in the landmark that a colony could stand in.
+            // The middle of a landmark is full of crystal, bone or water,
+            // so the search looks for somewhere passable.
+            for _ in 0..40 {
+                let a = rng.f32() * std::f32::consts::TAU;
+                let d = rng.f32() * l.kind.radius() * 0.9;
+                let px = (l.x + a.cos() * d) as i32;
+                let py = (l.y + a.sin() * d * 0.6) as i32;
+                if world.get(px, py).is_passable() {
+                    found = Some((px as f32, py as f32));
+                    break;
+                }
+            }
+        }
+        self.rng = rng;
+        found
     }
 
     /// Scatter a burst of short-lived energy motes into the world.
@@ -302,10 +345,17 @@ impl CreatureSystem {
         };
 
         // Base position: Queen sets it; children inherit; random spawns pick a spot
+        //
+        // A founding colony settles where there is something worth having:
+        // near a landmark if there is one free. Two colonies that both want
+        // the same crystal grove end up fighting over it.
         let (base_x, base_y) = if is_child {
             (parent_base_x, parent_base_y)
         } else if role == Role::Queen {
-            (x, y)
+            match self.find_landmark_spot(world) {
+                Some(sp) => sp,
+                None => (x, y),
+            }
         } else {
             // Find species base or use spawn pos
             self.list.iter()

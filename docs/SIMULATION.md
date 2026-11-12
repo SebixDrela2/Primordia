@@ -195,6 +195,12 @@ That is why sand sinks in water but water does not sink in sand.
 | 83 | Food | Biological | Static | 1 | 25 | 0 | permanent | - | yes | - | Prepared nourishment for creatures. |
 | 84 | Snow | Powders | Fall | 3 | 1 | 0 | permanent | yes | - | - | Cold powder that falls in winter. Melts back into water. |
 | 85 | Crop | Biological | Static | 9 | 45 | 0 | permanent | - | yes | - | A ripe crop, grown from a plant on a tilled farm. Better food than a wild plant. |
+| 86 | Market | Settlement | Static | 22 | 0 | 0 | permanent | yes | - | - | A trading post. Trade beside it is far more profitable. |
+| 87 | Workshop | Settlement | Static | 22 | 0 | 0 | permanent | yes | - | - | A craftsman's hall. Tools are made faster beside it. |
+| 88 | Granary | Settlement | Static | 22 | 0 | 0 | permanent | yes | - | - | A food store. The colony does not go hungry beside it. |
+| 89 | Beacon | Settlement | Static | 22 | 0 | 0 | permanent | yes | - | yes | A signal beacon. The colony sees much further from it. |
+| 90 | Hearth | Settlement | Static | 22 | 0 | 0 | permanent | yes | - | yes | A hearth. The cold does not bite beside it. |
+| 91 | Totem | Settlement | Static | 22 | 0 | 0 | permanent | yes | - | yes | An animal totem: the symbol of a tribe, raised at its heart. |
 
 ---|---------|----------|-----------|---------|-----------|----------|----------|-------|--------|------------|-------------|
 | 0 | Sand | Powders | Fall | 16 | 0 | 0 | permanent | yes | - | - | Fine granular powder. Falls under gravity. Melts into glass near lava. |
@@ -977,6 +983,114 @@ child vigour. The child then inherits from *both* parents:
 The elders teach the young: a juvenile that grows up near an elder
 matures a little faster and picks up a practice it did not know.
 
+### 4.12 Speciation: how one species becomes two
+
+A species that has outgrown its patch of ground does not simply exist
+forever. Part of the colony leaves, and if they get far enough they become
+a species of their own (`creature/speciation.rs`).
+
+| Rule | Value |
+|---|---|
+| A colony must have at least | 14 members to split |
+| The old colony must keep | at least 8 members |
+| The emigrants must get | 80 cells from the old colony |
+| The emigrants must be gone | at least 300 ticks |
+| A run may have at most | 6 splits |
+
+The split is not cosmetic. The emigrants get a **new species id**, a **new
+colour**, another 10% of genetic drift (which is where a new trait can
+appear) and a **fresh diplomatic record** — they start with no relations
+at all, and have to build them from nothing. One of them becomes the
+queen of the new colony.
+
+Without this a run can only ever lose species. With it, lineages split,
+drift apart and then compete for the same ground.
+
+### 4.13 Weather that matters
+
+The weather is not only a picture on the screen. Each kind of weather
+changes how the creatures live (`world/mod.rs`, `Weather`):
+
+| Weather | Speed | Energy | Fear | Other |
+|---|---|---|---|---|
+| `Clear` | 100% | 100% | - | - |
+| `Rain` | 90% | 130% | - | thirst builds a third slower |
+| `Storm` | 72% | 210% | +8 | the colony shelters at its base |
+| `Snow` | 84% | 170% | +2 | - |
+| `Meteor` | 90% | 120% | +22 | the colony shelters at its base |
+
+### 4.14 The buildings of a settlement
+
+A colony can raise more than walls and turrets. Four buildings do real
+work, and the ruins of older settlements are scattered around the world
+for the first creatures to find:
+
+| Building | What it does | Cost |
+|---|---|---|
+| `Market` | trade beside it is 60% more profitable | 10 wood, 4 metal, tech 2 |
+| `Workshop` | tools are made 50% faster beside it | 8 wood, 6 metal, tech 2 |
+| `Granary` | hunger builds much more slowly beside it | 12 wood, 4 stone, tech 1 |
+| `Beacon` | the colony sees 50% further from it | 10 stone, 3 crystal, tech 3 |
+| `Hearth` | the cold does not bite beside it | found in ruins |
+| `Totem` | the symbol of a tribe | found in ruins |
+
+A colony only builds a market and a workshop once it has the **culture**
+for it: a society that has never traded does not think to build a
+marketplace.
+
+### 4.15 Plagues
+
+A colony can be destroyed from the inside (`creature/plague.rs`). Diseases
+are not labels: they change what a creature can do.
+
+| Disease | Catches | Health/tick | Energy/tick | Speed | Special |
+|---|---|---|---|---|---|
+| `flu` | 1.0% | - | 0.10 | 70% | burns out on its own |
+| `plague` | 1.4% | 0.30 | 0.22 | 80% | lethal |
+| `poison` | - | 0.12 | 0.14 | 85% | comes from venom |
+| `curse` | - | 0.08 | 0.12 | 90% | comes from a spell |
+| `infection` | 0.4% | 0.10 | 0.10 | 80% | spreads through the flesh |
+| `parasite` | 0.2% | - | 0.30 | 90% | drains the host |
+| `madness` | 0.3% | - | 0.08 | 85% | drives the host to attack its own kind |
+
+A disease spreads through a colony and, more slowly, between colonies
+that trade with each other. Crowded colonies breed outbreaks on their
+own: every few hundred ticks a colony that is not already suffering may
+have one animal fall ill.
+
+**Madness** is the cruel one: a mad creature attacks its own kind, so a
+colony with madness in it tears itself apart.
+
+### 4.16 Predation: the food web
+
+A colony that has learned to **hunt** does not wait for its food to come
+to it. A hungry hunter stalks the nearest animal of another species,
+closes on it, and feeds on the kill (a hunter gets far more energy from
+a kill than a fighter does, and the meal cuts its hunger by 45).
+
+Hunters also pick their prey: a worker is easy meat and a soldier is a
+fight, so a hunter goes for the worker. A species that has learned to
+hunt is marked as a **PREDATOR** in the knowledge window.
+
+### 4.17 The landmarks: the places worth living in
+
+The world is not uniform. `world/landmarks.rs` scatters five to eight
+special places across the surface, at least 180 cells apart.
+
+| Landmark | What it is | What it does |
+|---|---|---|
+| `Crystal Grove` | spires of crystal | mana comes back twice as fast |
+| `Hot Spring` | a warm pool | the cold does not bite there |
+| `Bone Field` | old bones and corpses | prey comes within 48 cells instead of 34 |
+| `Fertile Soil` | rich ground | hunger builds a third more slowly |
+| `Old Ruin` | the remains of a settlement | crafting is 35% faster there |
+
+A founding colony **settles beside a landmark** if there is one free, and
+the first colony to arrive takes it. The second colony to want the same
+crystal grove has to do without — or take it by force. The landmarks are
+marked on the minimap, so the player can watch the map fill up and see
+which species have claimed which piece of good ground.
+
 ---
 
 ## 5. Rendering
@@ -1038,6 +1152,7 @@ memory for every single pixel.
 | `world/elements_extreme.rs` | the rare and extreme element placements |
 | `world/vaults.rs` | the rare vaults that hold the rarest materials |
 | `world/structures.rs` | the generated ruins, towers, bridges and dungeons |
+| `world/landmarks.rs` | the places worth living in |
 | `world/physics.rs` | `World::step` and `World::update_cell` |
 | `world/behaviors.rs` | the per-behaviour movement rules, and `World::step_cultivate` (farming) |
 | `world/reactions.rs` | the chemistry and `World::explosion` |
@@ -1051,12 +1166,15 @@ memory for every single pixel.
 | `creature/senses.rs` | the spatial grid, the local scan and the sensory inputs |
 | `creature/colony.rs` | spawning, the champion snapshot, the child blueprint |
 | `creature/step.rs` | the per-creature tick: needs, senses, decisions |
-| `creature/actions.rs` | the individual actions a creature can take: move, eat, mine, build (including farms), craft, fight |
+| `creature/actions.rs` | the individual actions a creature can take: move, eat, mine, craft, fight |
+| `creature/building.rs` | what a colony decides to build, and what it costs |
 | `creature/combat.rs` | combat resolution: turrets, bombs, projectiles, melee, deaths |
 | `creature/diplomacy.rs` | the relations between species: treaties, trust, wars, negotiations |
 | `creature/personality.rs` | the temperament of an individual creature |
 | `creature/heritage.rs` | the life stage, the elemental affinity and the culture of a species |
 | `creature/mating.rs` | courtship, mate choice and the hybrid young |
+| `creature/speciation.rs` | migration and the birth of a new species |
+| `creature/plague.rs` | the diseases that run through a colony |
 | `creature/stats.rs` | the population statistics |
 | `render/mod.rs` | the renderer |
 | `render/fx.rs` | the element effect table |
@@ -1091,6 +1209,9 @@ A quick map from "what I want to change" to "the file and method to change".
 | **How a species specialises** | `creature/enums.rs` (`decode_traits`), `creature/heritage.rs` (`Affinity`, `Stage`) |
 | **What a creature has learned** | `creature/heritage.rs` (`culture_bits`, `CreatureSystem::learn_culture`) |
 | **How an individual behaves** | `creature/personality.rs` (`Personality`), `creature/actions.rs` (`act_steer`) |
+| **How a disease spreads** | `creature/plague.rs` (`Plague`, `spread_diseases`) |
+| **What a species hunts** | `creature/actions.rs` (`act_steer`, the hunt), `creature/combat.rs` (`resolve_attacks`) |
+| **Where a colony settles** | `creature/colony.rs` (`find_landmark_spot`), `world/landmarks.rs` |
 | **Where a new creature is born** | `creature/colony.rs` (`spawn`, `spawn_near_surface`, `populate`) |
 | How traits are inherited | `creature/colony.rs` (`child_blueprint`), `creature/enums.rs` (`decode_traits`) |
 | **How farming works** | `world/behaviors.rs` (`step_cultivate`) and `world/query.rs` (`find_farm_site`) |

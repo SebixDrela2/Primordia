@@ -73,6 +73,7 @@ impl World {
             pressure: super::Pressure::default(),
             plant_capacity: 0.0,
             census: Census::default(),
+            landmarks: Vec::new(),
         }
     }
 

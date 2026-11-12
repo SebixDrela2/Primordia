@@ -297,6 +297,11 @@ impl World {
         self.generate_underground_structures(w, h);
         self.bury_floating_resources(w, h);
 
+        // The places worth living in. They go on the surface, so they are
+        // painted before the ground level is cached.
+        self.generate_landmarks(w, h);
+        self.bury_floating_resources(w, h);
+
         self.census = self.count();
         // The world is fully built now: cache the ground level and collect
         // every cell that can still change.

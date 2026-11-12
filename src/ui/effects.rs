@@ -240,5 +240,11 @@ pub fn apply_event(effects: &mut Effects, ev: SimEvent) {
                     effects.burst(x, y, [255, 250, 210], 22, 9.0);
                     effects.text(x, y, [255, 255, 230], "NEW SPECIES".to_string());
                 }
+                SimEvent::Plague { x, y, color } => {
+                    // A plague: a sickly green cloud.
+                    effects.ring(x, y, [120, 200, 90], 18.0, 0.9);
+                    effects.burst(x, y, [140, 220, 110], 14, 6.0);
+                    effects.text(x, y, [170, 240, 140], "PLAGUE".to_string());
+                }
             }
 }
