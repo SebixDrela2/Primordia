@@ -29,6 +29,7 @@ pub(crate) fn generate_name(rng: &mut Rng, role: Role, species: u32) -> [u8; 10]
         Role::Builder => "u",
         Role::Explorer => "e",
         Role::Shaman => "y",
+        Role::Envoy => "n",
     };
     
     let species_mod = (species * 7 + 11) as usize % MIDDLES.len();

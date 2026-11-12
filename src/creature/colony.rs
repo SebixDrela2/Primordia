@@ -15,6 +15,8 @@ impl CreatureSystem {
             builds_total: 0,
             trades_total: 0,
             spells_cast: 0,
+            matings_total: 0,
+            two_parent_births: 0,
             next_squad: 1,
             vehicles: Vec::new(),
             next_vehicle: 1,
@@ -26,6 +28,29 @@ impl CreatureSystem {
             structures: Vec::new(),
             events: Vec::new(),
             bombs: Vec::new(),
+            diplomacy: Diplomacy::default(),
+            culture_pool: Vec::new(),
+            migrations: Vec::new(),
+            splits_total: 0,
+            migrations_started: 0,
+        }
+    }
+
+    /// What a species has collectively learned.
+    pub fn species_culture(&self, species: u32) -> u16 {
+        self.culture_pool
+            .iter()
+            .find(|(id, _)| *id == species)
+            .map(|(_, c)| *c)
+            .unwrap_or(0)
+    }
+
+    /// Record that a species has learned a new practice.
+    pub fn note_culture(&mut self, species: u32, bit: u16) {
+        if let Some(entry) = self.culture_pool.iter_mut().find(|(id, _)| *id == species) {
+            entry.1 |= bit;
+        } else {
+            self.culture_pool.push((species, bit));
         }
     }
 
@@ -186,8 +211,7 @@ impl CreatureSystem {
                     g,
                     parent.mutations.saturating_add(1),
                 )
-            }
-            CreatureGenesis::Revival(base) => {
+            }            CreatureGenesis::Revival(base) => {
                 let mut net = base.net.clone_net();
                 // Stronger shake-up: the winning lineage diverges into several
                 // new species that then compete again.
@@ -223,10 +247,13 @@ impl CreatureSystem {
         let role = if is_child {
             match parent_role {
                 Role::Queen => {
-                    // Queen's offspring: 85% worker, 10% soldier, 5% queen (rare princess)
+                    // Queen's offspring: 78% worker, 10% soldier, 7% envoy,
+                    // 5% queen (a rare princess). Envoys are the diplomats
+                    // that carry treaties between species.
                     let r = self.rng.f32();
-                    if r < 0.85 { Role::Worker }
-                    else if r < 0.95 { Role::Soldier }
+                    if r < 0.78 { Role::Worker }
+                    else if r < 0.88 { Role::Soldier }
+                    else if r < 0.95 { Role::Envoy }
                     else { Role::Queen }
                 }
                 Role::Worker => {
@@ -235,6 +262,7 @@ impl CreatureSystem {
                     let r = self.rng.f32();
                     if r < 0.05 { Role::Queen }
                     else if r < 0.06 { Role::Soldier }
+                    else if r < 0.10 { Role::Envoy }
                     else { Role::Worker }
                 }
                 Role::Soldier => {
@@ -242,7 +270,17 @@ impl CreatureSystem {
                     let r = self.rng.f32();
                     if r < 0.03 { Role::Queen }
                     else if r < 0.04 { Role::Worker }
+                    else if r < 0.06 { Role::Envoy }
                     else { Role::Soldier }
+                }
+                Role::Envoy => {
+                    // Envoys breed envoys most of the time, but they can also
+                    // produce ordinary workers.
+                    let r = self.rng.f32();
+                    if r < 0.60 { Role::Envoy }
+                    else if r < 0.70 { Role::Merchant }
+                    else if r < 0.80 { Role::Priest }
+                    else { Role::Worker }
                 }
                 Role::Priest => {
                     if self.rng.chance(0.05) { Role::Shaman } else { Role::Priest }
@@ -286,6 +324,28 @@ impl CreatureSystem {
         // Traits are decoded from the genes, so they are inherited and evolve.
         let traits = decode_traits(&genes);
         let hardy = traits & trait_bits::HARDY != 0;
+
+        // Every founder starts with its own temperament. Two animals of the
+        // same species with the same genes still behave differently.
+        //
+        // A child inherits the temperament of its blueprint, which is
+        // already the blend of its parents.
+        let personality = match genesis {
+            CreatureGenesis::Child(parent) => parent.personality,
+            _ => Personality::random(&mut self.rng),
+        };
+        // The affinity is read from the genes, so it is inherited like any
+        // other trait and can change over generations.
+        let affinity = Affinity::from_roll(genes[16]);
+        // The young inherit what the colony has learned, but a colony
+        // that keeps its traditions can also innovate: a small chance
+        // of picking up a practice the parents did not have.
+        let culture = match genesis {
+            CreatureGenesis::Child(parent) => {
+                parent.culture | self.species_culture(species)
+            }
+            _ => self.species_culture(species),
+        };
 
         // Starting resources so creatures can immediately craft and build
         let mut starting_inv = [0u16; 16];
@@ -367,12 +427,24 @@ impl CreatureSystem {
             genes,
             mutations,
             traits,
+            personality,
+            stage: Stage::Juvenile,
+            affinity,
+            culture,
+            mate: None,
+            sired: 0,
+            migrating: false,
             hunger: 50.0,
             thirst: 50.0,
             stamina: 100.0,
             max_stamina: 100.0,
             resting: false,
             memory: [0.0; 8],
+            diplo_cooldown: 0,
+            diplo_progress: 0.0,
+            diplo_partner: None,
+            diplo_with: None,
+            pacts_signed: 0,
         };
         self.next_id += 1;
         self.list.push(creature);
@@ -397,6 +469,11 @@ impl Creature {
                 child_genes[i] = (child_genes[i] + rand_val * 0.1).clamp(0.0, 1.0);
             }
         }
+        // A newborn is a juvenile: small, slow and unable to fight. It only
+        // grows into an adult as it ages.
+        let mut rng = Rng::new(self.id.wrapping_mul(0x9E37_79B9) as u64 ^ self.age as u64);
+        let personality = Personality::inherit(&self.personality, &mut rng);
+        let affinity = Affinity::from_roll(child_genes[16]);
         Creature {
             id: 0,
             x: self.x,
@@ -470,13 +547,108 @@ impl Creature {
             // The traits are decoded from the mutated genes, so a species can
             // evolve a new trait between generations.
             traits: decode_traits(&child_genes),
+            personality,
+            stage: Stage::Juvenile,
+            affinity,
+            // The young inherit what the colony has learned, but a colony
+            // that keeps its traditions can also innovate: a small chance
+            // of picking up a practice the parents did not have.
+            culture: self.inherited_culture(&mut rng),
+            mate: None,
+            sired: 0,
+            migrating: false,
             hunger: 50.0,
             thirst: 50.0,
             stamina: 100.0,
             max_stamina: 100.0,
             resting: false,
             memory: [0.0; 8],
+            diplo_cooldown: 0,
+            diplo_progress: 0.0,
+            diplo_partner: None,
+            diplo_with: None,
+            pacts_signed: 0,
         }
     }
+
+    /// What the young inherit of the colony's culture.
+    ///
+    /// Most of the colony's practices are passed on, and there is a small
+    /// chance the young pick up something new: a colony that farms for a
+    /// thousand generations will eventually find a second way to live.
+    fn inherited_culture(&self, rng: &mut Rng) -> u16 {
+        let mut culture = self.culture;
+        // Every practice is one chance in three of being lost.
+        for bit in [
+            culture_bits::CULTIVATION,
+            culture_bits::MINING,
+            culture_bits::WARFARE,
+            culture_bits::COMMERCE,
+            culture_bits::CRAFT,
+            culture_bits::RITUAL,
+            culture_bits::ARCHITECTURE,
+            culture_bits::HUNTING,
+        ] {
+            if culture & bit != 0 && !rng.chance(0.34) {
+                culture &= !bit;
+            }
+        }
+        // A small chance of innovation: the young learn something the
+        // parents did not know.
+        if rng.chance(0.06) {
+            let all = [
+                culture_bits::CULTIVATION,
+                culture_bits::MINING,
+                culture_bits::WARFARE,
+                culture_bits::COMMERCE,
+                culture_bits::CRAFT,
+                culture_bits::RITUAL,
+                culture_bits::ARCHITECTURE,
+                culture_bits::HUNTING,
+            ];
+            let pick = all[rng.range(all.len() as u32) as usize];
+            culture |= pick;
+        }
+        culture
+    }
+
+    /// The blueprint for a child sired with a mate.
+    ///
+    /// The child inherits from *both* parents: the genes are blended, the
+    /// temperament is a mix of the two, and the offspring of two different
+    /// animals is usually more vigorous than either of them.
+    pub(crate) fn child_blueprint_with(&self, mate: &Creature) -> Creature {
+        let mut child = self.child_blueprint();
+        let mut rng = Rng::new(
+            self.id.wrapping_mul(0x9E37_79B9) as u64
+                ^ mate.id.wrapping_mul(0x85EB_CA6B) as u64
+                ^ self.age as u64,
+        );
+        // Blend the genes of the two parents.
+        for i in 0..32 {
+            let mid = (self.genes[i] + mate.genes[i]) * 0.5;
+            let blend = mid + (rng.f32() * 2.0 - 1.0) * 0.12;
+            child.genes[i] = blend.clamp(0.0, 1.0);
+        }
+        // The temperament is a mix of the two.
+        child.personality = Personality::blend(&self.personality, &mate.personality, &mut rng);
+        // The traits are re-decoded from the blended genes.
+        child.traits = decode_traits(&child.genes);
+        child.affinity = Affinity::from_roll(child.genes[16]);
+        // The culture of both parents is merged.
+        child.culture = self.inherited_culture(&mut rng) | mate.culture;
+        // The size sits between the parents, with a little drift.
+        child.size = ((self.size + mate.size) * 0.5 + rng.f32() * 0.2 - 0.1).clamp(1.0, 2.4);
+
+        // Hybrid vigour: a child of two different parents is usually
+        // stronger than either of them. Two near-identical parents produce
+        // a weak child, which is the price of inbreeding.
+        let distance = gene_distance(&self.genes, &mate.genes);
+        let vigour = (distance - 0.06).clamp(-0.25, 0.30);
+        child.max_energy = (child.max_energy * (1.0 + vigour)).max(200.0);
+        child.health = (child.health * (1.0 + vigour)).max(20.0);
+        child
+    }
 }
+
 

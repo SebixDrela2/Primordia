@@ -1,4 +1,4 @@
-use crate::creature::{CreatureSystem, Role};
+use crate::creature::{CreatureSystem, Role, Stage};
 use crate::world::World;
 use macroquad::prelude::*;
 use super::knowledge::HoverTarget;
@@ -82,7 +82,9 @@ pub fn draw_actors(
             let s = scale_x.min(scale_y);
             let sx = (c.x - view_x) * scale_x;
             let sy = (c.y - view_y) * scale_y;
-            let r = (c.size * s).max(2.5);
+            // A juvenile is drawn small and an elder slightly large, so a
+            // colony shows its ages at a glance.
+            let r = (c.body_size() * s).max(2.0);
             let base = Color::new(
                 c.team_color[0] as f32 / 255.0,
                 c.team_color[1] as f32 / 255.0,
@@ -132,10 +134,75 @@ pub fn draw_actors(
                     draw_poly(sx, sy, 3, r * 1.2, std::f32::consts::PI, base);
                     draw_circle(sx, sy, (r * 0.28).max(1.0), core);
                 }
+                Role::Envoy => {
+                    // A diplomat: a diamond with a bright core, and a little
+                    // banner so envoys stand out in a crowd.
+                    draw_poly(sx, sy, 4, r * 1.3, 0.0, base);
+                    draw_circle(sx, sy, (r * 0.26).max(1.0), core);
+                    draw_line(
+                        sx + r * 0.9,
+                        sy - r * 0.9,
+                        sx + r * 0.9,
+                        sy - r * 2.4,
+                        1.4,
+                        base,
+                    );
+                    draw_rectangle(
+                        sx + r * 0.9,
+                        sy - r * 2.4,
+                        r * 1.1,
+                        r * 0.7,
+                        Color::new(1.0, 0.86, 0.35, 0.85),
+                    );
+                }
                 Role::Worker => {
                     draw_circle(sx, sy, r, base);
                     draw_circle(sx, sy, (r * 0.3).max(1.0), core);
                 }
+            }
+
+            // The life stage is drawn as a ring around the animal: a thin
+            // ring for a juvenile, a plain one for an adult and a broken
+            // one for an elder.
+            match c.stage {
+                Stage::Juvenile => {
+                    draw_circle_lines(
+                        sx,
+                        sy,
+                        r * 1.5,
+                        1.0,
+                        Color::new(base.r, base.g, base.b, 0.55),
+                    );
+                }
+                Stage::Elder => {
+                    // A second, fainter ring marks the old ones.
+                    draw_circle_lines(
+                        sx,
+                        sy,
+                        r * 1.45,
+                        1.2,
+                        Color::new(1.0, 0.85, 0.55, 0.6),
+                    );
+                }
+                Stage::Adult => {}
+            }
+
+            // A creature that has left its colony is marked with a pale
+            // outline: it does not belong to the colony any more.
+            if c.migrating {
+                draw_circle_lines(
+                    sx,
+                    sy,
+                    r * 1.7,
+                    1.4,
+                    Color::new(1.0, 0.95, 0.7, 0.7),
+                );
+            }
+
+            // A creature that is courting shows a small heart above it, so
+            // the player can watch the courtship of a colony.
+            if c.mate.is_some() && c.sired > 0 {
+                draw_circle(sx, sy - r * 1.9, (r * 0.22).max(1.0), Color::new(1.0, 0.45, 0.6, 0.85));
             }
 
             // Damage bar (only when hurt).

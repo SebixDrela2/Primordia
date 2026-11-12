@@ -22,14 +22,15 @@ impl World {
 
     // Rebuild the full list of active cells (used after seeding).
     pub fn rebuild_active(&mut self) {
-        self.active.clear();
+        // Fill the queue, not the work list: the next step moves the queue
+        // into the work list.
         self.next_active.clear();
         for i in 0..self.listed.len() {
             self.listed[i] = false;
             let k = self.kind[i];
             if k != Elem::Empty as u8 && !self.inert[k as usize] {
                 self.listed[i] = true;
-                self.active.push(i as u32);
+                self.next_active.push(i as u32);
             }
         }
     }

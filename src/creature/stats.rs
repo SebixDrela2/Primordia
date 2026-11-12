@@ -35,6 +35,7 @@ impl CreatureSystem {
         let mut builders = 0;
         let mut explorers = 0;
         let mut shamans = 0;
+        let mut envoys = 0;
         let mut tools_pickaxe = 0;
         let mut tools_sword = 0;
         let mut tools_hammer = 0;
@@ -61,6 +62,8 @@ impl CreatureSystem {
         let mut hunger_sum = 0.0;
         let mut thirst_sum = 0.0;
         let mut stamina_sum = 0.0;
+        let mut juveniles = 0;
+        let mut elders = 0;
 
         for c in &self.list {
             fit += c.fitness;
@@ -73,6 +76,11 @@ impl CreatureSystem {
             stamina_sum += c.stamina;
             if c.active_spell != Spell::None { spell_count += 1; }
             if c.mount_kind != MountKind::None { mount_count += 1; }
+            match c.stage {
+                Stage::Juvenile => juveniles += 1,
+                Stage::Elder => elders += 1,
+                Stage::Adult => {}
+            }
             if c.disease != Disease::None {
                 disease_count += 1;
             }
@@ -85,6 +93,7 @@ impl CreatureSystem {
                 Role::Builder => builders += 1,
                 Role::Explorer => explorers += 1,
                 Role::Shaman => shamans += 1,
+                Role::Envoy => envoys += 1,
             }
             match c.tool {
                 Tool::Pickaxe => tools_pickaxe += 1,
@@ -131,6 +140,7 @@ impl CreatureSystem {
             builders,
             explorers,
             shamans,
+            envoys,
             tools_pickaxe,
             tools_sword,
             tools_hammer,
@@ -160,6 +170,15 @@ impl CreatureSystem {
             avg_hunger: hunger_sum / pop as f32,
             avg_thirst: thirst_sum / pop as f32,
             avg_stamina: stamina_sum / pop as f32,
+            juveniles,
+            elders,
+            matings: self.matings_total,
+            splits: self.splits_total,
+            practices: self
+                .culture_pool
+                .iter()
+                .map(|(_, c)| c.count_ones())
+                .sum(),
         };
     }
 }

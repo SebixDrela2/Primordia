@@ -217,5 +217,28 @@ pub fn apply_event(effects: &mut Effects, ev: SimEvent) {
                     effects.burst(x, y, [255, 190, 90], 20, 11.0);
                     effects.text(x, y, [255, 210, 120], "BOOM".to_string());
                 }
+                SimEvent::Treaty { x, y, color, label } => {
+                    // A treaty is a formal, golden moment: two rings that
+                    // close in on each other.
+                    effects.ring(x, y, [255, 214, 120], 18.0, 0.9);
+                    effects.ring(x, y, color, 11.0, 0.7);
+                    effects.text(x, y, [255, 226, 150], label.clone());
+                }
+                SimEvent::War { x, y, color } => {
+                    // War is a red, jagged break, ringed in the colour of
+                    // the species that started it.
+                    effects.ring(x, y, [255, 70, 70], 30.0, 0.9);
+                    effects.ring(x, y, color, 22.0, 0.7);
+                    effects.burst(x, y, [255, 90, 70], 18, 10.0);
+                    effects.text(x, y, [255, 120, 110], "WAR".to_string());
+                }
+                SimEvent::Speciation { x, y, color } => {
+                    // A new species: two rings opening outward from the
+                    // place it was born.
+                    effects.ring(x, y, [255, 255, 220], 26.0, 1.1);
+                    effects.ring(x, y, color, 14.0, 0.8);
+                    effects.burst(x, y, [255, 250, 210], 22, 9.0);
+                    effects.text(x, y, [255, 255, 230], "NEW SPECIES".to_string());
+                }
             }
 }

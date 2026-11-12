@@ -13,19 +13,41 @@ pub enum Role {
     Builder = 5,
     Explorer = 6,
     Shaman = 7,
+    /// A diplomat. Envoys walk to foreign colonies to negotiate treaties.
+    Envoy = 8,
 }
 
 /// Evolutionary traits. A creature inherits its genes from its parents, and
 /// the genes decide which traits a species evolves. Every trait has a real
 /// effect on the simulation.
+///
+/// The bits are `u16`, so a species can carry up to sixteen of them.
 pub mod trait_bits {
-    pub const FEROCIOUS: u8 = 1 << 0;
-    pub const INDUSTRIOUS: u8 = 1 << 1;
-    pub const HARDY: u8 = 1 << 2;
-    pub const FERTILE: u8 = 1 << 3;
-    pub const KEEN_SENSES: u8 = 1 << 4;
-    pub const SCAVENGER: u8 = 1 << 5;
-    pub const PEACEFUL: u8 = 1 << 6;
+    pub const FEROCIOUS: u16 = 1 << 0;
+    pub const INDUSTRIOUS: u16 = 1 << 1;
+    pub const HARDY: u16 = 1 << 2;
+    pub const FERTILE: u16 = 1 << 3;
+    pub const KEEN_SENSES: u16 = 1 << 4;
+    pub const SCAVENGER: u16 = 1 << 5;
+    pub const PEACEFUL: u16 = 1 << 6;
+    /// Melee attacks poison whatever they hit.
+    pub const VENOMOUS: u16 = 1 << 7;
+    /// Can swim through water instead of being blocked by it.
+    pub const AMPHIBIOUS: u16 = 1 << 8;
+    /// Hunts at night and rests badly in the day.
+    pub const NOCTURNAL: u16 = 1 << 9;
+    /// Works better in the company of its own kind.
+    pub const GREGARIOUS: u16 = 1 << 10;
+    /// Carries far more than its size suggests.
+    pub const HOARDER: u16 = 1 << 11;
+    /// Immune to the cold, and drawn to heat.
+    pub const THERMOPHILIC: u16 = 1 << 12;
+    /// Reads metal in the rock and digs towards it.
+    pub const METALLOPHILIC: u16 = 1 << 13;
+    /// Light bones: fast, but frail.
+    pub const HOLLOW_BONED: u16 = 1 << 14;
+    /// The colony shares one mind: the members know what the others know.
+    pub const HIVEMIND: u16 = 1 << 15;
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -37,6 +59,15 @@ pub enum Trait {
     KeenSenses,
     Scavenger,
     Peaceful,
+    Venomous,
+    Amphibious,
+    Nocturnal,
+    Gregarious,
+    Hoarder,
+    Thermophilic,
+    Metallophilic,
+    HollowBoned,
+    Hivemind,
 }
 
 impl Trait {
@@ -49,6 +80,15 @@ impl Trait {
             Trait::KeenSenses => "Keen Senses",
             Trait::Scavenger => "Scavenger",
             Trait::Peaceful => "Peaceful",
+            Trait::Venomous => "Venomous",
+            Trait::Amphibious => "Amphibious",
+            Trait::Nocturnal => "Nocturnal",
+            Trait::Gregarious => "Gregarious",
+            Trait::Hoarder => "Hoarder",
+            Trait::Thermophilic => "Thermophilic",
+            Trait::Metallophilic => "Metallophilic",
+            Trait::HollowBoned => "Hollow-Boned",
+            Trait::Hivemind => "Hivemind",
         }
     }
 
@@ -61,13 +101,26 @@ impl Trait {
             Trait::KeenSenses => "sees and senses further",
             Trait::Scavenger => "finds food and corpses further away",
             Trait::Peaceful => "prefers trade over violence",
+            Trait::Venomous => "melee attacks poison the wounded",
+            Trait::Amphibious => "swims through water and damp",
+            Trait::Nocturnal => "hunts at night, idles through the day",
+            Trait::Gregarious => "works faster near its own kind",
+            Trait::Hoarder => "carries 60% more",
+            Trait::Thermophilic => "immune to cold, thrives near lava",
+            Trait::Metallophilic => "senses metal and digs towards it",
+            Trait::HollowBoned => "moves faster, but has less health",
+            Trait::Hivemind => "the colony shares one mind",
         }
     }
 }
 
 /// Decode the trait flags of a gene set.
-pub fn decode_traits(genes: &[f32; 32]) -> u8 {
-    let mut bits = 0u8;
+///
+/// Every trait has its own gene. A high gene means the trait is expressed,
+/// except for the `Peaceful` trait, which is the mirror image: a *low* gene
+/// means the species has evolved a peaceful nature.
+pub fn decode_traits(genes: &[f32; 32]) -> u16 {
+    let mut bits = 0u16;
     if genes[0] > 0.74 {
         bits |= trait_bits::FEROCIOUS;
     }
@@ -89,10 +142,43 @@ pub fn decode_traits(genes: &[f32; 32]) -> u8 {
     if genes[6] < 0.18 {
         bits |= trait_bits::PEACEFUL;
     }
+    if genes[7] > 0.76 {
+        bits |= trait_bits::VENOMOUS;
+    }
+    if genes[8] > 0.76 {
+        bits |= trait_bits::AMPHIBIOUS;
+    }
+    if genes[9] > 0.76 {
+        bits |= trait_bits::NOCTURNAL;
+    }
+    if genes[10] > 0.76 {
+        bits |= trait_bits::GREGARIOUS;
+    }
+    if genes[11] > 0.76 {
+        bits |= trait_bits::HOARDER;
+    }
+    if genes[12] > 0.76 {
+        bits |= trait_bits::THERMOPHILIC;
+    }
+    if genes[13] > 0.76 {
+        bits |= trait_bits::METALLOPHILIC;
+    }
+    if genes[14] > 0.78 {
+        bits |= trait_bits::HOLLOW_BONED;
+    }
+    if genes[15] > 0.80 {
+        bits |= trait_bits::HIVEMIND;
+    }
     bits
 }
 
-pub fn trait_list(bits: u8) -> Vec<Trait> {
+/// How many traits a genome expresses. Used to judge how specialised an
+/// animal is.
+pub fn trait_count(bits: u16) -> u32 {
+    bits.count_ones()
+}
+
+pub fn trait_list(bits: u16) -> Vec<Trait> {
     let mut v = Vec::new();
     if bits & trait_bits::FEROCIOUS != 0 {
         v.push(Trait::Ferocious);
@@ -114,6 +200,33 @@ pub fn trait_list(bits: u8) -> Vec<Trait> {
     }
     if bits & trait_bits::PEACEFUL != 0 {
         v.push(Trait::Peaceful);
+    }
+    if bits & trait_bits::VENOMOUS != 0 {
+        v.push(Trait::Venomous);
+    }
+    if bits & trait_bits::AMPHIBIOUS != 0 {
+        v.push(Trait::Amphibious);
+    }
+    if bits & trait_bits::NOCTURNAL != 0 {
+        v.push(Trait::Nocturnal);
+    }
+    if bits & trait_bits::GREGARIOUS != 0 {
+        v.push(Trait::Gregarious);
+    }
+    if bits & trait_bits::HOARDER != 0 {
+        v.push(Trait::Hoarder);
+    }
+    if bits & trait_bits::THERMOPHILIC != 0 {
+        v.push(Trait::Thermophilic);
+    }
+    if bits & trait_bits::METALLOPHILIC != 0 {
+        v.push(Trait::Metallophilic);
+    }
+    if bits & trait_bits::HOLLOW_BONED != 0 {
+        v.push(Trait::HollowBoned);
+    }
+    if bits & trait_bits::HIVEMIND != 0 {
+        v.push(Trait::Hivemind);
     }
     v
 }

@@ -28,6 +28,7 @@ fn behavior_name(b: Behavior) -> &'static str {
         Behavior::Spread => "Spread",
         Behavior::Hatch => "Hatch",
         Behavior::Decay => "Decay",
+    Behavior::Cultivate => "Cultivate",
     }
 }
 

@@ -10,15 +10,21 @@
 //! - step.rs       the simulation step (the behaviour loop)
 //! - actions.rs    the individual behaviours a creature can pick
 //! - combat.rs     projectiles, bombs, turrets and deaths
+//! - diplomacy.rs  relations, treaties and negotiations between species
 //! - stats.rs      population statistics
 
 mod actions;
 mod brain;
 mod colony;
 mod combat;
+mod diplomacy;
 mod enums;
+mod heritage;
+mod mating;
 mod names;
+mod personality;
 mod senses;
+mod speciation;
 mod stats;
 mod step;
 
@@ -26,8 +32,34 @@ use crate::elements::Elem;
 use crate::rng::Rng;
 use crate::world::{World, DIRS4, DIRS8};
 
-pub const INPUTS: usize = 224;
-pub const OUTPUTS: usize = 20;
+pub const INPUTS: usize = 252;
+pub const OUTPUTS: usize = 25;
+
+/// The network outputs, in order.
+///
+/// The first twenty are the original behaviour outputs:
+///
+/// ```text
+///  0 move_x      1 move_y      2 eat         3 reproduce
+///  4 attack      5 build       6 craft       7 cast_spell
+///  8 mount       9 trade      10 rest       11 switch_spell
+/// 12 dig/mine   13 gather_water 14 shoot    15 flee
+/// 16 seek       17 forage     18 rally      19 defend
+/// ```
+///
+/// The last five drive the diplomacy and courtship sectors.
+pub mod outputs {
+    /// Open talks with a foreign creature.
+    pub const NEGOTIATE: usize = 20;
+    /// Make a hostile move.
+    pub const HOSTILE: usize = 21;
+    /// Offer an alliance or a pact.
+    pub const ALLY: usize = 22;
+    /// Demand tribute.
+    pub const TRIBUTE: usize = 23;
+    /// Court a mate of its own kind.
+    pub const SEEK_MATE: usize = 24;
+}
 const MAX_POP: usize = 500;
 /// Above this population creatures stop reproducing so the world stays lively
 /// without grinding to a halt (the hard cap is still MAX_POP).
@@ -72,6 +104,13 @@ pub mod energy_cost {
     pub const SPELL: f32 = 10.0;
 }
 
+/// How many farms a single colony may keep.
+///
+/// Each plot takes 4 wood and a builder's time, and a plot that nobody
+/// tends is just a field of weeds. A handful is enough to feed a colony
+/// and keeps the wood for other things.
+pub const MAX_FARMS: usize = 4;
+
 /// How fast a creature may move, in cells per step.
 ///
 /// The old limit was 2.6, which made a creature cross the whole screen in
@@ -106,7 +145,8 @@ pub struct Structure {
     pub hp: f32,
     pub cooldown: u32,
     pub armed: bool,
-    /// 0 = generic, 1 = turret, 2 = temple (grants morale to its colony).
+    /// 0 = generic, 1 = turret, 2 = temple (grants morale to its colony),
+    /// 3 = farm (a plot that grows crops).
     pub kind: u8,
 }
 
@@ -132,6 +172,13 @@ pub enum SimEvent {
     Death { x: f32, y: f32, color: [u8; 3], size: f32 },
     Heal { x: f32, y: f32, color: [u8; 3] },
     Explosion { x: f32, y: f32, color: [u8; 3] },
+    /// A diplomatic moment: a treaty signed, a tribute demanded, talks held.
+    Treaty { x: f32, y: f32, color: [u8; 3], label: String },
+    /// War has been declared between two species.
+    War { x: f32, y: f32, color: [u8; 3] },
+    /// A group of animals has left its colony and become a species of
+    /// its own.
+    Speciation { x: f32, y: f32, color: [u8; 3] },
 }
 
 /// Uniform spatial hash so neighbour queries do not scan the whole colony.
@@ -204,11 +251,26 @@ pub struct Creature {
     pub vehicle: Option<u32>,
     pub mount_kind: MountKind,
     pub mount_stamina: f32,
-    // Genetics
+    /// Genetics
     pub genes: [f32; 32],
     pub mutations: u16,
     /// Evolutionary traits decoded from the genes.
-    pub traits: u8,
+    pub traits: u16,
+    /// The individual's temperament: the part of it that is not a species
+    /// trait but a personal one.
+    pub personality: Personality,
+    /// Which stage of life it is in.
+    pub stage: Stage,
+    /// What its species has become adapted to.
+    pub affinity: Affinity,
+    /// What its species has learned to do.
+    pub culture: u16,
+    /// The mate it is courting, if any.
+    pub mate: Option<u32>,
+    /// How many children it has sired with a mate.
+    pub sired: u32,
+    /// This animal has left its colony and is on its own.
+    pub migrating: bool,
     // Needs
     pub hunger: f32,
     pub thirst: f32,
@@ -217,6 +279,17 @@ pub struct Creature {
     pub resting: bool,
     // Memory (tiny blackboard for learned behavior)
     pub memory: [f32; 8],
+    // Diplomacy
+    /// Ticks until this creature is willing to make another diplomatic move.
+    pub diplo_cooldown: u16,
+    /// How far the current negotiation has progressed (0..1).
+    pub diplo_progress: f32,
+    /// The species this creature is currently negotiating with.
+    pub diplo_partner: Option<u32>,
+    /// The creature this one is negotiating with.
+    pub diplo_with: Option<u32>,
+    /// How many treaties this creature has personally concluded.
+    pub pacts_signed: u32,
 }
 
 #[derive(Default)]
@@ -236,6 +309,7 @@ pub struct CreatureStats {
     pub builders: u32,
     pub explorers: u32,
     pub shamans: u32,
+    pub envoys: u32,
     pub tools_pickaxe: u32,
     pub tools_sword: u32,
     pub tools_hammer: u32,
@@ -267,6 +341,16 @@ pub struct CreatureStats {
     pub avg_stamina: f32,
     pub shots: u32,
     pub towers: u32,
+    /// How many creatures are still young.
+    pub juveniles: u32,
+    /// How many creatures are old.
+    pub elders: u32,
+    /// How many pairs were made in the last run of ticks.
+    pub matings: u32,
+    /// How many species have split off from another.
+    pub splits: u32,
+    /// How many practices the species have learned.
+    pub practices: u32,
 }
 
 pub struct CreatureSystem {
@@ -282,6 +366,10 @@ pub struct CreatureSystem {
     pub builds_total: u64,
     pub trades_total: u64,
     pub spells_cast: u64,
+    /// How many pairs have mated in this run.
+    pub matings_total: u32,
+    /// How many young have been born to two parents.
+    pub two_parent_births: u32,
     next_squad: u16,
     vehicles: Vec<Vehicle>,
     next_vehicle: u32,
@@ -297,6 +385,20 @@ pub struct CreatureSystem {
     pub events: Vec<SimEvent>,
     /// Bombs currently in flight.
     pub bombs: Vec<Bomb>,
+    /// The relations between the species of this world.
+    pub diplomacy: Diplomacy,
+    /// What each species has collectively learned, by species id.
+    ///
+    /// A practice that one animal discovers is remembered by the colony
+    /// and passed on to the young, so a species that learns to farm stays a
+    /// farming species even after the individual that worked it out dies.
+    pub culture_pool: Vec<(u32, u16)>,
+    /// The groups that have left their colonies to found a new species.
+    pub migrations: Vec<Migration>,
+    /// How many species have split off from another in this run.
+    pub splits_total: u32,
+    /// How many groups have left their colonies in this run.
+    pub migrations_started: u32,
 }
 
 struct Vehicle {
@@ -331,6 +433,11 @@ pub struct RevivalGenome {
 
 pub use actions::*;
 pub use brain::*;
+pub use diplomacy::*;
 pub use enums::*;
+pub use heritage::*;
+pub use mating::*;
 pub use names::*;
+pub use personality::*;
 pub use senses::*;
+pub use speciation::*;

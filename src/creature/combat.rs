@@ -46,6 +46,8 @@ impl CreatureSystem {
             let mut target: Option<(f32, f32, f32)> = None;
             for other in self.list.iter() {
                 if other.species == s.species { continue; }
+                // Turrets hold their fire against allies.
+                if self.diplomacy.are_allied(s.species, other.species) { continue; }
                 let dx = other.x - s.x;
                 let dy = other.y - s.y;
                 let d = (dx * dx + dy * dy).sqrt();
@@ -107,6 +109,10 @@ impl CreatureSystem {
                         if ospecies == b.owner {
                             continue;
                         }
+                        // A bomb spares the allies of the one who threw it.
+                        if self.diplomacy.are_allied(b.owner, ospecies) {
+                            continue;
+                        }
                         let dx = ox - bx;
                         let dy = oy - by;
                         if dx * dx + dy * dy < 36.0 {
@@ -166,6 +172,8 @@ impl CreatureSystem {
             let mut hit: Option<usize> = None;
             for (j, other) in self.list.iter().enumerate() {
                 if other.species == p.species { continue; }
+                // A shot never stops at an ally.
+                if self.diplomacy.are_allied(p.species, other.species) { continue; }
                 if other.health <= 0.0 { continue; }
                 if segment_distance(other.x, other.y, p.px, p.py, p.x, p.y) < other.size.max(1.6) {
                     hit = Some(j);
@@ -217,6 +225,12 @@ impl CreatureSystem {
                 if other.species == a_species {
                     return;
                 }
+                // Allies are never attacked. Breaking the treaty turns the
+                // ally back into a normal enemy, so it only has to be torn
+                // up once.
+                if self.diplomacy.are_allied(a_species, other.species) {
+                    return;
+                }
                 let priority = match (a_role, other.role) {
                     (Role::Soldier, Role::Queen) => 0.0,
                     (Role::Soldier, Role::Soldier) => 10.0,
@@ -224,7 +238,16 @@ impl CreatureSystem {
                     (Role::Worker, _) => 50.0,
                     _ => 30.0,
                 };
-                let d = ((other.x - ax).powi(2) + (other.y - ay).powi(2)).sqrt() + priority;
+                // A species we are formally at war with comes first: the
+                // war is the reason the creature is swinging at all.
+                let war_penalty = if self.diplomacy.at_war(a_species, other.species) {
+                    0.0
+                } else {
+                    25.0
+                };
+                let d = ((other.x - ax).powi(2) + (other.y - ay).powi(2)).sqrt()
+                    + priority
+                    + war_penalty;
                 let max_range = if a_role == Role::Soldier { 14.0 } else { 6.0 };
                 if d < max_range && best.map_or(true, |b| d < b.1) {
                     best = Some((j, d));
@@ -240,6 +263,34 @@ impl CreatureSystem {
                     if d < 26.0 && self.list[*tj].species != a_species {
                         best = Some((*tj, d));
                     }
+                }
+            }
+            // Mutual defence: with no target of its own, a creature takes
+            // on whoever is fighting one of its allies. An alliance is
+            // therefore worth real soldiers, not just a shared label.
+            if best.is_none() {
+                let allies = self.diplomacy.allies_of(a_species);
+                if !allies.is_empty() {
+                    let mut guard: Option<(usize, f32)> = None;
+                    grid.near(ax, ay, 26, |ji| {
+                        let j = ji as usize;
+                        if j == a {
+                            return;
+                        }
+                        let other = &self.list[j];
+                        if other.species == a_species {
+                            return;
+                        }
+                        // Only the enemies of our allies are fair game.
+                        if !allies.iter().any(|al| self.diplomacy.at_war(*al, other.species)) {
+                            return;
+                        }
+                        let d = ((other.x - ax).powi(2) + (other.y - ay).powi(2)).sqrt();
+                        if d < 20.0 && guard.map_or(true, |g| d < g.1) {
+                            guard = Some((j, d));
+                        }
+                    });
+                    best = guard;
                 }
             }
             if let Some((j, _)) = best {
@@ -262,7 +313,13 @@ impl CreatureSystem {
                     if attacker.traits & trait_bits::FEROCIOUS != 0 {
                         dmg *= 1.35;
                     }
+                    // A colony that has fought for generations fights better.
+                    dmg *= attacker.culture_factor(Culture::Warfare);
+                    // A bold animal swings harder than a timid one.
+                    dmg *= 0.8 + attacker.personality.aggression * 0.4;
                     if attacker.active_spell == Spell::Fireball && attacker.spell_cd[1] == 0 { dmg += 20.0; }
+                    // The victim's own build decides how much of it lands.
+                    let dmg = self.list[j].damage_taken(dmg);
                     self.list[j].health -= dmg;
                     // Melee costs energy: swinging is work, and it used to
                     // hand the attacker energy instead.
@@ -274,9 +331,24 @@ impl CreatureSystem {
                         color: self.list[a].team_color,
                         damage: dmg,
                     });
+                    // A venomous attacker poisons the wound it made. The
+                    // poison keeps working after the bite, so a venomous
+                    // species wins fights it should lose.
+                    if self.list[a].traits & trait_bits::VENOMOUS != 0
+                        && self.list[j].disease == Disease::None
+                    {
+                        self.list[j].disease = Disease::Poison;
+                        self.list[j].disease_timer = 260;
+                    }
                     if self.list[j].health <= 0.0 {
                         self.list[a].kills += 1;
                         self.list[a].energy = (self.list[a].energy + 140.0).min(self.list[a].max_energy);
+                        // A corpse between two species is how a rivalry
+                        // starts. Every kill costs the two species a little
+                        // trust, which is what eventually tips a truce into
+                        // a war.
+                        let victim_species = self.list[j].species;
+                        self.adjust_trust(a_species, victim_species, -2.5);
                     }
                 }
             }

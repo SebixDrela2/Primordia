@@ -230,6 +230,7 @@ impl CreatureSystem {
         enemy_turrets: u32,
         species_population: u32,
         rival_population: u32,
+        ds: &DiplomaticSense,
         input: &mut [f32],
     ) {
         input.fill(0.0);
@@ -289,7 +290,16 @@ impl CreatureSystem {
         let mut a_is_queen = 0.0;
         let mut enemies_close = 0.0f32;
         let mut enemies_far = 0.0f32;
-        grid.near(c.x, c.y, 20, |idx| {
+        // An alliance brings shared vision: the allies' eyes become your
+        // eyes, so a creature with an ally spots a threat much further
+        // away. A hivemind species shares one mind and sees even further,
+        // and a nocturnal animal's eyes are worth more in the dark.
+        let mut vision = if ds.alliances > 0.0 { 34.0 } else { 20.0 };
+        if c.traits & trait_bits::HIVEMIND != 0 {
+            vision *= 1.6;
+        }
+        vision *= c.vision_factor(day_night);
+        grid.near(c.x, c.y, vision as usize, |idx| {
             let a = &agents[idx as usize];
             let (id, ox, oy, ospecies, orole, ohp) =
                 (a.0, a.1, a.2, a.3, a.4, a.5);
@@ -333,8 +343,7 @@ impl CreatureSystem {
                     enemies_close += 1.0;
                 } else if d < 25.0 {
                     enemies_far += 1.0;
-                }
-            }
+                }            }
         });
 
         // Internal state (16) - slots 32-47
@@ -353,7 +362,7 @@ impl CreatureSystem {
         input[44] = (c.craft_cooldown as f32 / 50.0).clamp(0.0, 1.0);
         input[45] = (c.spell_cooldown as f32 / 60.0).clamp(0.0, 1.0);
         input[46] = if c.resting { 1.0 } else { 0.0 };
-        input[47] = (c.carried / CARRY_CAP).clamp(0.0, 1.0);
+        input[47] = (c.carried / c.carry_cap()).clamp(0.0, 1.0);
 
         // Colony awareness (8) - slots 48-55
         let base_dx = c.base_x - c.x;
@@ -535,6 +544,51 @@ impl CreatureSystem {
         // Colony strength (222-223)
         input[222] = (species_population as f32 / 40.0).clamp(0.0, 1.0);
         input[223] = (rival_population as f32 / 40.0).clamp(0.0, 1.0);
+
+        // ---- Diplomacy (224-243) -----------------------------------------
+        // What the creature knows about other species: who is nearby, how it
+        // feels about them and how the two colonies compare in strength.
+        input[224] = ds.state;
+        input[225] = (ds.trust / 100.0).clamp(-1.0, 1.0);
+        input[226] = ds.at_war;
+        input[227] = ds.allied;
+        input[228] = ds.is_envoy;
+        input[229] = (1.0 - (ds.dist / 40.0).min(1.0)).max(0.0);
+        input[230] = ds.alliances / 4.0;
+        input[231] = ds.wars / 4.0;
+        input[232] = ds.treaties / 8.0;
+        input[233] = (ds.balance - 1.0).clamp(-1.0, 1.0);
+        input[234] = ds.talking;
+        // The partner's identity, hashed into a few buckets so the network
+        // can tell "the species I always trade with" from "a stranger".
+        let partner_bucket = ds.partner.unwrap_or(0) % 8;
+        input[235] = if partner_bucket == 0 { 1.0 } else { 0.0 };
+        input[236] = if partner_bucket == 1 { 1.0 } else { 0.0 };
+        input[237] = if partner_bucket == 2 { 1.0 } else { 0.0 };
+        input[238] = if partner_bucket == 3 { 1.0 } else { 0.0 };
+        // How far the creature still has to walk to reach a foreign colony.
+        input[239] = (ds.dist / 120.0).min(1.0);
+        // The creature's own diplomatic standing (reputation and pacts).
+        input[240] = (c.reputation as f32 / 100.0).clamp(-1.0, 1.0);
+        input[241] = (c.pacts_signed as f32 / 10.0).clamp(0.0, 1.0);
+        input[242] = if c.diplo_cooldown == 0 { 1.0 } else { 0.0 };
+        input[243] = (c.diplo_progress).clamp(0.0, 1.0);
+
+        // ---- Life and heritage (244-251) ---------------------------------
+        // The stage of life, then the five axes of the temperament.
+        input[244] = match c.stage {
+            Stage::Juvenile => 0.0,
+            Stage::Adult => 0.5,
+            Stage::Elder => 1.0,
+        };
+        input[245] = c.personality.aggression;
+        input[246] = c.personality.curiosity;
+        input[247] = c.personality.sociability;
+        input[248] = c.personality.greed;
+        input[249] = c.personality.caution;
+        // What the species is adapted to, and what it has learned.
+        input[250] = (c.affinity as u8 as f32) / 6.0;
+        input[251] = (c.culture.count_ones() as f32) / 8.0;
     }
 
 }

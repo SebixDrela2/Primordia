@@ -97,9 +97,72 @@ impl Weather {
             Weather::Meteor => "Meteor Shower",
         }
     }
+
+    /// How fast a creature moves in this weather.
+    ///
+    /// The wind and the cold slow everything down, and a storm slows it
+    /// most of all.
+    pub fn speed_factor(self) -> f32 {
+        match self {
+            Weather::Clear => 1.0,
+            Weather::Rain => 0.9,
+            Weather::Storm => 0.72,
+            Weather::Snow => 0.84,
+            Weather::Meteor => 0.9,
+        }
+    }
+
+    /// What the weather costs a creature in energy.
+    ///
+    /// The figures are multipliers on the ordinary energy drain, so a
+    /// stormy day is a hungry day.
+    pub fn energy_factor(self) -> f32 {
+        match self {
+            Weather::Clear => 1.0,
+            Weather::Rain => 1.3,
+            Weather::Storm => 2.1,
+            Weather::Snow => 1.7,
+            Weather::Meteor => 1.2,
+        }
+    }
+
+    /// How much the weather frightens a creature.
+    ///
+    /// A meteor shower is terrifying: the animals run further and sooner.
+    pub fn fear_factor(self) -> f32 {
+        match self {
+            Weather::Clear => 0.0,
+            Weather::Rain => 0.0,
+            Weather::Storm => 8.0,
+            Weather::Snow => 2.0,
+            Weather::Meteor => 22.0,
+        }
+    }
+
+    /// Whether the creatures are looking for shelter.
+    ///
+    /// In a storm they huddle near their colony instead of wandering.
+    pub fn shelters(self) -> bool {
+        matches!(self, Weather::Storm | Weather::Meteor)
+    }
+
+    /// How much the rain quenches a creature's thirst.
+    pub fn thirst_factor(self) -> f32 {
+        match self {
+            Weather::Rain => 1.8,
+            Weather::Storm => 2.2,
+            _ => 1.0,
+        }
+    }
 }
 
 pub const DIRS4: [(i32, i32); 4] = [(0, 1), (1, 0), (0, -1), (-1, 0)];
+
+/// How far a farm has to reach for water to be able to work.
+///
+/// The same radius is used when a plot is chosen and when it is worked, so
+/// a farm that can be built is always a farm that can grow.
+pub const FARM_WATER_RADIUS: i32 = 6;
 pub const DIRS8: [(i32, i32); 8] = [
     (0, 1),
     (1, 1),

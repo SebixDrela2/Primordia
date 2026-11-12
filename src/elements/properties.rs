@@ -17,6 +17,7 @@ impl Elem {
             Elem::Fertilizer => [100, 140, 80],
             Elem::Mud => [120, 100, 80],
             Elem::Snow => [238, 244, 252],
+            Elem::Crop => [226, 196, 86],
             // Liquids
             Elem::Water => [56, 132, 255],
             Elem::Oil => [58, 46, 34],
@@ -140,6 +141,7 @@ impl Elem {
                 | Elem::Ice
                 | Elem::Snow
                 | Elem::Plant
+                | Elem::Crop
                 | Elem::Fungus
                 | Elem::Moss
                 | Elem::Roots
@@ -186,6 +188,7 @@ impl Elem {
             Elem::Spore | Elem::Moss => Behavior::Diffuse,
             Elem::Energy | Elem::Mana | Elem::Soul | Elem::Ember => Behavior::Energy,
             Elem::Plant | Elem::Fungus | Elem::Roots => Behavior::Grow,
+            Elem::Farm => Behavior::Cultivate,
             Elem::Wire | Elem::Circuit => Behavior::Conduct,
             Elem::Virus | Elem::Bacteria => Behavior::Spread,
             Elem::Egg => Behavior::Hatch,
@@ -208,7 +211,7 @@ impl Elem {
             Elem::Blood => 11,
             Elem::Tar => 14,
             Elem::Sand => 16,
-            Elem::Plant | Elem::Fungus | Elem::Moss | Elem::Ice => 9,
+            Elem::Plant | Elem::Fungus | Elem::Moss | Elem::Ice | Elem::Crop => 9,
             Elem::Wood => 8,
             Elem::Roots => 10,
             Elem::Meat | Elem::Leather => 11,
@@ -276,6 +279,9 @@ impl Elem {
             Elem::Corpse => 40.0,
             Elem::Mud => 5.0,
             Elem::Food => 25.0,
+            // A cultivated crop is worth more than a wild plant: farming
+            // has to be worth the effort of tending it.
+            Elem::Crop => 45.0,
             Elem::Charcoal => 5.0,
             Elem::Snow => 1.0,
             // Gases/energy: small nutrition
@@ -366,6 +372,7 @@ impl Elem {
                 | Elem::Roots
                 | Elem::Meat
                 | Elem::Food
+                | Elem::Crop
                 | Elem::Egg
                 | Elem::Corpse
                 | Elem::Honey
@@ -625,6 +632,7 @@ impl Elem {
             Elem::Fertilizer => "Fertilizer",
             Elem::Mud => "Mud",
             Elem::Snow => "Snow",
+            Elem::Crop => "Crop",
             // Liquids
             Elem::Water => "Water",
             Elem::Oil => "Oil",
@@ -726,6 +734,7 @@ impl Elem {
             Elem::Fertilizer => "Boosts plant growth when nearby.",
             Elem::Mud => "Wet dirt. Forms where water meets soil.",
             Elem::Snow => "Cold powder that falls in winter. Melts back into water.",
+            Elem::Crop => "A ripe crop, grown from a plant on a tilled farm. Better food than a wild plant.",
             // Liquids
             Elem::Water => "Flowing liquid. Essential for life and plants. Extinguishes fire.",
             Elem::Oil => "Flammable dark liquid. Burns readily and can be gathered for energy.",
@@ -895,7 +904,7 @@ impl Elem {
             | Elem::Bridge
             | Elem::Road => "Constructed",
             Elem::Rune | Elem::Ward | Elem::Portal => "Magical",
-            Elem::Egg | Elem::Corpse | Elem::Virus | Elem::Bacteria | Elem::Food => "Biological",
+            Elem::Egg | Elem::Corpse | Elem::Virus | Elem::Bacteria | Elem::Food | Elem::Crop => "Biological",
         }
     }
 }

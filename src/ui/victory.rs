@@ -10,6 +10,11 @@ pub struct VictoryScreen {
     pub     revival: u32,
     pub     timer: f32,
     pub     extinction: bool,
+    /// How the winner got there: alliances it held, wars it fought and the
+    /// treaties it signed.
+    pub     alliances: u32,
+    pub     wars: u32,
+    pub     treaties: u32,
 }
 
 pub fn draw_victory(v: &VictoryScreen) {
@@ -94,6 +99,20 @@ pub fn draw_victory(v: &VictoryScreen) {
     draw_text(&l1, (sw - l1d.width) / 2.0, y + 216.0, 16.0, Color::new(0.85, 0.9, 0.95, 0.92));
     let l2d = measure_text(&l2, None, 14, 1.0);
     draw_text(&l2, (sw - l2d.width) / 2.0, y + 238.0, 14.0, Color::new(0.6, 0.66, 0.72, 0.85));
+
+    // The diplomatic record of the run: it says how the winner got here.
+    let diplo = format!(
+        "{} alliances   {} wars fought   {} treaties signed",
+        v.alliances, v.wars, v.treaties
+    );
+    let dd = measure_text(&diplo, None, 14, 1.0);
+    draw_text(
+        &diplo,
+        (sw - dd.width) / 2.0,
+        y + 260.0,
+        14.0,
+        Color::new(0.45, 0.72, 1.0, 0.88),
+    );
 
     let countdown = format!("restarting in {:.1}s", v.timer.max(0.0));
     let cd = measure_text(&countdown, None, 14, 1.0);

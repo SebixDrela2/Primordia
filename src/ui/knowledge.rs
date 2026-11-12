@@ -1,5 +1,5 @@
 use crate::creature;
-use crate::creature::{CreatureSystem, trait_list};
+use crate::creature::{CreatureSystem, trait_list, culture_list, Affinity};
 use crate::elements::Elem;
 use crate::world::World;
 use macroquad::prelude::*;
@@ -14,6 +14,8 @@ pub enum HoverTarget {
 pub struct UiState {
     pub     hover: HoverTarget,
     pub     knowledge_open: bool,
+    /// Whether the diplomacy panel is on screen (toggled with G).
+    pub     diplomacy_open: bool,
     pub     discovered_elements: Vec<u8>,
     pub     discovered_creatures: Vec<u32>,
 }
@@ -23,6 +25,7 @@ impl UiState {
         Self {
             hover: HoverTarget::None,
             knowledge_open: false,
+            diplomacy_open: false,
             discovered_elements: Vec::new(),
             discovered_creatures: Vec::new(),
         }
@@ -85,6 +88,7 @@ pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx
                 creature::Role::Builder => "Builder",
                 creature::Role::Explorer => "Explorer",
                 creature::Role::Shaman => "Shaman",
+                creature::Role::Envoy => "Envoy",
             };
 
             let tool_str = match c.tool {
@@ -122,8 +126,68 @@ pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx
             lines.push(format!("age {}  size {:.1}  tech {}", c.age, c.size, c.tech_level));
             lines.push(format!("tool {}  carried {:.0}", tool_str, c.carried));
             lines.push(format!("kills {}  offspring {}", c.kills, c.offspring));
+            // The life stage and the temperament.
+            lines.push(format!(
+                "stage: {} ({})",
+                c.stage.name(),
+                c.stage.blurb()
+            ));
+            lines.push(format!("temperament: {}", c.personality.describe()));
+            lines.push(format!(
+                "adapted to: {} ({})",
+                c.affinity.name(),
+                c.affinity.blurb()
+            ));
+            // What the species has learned to do.
+            let culture: Vec<String> = culture_list(c.culture)
+                .iter()
+                .map(|cu| format!("{} ({})", cu.name(), cu.blurb()))
+                .collect();
+            if !culture.is_empty() {
+                lines.push(format!("colony knows: {}", culture.join(", ")));
+            }
             if c.disease != creature::Disease::None {
                 lines.push(format!("disease: {:?}", c.disease));
+            }
+            // The diplomatic standing of this creature and its species.
+            if c.role == creature::Role::Envoy || c.pacts_signed > 0 {
+                lines.push(format!(
+                    "envoy: {} pacts signed  rep {}",
+                    c.pacts_signed, c.reputation
+                ));
+            }
+            let relations: Vec<String> = creatures
+                .diplomacy
+                .relations
+                .iter()
+                .filter(|r| r.a == c.species || r.b == c.species)
+                .map(|r| {
+                    let other = if r.a == c.species { r.b } else { r.a };
+                    let treaties: Vec<&str> = r
+                        .treaties
+                        .iter()
+                        .map(|t| t.name())
+                        .collect();
+                    let extra = if treaties.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" [{}]", treaties.join(", "))
+                    };
+                    format!(
+                        "vs species {}: {} trust {:.0}{}",
+                        other,
+                        r.state.name(),
+                        r.trust,
+                        extra
+                    )
+                })
+                .collect();
+            for line in relations.iter().take(4) {
+                lines.push(line.clone());
+            }
+            // What the treaties actually mean, spelled out for the player.
+            for line in crate::ui::diplomacy::treaty_blurbs(creatures, c.species) {
+                lines.push(format!("  {}", line));
             }
 
             draw_tooltip_box(lines, mx, my);
@@ -219,11 +283,19 @@ pub fn draw_knowledge_window(_world: &World, creatures: &CreatureSystem, ui: &Ui
 
     // ---- Living species and the traits they evolved ----
     {
-        let mut counts: Vec<(u32, u32, u8, [u8; 3])> = Vec::new();
+        // (species, members, traits, colour, affinity, culture)
+        let mut counts: Vec<(u32, u32, u16, [u8; 3], Affinity, u16)> = Vec::new();
         for c in &creatures.list {
-            match counts.iter_mut().find(|(id, _, _, _)| *id == c.species) {
+            match counts.iter_mut().find(|(id, _, _, _, _, _)| *id == c.species) {
                 Some(e) => e.1 += 1,
-                None => counts.push((c.species, 1, c.traits, c.team_color)),
+                None => counts.push((
+                    c.species,
+                    1,
+                    c.traits,
+                    c.team_color,
+                    c.affinity,
+                    c.culture,
+                )),
             }
         }
         counts.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
@@ -236,7 +308,7 @@ pub fn draw_knowledge_window(_world: &World, creatures: &CreatureSystem, ui: &Ui
                 Color::new(0.85, 0.9, 0.95, 0.9),
             );
             yy += 22.0;
-            for (sp, n, traits, color) in counts.iter().take(12) {
+            for (sp, n, traits, color, affinity, culture) in counts.iter().take(12) {
                 draw_rectangle(
                     x + 24.0,
                     yy - 2.0,
@@ -271,7 +343,29 @@ pub fn draw_knowledge_window(_world: &World, creatures: &CreatureSystem, ui: &Ui
                     11.0,
                     Color::new(0.65, 0.75, 0.7, 0.85),
                 );
-                yy += 22.0;
+                // What the species has become adapted to, and what it has
+                // learned to do.
+                let practices: Vec<&str> = culture_list(*culture)
+                    .iter()
+                    .map(|cu| cu.name())
+                    .collect();
+                let extra = format!(
+                    "adapted to: {}   practices: {}",
+                    affinity.name(),
+                    if practices.is_empty() {
+                        "none yet".to_string()
+                    } else {
+                        practices.join(", ")
+                    }
+                );
+                draw_text(
+                    &extra,
+                    x + 40.0,
+                    yy + 24.0,
+                    11.0,
+                    Color::new(0.6, 0.66, 0.78, 0.8),
+                );
+                yy += 40.0;
             }
             yy += 10.0;
         }
@@ -335,6 +429,7 @@ pub fn draw_knowledge_window(_world: &World, creatures: &CreatureSystem, ui: &Ui
                 creature::Role::Builder => "Builder",
                 creature::Role::Explorer => "Explorer",
                 creature::Role::Shaman => "Shaman",
+                creature::Role::Envoy => "Envoy",
             };
 
             let mut end = 10;

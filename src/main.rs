@@ -62,6 +62,15 @@ async fn main() {
     static mut ACCUM: f64 = 0.0;
 
     let mut ui = UiState::new();
+    // PRIMORDIA_PANEL=diplomacy opens a window straight away (handy for
+    // screenshots and for checking the panel without hunting for the key).
+    if std::env::var("PRIMORDIA_PANEL")
+        .ok()
+        .as_deref()
+        .map_or(false, |p| p.eq_ignore_ascii_case("diplomacy"))
+    {
+        ui.diplomacy_open = true;
+    }
 
     // The renderer owns all its scratch buffers, so rendering never
     // allocates once the world exists.
@@ -90,6 +99,8 @@ async fn main() {
     let mut last_species: Option<u32> = None;
     let mut telemetry = Telemetry::new();
     telemetry.reset(1);
+    // The last diplomatic tick that was mirrored into the ecology feed.
+    let mut last_diplo_tick: u64 = 0;
     let mut effects = Effects::new();
     let mut force_render = true;
     // Smoothed camera position (the input drives `cam_x`/`cam_y`, the view
@@ -144,6 +155,11 @@ async fn main() {
         // K: toggle knowledge window
         if is_key_pressed(KeyCode::K) {
             ui.knowledge_open = !ui.knowledge_open;
+        }
+
+        // G: toggle the diplomacy panel
+        if is_key_pressed(KeyCode::G) {
+            ui.diplomacy_open = !ui.diplomacy_open;
         }
 
         // + / - : adjust simulation speed
@@ -244,11 +260,22 @@ async fn main() {
         // ---- Rolling ecology telemetry ----
         if victory.is_none() {
             telemetry.observe(now, &creatures);
+            // Mirror the diplomatic record into the ecology feed, so a
+            // treaty or a declaration of war shows up in the event list.
+            for e in creatures.diplomacy.log.iter() {
+                if e.tick > last_diplo_tick {
+                    telemetry.push(e.text.clone());
+                }
+            }
+            last_diplo_tick = creatures.tick;
         }
         telemetry.tick(dt);
 
         // ---- Turn simulation events into animations ----
         for ev in creatures.events.drain(..) {
+            if matches!(ev, SimEvent::Speciation { .. }) {
+                telemetry.push("A NEW SPECIES HAS ARISEN".to_string());
+            }
             apply_event(&mut effects, ev);
         }
         effects.update(dt);
@@ -275,6 +302,9 @@ async fn main() {
                     revival,
                     timer: 1.0,
                     extinction: true,
+                    alliances: 0,
+                    wars: 0,
+                    treaties: 0,
                 });
                 paused = true;
             } else {
@@ -295,6 +325,22 @@ async fn main() {
                         .position(|&b| b == 0)
                         .unwrap_or(rep.name.len());
                     let name = String::from_utf8_lossy(&rep.name[..end]).to_string();
+                    // The diplomatic record of the winner: the alliances it
+                    // held, the wars it fought and the treaties it signed.
+                    let mut alliances = 0u32;
+                    let mut wars = 0u32;
+                    let mut treaties = 0u32;
+                    for r in creatures.diplomacy.relations.iter() {
+                        if r.a == winner || r.b == winner {
+                            if r.state == crate::creature::RelationState::Allied {
+                                alliances += 1;
+                            }
+                            if r.state == crate::creature::RelationState::War {
+                                wars += 1;
+                            }
+                            treaties += r.treaties.len() as u32;
+                        }
+                    }
                     victory = Some(VictoryScreen {
                         winner: name,
                         color: rep.team_color,
@@ -303,6 +349,9 @@ async fn main() {
                         revival,
                         timer: 1.0,
                         extinction: false,
+                        alliances,
+                        wars,
+                        treaties,
                     });
                     paused = true;
                 }
@@ -486,6 +535,13 @@ async fn main() {
         draw_hud(&world, &creatures, view_x, view_y, seed, sim_speed, paused, zoom, revival);
         if screen_width() >= 1080.0 {
             draw_telemetry(&telemetry, screen_width() - 332.0, 18.0);
+        }
+
+        // The diplomacy panel: what the species have done to each other.
+        // It is anchored under the HUD text rather than to the bottom of
+        // the screen, so it stays in one place whatever the window size.
+        if ui.diplomacy_open {
+            draw_diplomacy_panel(&creatures, 18.0, 248.0);
         }
 
         // Draw hover tooltip

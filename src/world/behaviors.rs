@@ -140,6 +140,56 @@ impl World {
         }
     }
 
+    /// A farm tends its plot.
+    ///
+    /// This is the whole farming mechanic. A farm:
+    ///
+    /// 1. **sows** a seedling into a free cell next to it, on solid ground;
+    /// 2. **ripens** the seedlings it grew into crops.
+    ///
+    /// A crop is worth more food than the wild plant it grew from, and a
+    /// farm keeps producing as long as there is water nearby. So a colony
+    /// that builds farms turns the plants around its base into a
+    /// renewable food supply, and it can do so even after the wild
+    /// vegetation has been eaten bare.
+    ///
+    /// A farm with no water within reach is dormant and does nothing.
+    pub(crate) fn step_cultivate(&mut self, i: usize) {
+        let x = (i % self.w) as i32;
+        let y = (i / self.w) as i32;
+
+        // A farm needs water to work. Without it the plot is dead ground.
+        // The radius matches the one used when the plot is chosen, so a
+        // farm that can be built is always a farm that can grow.
+        if !self.has_water_near(x, y, FARM_WATER_RADIUS) {
+            return;
+        }
+
+        // ---- Ripen -------------------------------------------------------
+        // Turn one of the seedlings around the plot into a ripe crop.
+        if self.rng.chance(0.05) {
+            for (dx, dy) in DIRS8 {
+                if self.get(x + dx, y + dy) == Elem::Plant {
+                    self.set_xy(x + dx, y + dy, Elem::Crop);
+                    return;
+                }
+            }
+        }
+
+        // ---- Sow ---------------------------------------------------------
+        // Plant a new seedling in a free cell that has ground under it.
+        if self.rng.chance(0.05) {
+            for (dx, dy) in DIRS8 {
+                let nx = x + dx;
+                let ny = y + dy;
+                if self.get(nx, ny) == Elem::Empty && self.get(nx, ny + 1) != Elem::Empty {
+                    self.set_xy(nx, ny, Elem::Plant);
+                    return;
+                }
+            }
+        }
+    }
+
     pub(crate) fn has_water_near(&self, x: i32, y: i32, radius: i32) -> bool {
         for dy in -radius..=radius {
             for dx in -radius..=radius {

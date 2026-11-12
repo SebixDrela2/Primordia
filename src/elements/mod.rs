@@ -113,6 +113,7 @@ pub enum Elem {
     Bacteria,
     Food,
     Snow,
+    Crop,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -129,6 +130,7 @@ pub enum Behavior {
     Spread,  // for viruses/bacteria
     Hatch,   // for eggs
     Decay,   // for corpses
+    Cultivate, // for farms: they sow and ripen crops
 }
 
 impl Elem {
@@ -151,7 +153,7 @@ impl Elem {
     }
 
     /// The largest valid element discriminant (inclusive).
-    pub const MAX: u8 = Elem::Snow as u8;
+    pub const MAX: u8 = Elem::Crop as u8;
 
     // ------------------------------------------------------------------
     // Lookup tables

@@ -5,6 +5,60 @@ impl World {
         !self.get(x, y).is_passable()
     }
 
+    /// Find a good place to put a farm near `(x, y)`.
+    ///
+    /// A farm only works if it stands on open ground with water within
+    /// reach, so the search looks for a surface cell that satisfies both.
+    /// It returns the cell to build on and the cell to plant the first
+    /// seedling in.
+    pub fn find_farm_site(&self, x: i32, y: i32, radius: i32) -> Option<(i32, i32, i32, i32)> {
+        // Try the cells closest to the creature first, so the farm ends up
+        // near the colony rather than at the far edge of the world.
+        for r in 1..=radius {
+            for dy in -r..=r {
+                for dx in -r..=r {
+                    // Only the ring at this radius.
+                    if dx.abs() != r && dy.abs() != r {
+                        continue;
+                    }
+                    let nx = x + dx;
+                    let ny = y + dy;
+                    if nx < 1 || ny < 1 || nx >= self.w as i32 - 1 || ny >= self.h as i32 - 1 {
+                        continue;
+                    }
+                    // The plot itself must be free and stand on the ground.
+                    if self.get(nx, ny) != Elem::Empty {
+                        continue;
+                    }
+                    let surface = self.surface_y(nx);
+                    // A farm belongs on the surface, not buried or floating.
+                    if ny < surface - 1 || ny > surface + 4 {
+                        continue;
+                    }
+                    // There must be ground under it.
+                    if self.get(nx, ny + 1) == Elem::Empty {
+                        continue;
+                    }
+                    // And there must be water within reach, or the plot is
+                    // dead ground.
+                    if !self.has_water_near(nx, ny, FARM_WATER_RADIUS) {
+                        continue;
+                    }
+                    // Find a free cell next to the plot to sow the first
+                    // seedling in.
+                    for (ox, oy) in [(0, -1), (1, 0), (-1, 0), (0, 1)] {
+                        let px = nx + ox;
+                        let py = ny + oy;
+                        if self.get(px, py) == Elem::Empty && self.get(px, py + 1) != Elem::Empty {
+                            return Some((nx, ny, px, py));
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
     // Loose debris (powders, ice, organics) that a creature can shove aside or
     // dig through with its bare hands. Used so falling material can never
     // permanently entomb a creature.

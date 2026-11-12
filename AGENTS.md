@@ -10,6 +10,13 @@
 - Headless checks: `cargo run --release --bin bench -- 6000`.
 - `cargo run --release --bin spawncheck -- 3000` asserts that no
   underground-only material ever appears above the terrain.
+- `cargo run --release --bin diplcheck -- 12000` runs the diplomacy
+  sector headless and asserts its invariants (no allied-and-at-war pair,
+  trust in range, no relation with an extinct species).
+- `cargo run --release --bin lifecheck -- 9000` runs the life and
+  evolution sector headless and asserts its invariants (the stages are
+  reached, the temperament stays in range, a species specialises and
+  learns, and young are born to two parents).
 
 ## Code size rules
 - **No file may exceed ~1000 lines.** A file may run slightly over that
@@ -28,8 +35,9 @@
                    structures, physics, behaviors, reactions, maintain,
                    census, query
   - `src/creature/` brain, enums, names, senses, colony, step, actions,
-                   combat, stats
-  - `src/ui/`      effects, hud, knowledge, minimap, victory, actors
+                   combat, diplomacy, personality, heritage, mating, stats
+  - `src/ui/`      effects, hud, knowledge, minimap, victory, actors,
+                   diplomacy
   - `src/render/`  mod.rs (pixel loop), fx.rs (element effects),
                    light.rs (dynamic light field)
 
@@ -59,4 +67,13 @@
   the water fills it. Placing water above the ground leaves it floating.
 - A run ends when a single species is left (victory) or the population dies
   out (extinction). The winning genome seeds the next revival.
+- Diplomacy lives in `src/creature/diplomacy.rs`. Every species pair that has
+  met has one `Relation` with a state, a trust and a set of treaties. Allies
+  are never attacked, a war overrides the `Peaceful` trait, and a treaty
+  breaks the alliance it was signed with.
+- A creature has three layers of inheritance: **genes** (the species
+  traits, decoded by `decode_traits`), **heritage** (the life stage, the
+  elemental affinity and the culture the species has learned) and
+  **personality** (the individual's own temperament). A child of two
+  parents blends all three.
 

@@ -96,6 +96,11 @@ impl CreatureSystem {
             .iter()
             .map(|c| (c.id, c.x, c.y, c.species, c.role as u8, c.health))
             .collect();
+        // The stage and the culture of each creature, in the same order as
+        // the agents. The young need them to find the elder that can teach
+        // them.
+        let lives: Vec<(Stage, u16)> =
+            self.list.iter().map(|c| (c.stage, c.culture)).collect();
         // Shots currently in flight (used by the senses).
         let shot_positions: Vec<(f32, f32, u32)> = self
             .projectiles
@@ -120,12 +125,47 @@ impl CreatureSystem {
         let total_towers = self.structures.len() as u32;
         let pop_now = self.list.len();
 
+        // ---- Diplomacy setup ----
+        // The centroid of every species: where that colony lives. Envoys use
+        // these to find the colony they have to travel to.
+        let mut centroids: Vec<(u32, f32, f32)> = Vec::new();
+        {
+            let mut acc: Vec<(u32, f32, f32, u32)> = Vec::new();
+            for c in &self.list {
+                match acc.iter_mut().find(|(id, _, _, _)| *id == c.species) {
+                    Some(e) => {
+                        e.1 += c.x;
+                        e.2 += c.y;
+                        e.3 += 1;
+                    }
+                    None => acc.push((c.species, c.x, c.y, 1)),
+                }
+            }
+            for (id, sx, sy, n) in acc {
+                centroids.push((id, sx / n as f32, sy / n as f32));
+            }
+        }
+        // How willing each creature is to hold talks, filled in during the
+        // loop and read when the talks conclude.
+        let mut diplo_willing: Vec<f32> = vec![0.0; self.list.len()];
+        // The talks that are under way, resolved after the loop.
+        let mut proposals: Vec<(usize, usize, DiplomaticAction)> = Vec::new();
+        // Which creatures went looking for a mate.
+        let mut mate_willing: Vec<bool> = vec![false; self.list.len()];
+        // The practices the creatures picked up this tick. They are applied
+        // after the loop, because learning touches the whole colony.
+        let mut learned: Vec<(usize, Culture)> = Vec::new();
+
         for index in 0..self.list.len() {
+            // The results of the actions. They are assigned inside the
+            // block below and read after it, so they are declared without a
+            // value: a `let` inside the block would shadow them and the
+            // result would be lost.
+            let wants_attack: bool;
+            let ate_something: bool;
+            let built_something: bool;
             let mut died = false;
-            let mut wants_attack = false;
             let mut wants_child = false;
-            let mut ate_something = false;
-            let mut built_something = false;
             let mut cast_spell = false;
             let mut traded = false;
 
@@ -133,12 +173,107 @@ impl CreatureSystem {
                 let c = &mut self.list[index];
                 c.age += 1;
 
+                // ---- Life stage ----
+                //
+                // A creature grows up: it starts as a juvenile that cannot
+                // fight or breed, becomes a full adult, and finally turns
+                // into an elder that is slower but wiser.
+                let new_stage = Stage::of(c.age, MAX_AGE);
+                if new_stage != c.stage {
+                    // Growing up costs energy, and the body changes with it.
+                    if new_stage == Stage::Adult {
+                        c.health = (c.health + 30.0).min(c.max_health());
+                        c.energy = (c.energy - 80.0).max(0.0);
+                    }
+                    c.stage = new_stage;
+                }
+
+                // What this creature knows about the other species. It is
+                // needed early, because an alliance changes how the
+                // creature feels before it does anything else.
+                let ds = diplomatic_sense(&self.diplomacy, c, &centroids, &species_counts);
+
+                // How many of its own kind are close by. A gregarious
+                // creature works much better in the company of its own.
+                let mut kin_near = 0u32;
+                grid.near(c.x, c.y, 30, |idx| {
+                    let a = &agents[idx as usize];
+                    if a.0 != c.id && a.3 == c.species {
+                        kin_near += 1;
+                    }
+                });
+                let company = if c.traits & trait_bits::GREGARIOUS != 0 {
+                    1.0 + (kin_near as f32 / 6.0).min(1.0) * 0.5
+                } else {
+                    1.0
+                };
+
+                // ---- The elders teach the young ----
+                //
+                // A young animal that grows up near an old one learns from
+                // it: it matures a little faster and picks up a practice
+                // it did not know. This is what gives old age a purpose in
+                // the colony.
+                if c.stage == Stage::Juvenile {
+                    let mut elder: Option<u16> = None;
+                    let cx = c.x;
+                    let cy = c.y;
+                    grid.near(cx, cy, 24, |idx| {
+                        let i = idx as usize;
+                        if i >= lives.len() || !lives[i].0.can_teach() {
+                            return;
+                        }
+                        let a = &agents[i];
+                        if a.0 == c.id || a.3 != c.species {
+                            return;
+                        }
+                        let d = ((a.1 - cx).powi(2) + (a.2 - cy).powi(2)).sqrt();
+                        if d < 24.0 {
+                            elder = Some(lives[i].1);
+                        }
+                    });
+                    if let Some(culture) = elder {
+                        // The lesson speeds the young up.
+                        c.age += 1;
+                        // And it teaches one practice the young did not
+                        // know yet.
+                        for bit in [
+                            culture_bits::CULTIVATION,
+                            culture_bits::MINING,
+                            culture_bits::WARFARE,
+                            culture_bits::COMMERCE,
+                            culture_bits::CRAFT,
+                            culture_bits::RITUAL,
+                            culture_bits::ARCHITECTURE,
+                            culture_bits::HUNTING,
+                        ] {
+                            if culture & bit != 0 && c.culture & bit == 0 {
+                                c.culture |= bit;
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 // Needs decay
                 // Hardy species tire of hunger more slowly.
                 let hardy = if c.traits & trait_bits::HARDY != 0 { 0.7 } else { 1.0 };
                 c.hunger = (c.hunger + 0.06 * hardy).clamp(0.0, 100.0);
-                c.thirst = (c.thirst + 0.045 * hardy).clamp(0.0, 100.0);
-                c.stamina = (c.stamina - 0.05).clamp(0.0, c.max_stamina);
+                // The rain quenches a thirst that would otherwise build up.
+                c.thirst = (c.thirst + 0.045 * hardy / world.weather.thirst_factor())
+                    .clamp(0.0, 100.0);
+                // A juvenile grows instead of working: it burns less energy
+                // and tires less, but it also needs feeding.
+                if c.stage == Stage::Juvenile {
+                    c.stamina = (c.stamina - 0.02).clamp(0.0, c.max_stamina);
+                    c.hunger = (c.hunger - 0.02).clamp(0.0, 100.0);
+                } else {
+                    c.stamina = (c.stamina - 0.05).clamp(0.0, c.max_stamina);
+                }
+                // Elders tire more easily than the young.
+                if c.stage == Stage::Elder {
+                    c.stamina = (c.stamina - 0.03).clamp(0.0, c.max_stamina);
+                }
                 // A temple nearby steadies the colony: less hunger, faster
                 // recovery.
                 let mut morale = false;
@@ -155,13 +290,41 @@ impl CreatureSystem {
                 if morale {
                     c.hunger = (c.hunger - 0.03).clamp(0.0, 100.0);
                 }
+                // An alliance is worth feeling: the allies cover each
+                // other's wounds, so a creature with a partner heals a
+                // little faster and tires a little slower.
+                if ds.alliances > 0.0 {
+                    c.health = (c.health + 0.04).min(100.0);
+                    c.stamina = (c.stamina + 0.01).min(c.max_stamina);
+                }
                 if c.resting {
                     c.stamina = (c.stamina + STAMINA_REGEN).clamp(0.0, c.max_stamina);
                     c.energy = (c.energy + 0.02).min(c.max_energy);
                 } else {
                     c.energy -= 0.08;
                 }
-                c.mana = (c.mana + MANA_REGEN).clamp(0.0, c.max_mana);
+                // A creature heals back towards the limit its body allows.
+                // A juvenile that has just become an adult spends a long
+                // time growing into its frame.
+                let cap = c.max_health();
+                if c.health < cap {
+                    c.health = (c.health + 0.05).min(cap);
+                }
+                // The cold bites. A species that has never felt a winter
+                // suffers for it, and the ember people suffer more.
+                if self.temperature < 4.0 {
+                    let chill = (4.0 - self.temperature) * c.affinity.cold_vulnerability();
+                    c.health -= chill * 0.012;
+                }
+                // Fire does not hurt a creature that was born to it.
+                let (fx, fy) = (c.x.round() as i32, c.y.round() as i32);
+                if !c.affinity.fire_immune() {
+                    let here = world.get(fx, fy);
+                    if here == Elem::Fire || here == Elem::Lava || here == Elem::Ember {
+                        c.health -= 0.6;
+                    }
+                }
+                c.mana = (c.mana + MANA_REGEN * c.affinity.mana_factor()).clamp(0.0, c.max_mana);
 
                 // Cooldowns
                 if c.cooldown > 0 { c.cooldown -= 1; }
@@ -169,6 +332,7 @@ impl CreatureSystem {
                 if c.build_cooldown > 0 { c.build_cooldown -= 1; }
                 if c.craft_cooldown > 0 { c.craft_cooldown -= 1; }
                 if c.spell_cooldown > 0 { c.spell_cooldown -= 1; }
+                if c.diplo_cooldown > 0 { c.diplo_cooldown -= 1; }
                 for cd in &mut c.spell_cd { if *cd > 0 { *cd -= 1; } }
                 if c.disease_timer > 0 { c.disease_timer -= 1; }
                 else { c.disease = Disease::None; }
@@ -209,39 +373,98 @@ impl CreatureSystem {
                     total_towers.saturating_sub(own_towers),
                     own_pop,
                     (pop_now as u32).saturating_sub(own_pop),
+                    &ds,
                     &mut input_buf,
                 );
                 c.net.forward_into(&input_buf, &mut net_act, &mut net_next);
                 let out = &net_act;
 
+                // ---- Diplomacy: the creature decides whether it wants to
+                // talk, and to whom ----
+                let wants_talks = out[outputs::NEGOTIATE] > 0.3
+                    || c.role == Role::Envoy
+                    || (c.role == Role::Merchant && out[9] > 0.25)
+                    || (c.role == Role::Priest && out[7] > 0.4);
+                diplo_willing[index] = if wants_talks { 1.0 } else { 0.0 };
+                if wants_talks && c.diplo_cooldown == 0 {
+                    if let Some(partner_idx) =
+                        find_diplomatic_partner(c, &grid, &agents)
+                    {
+                        // The agents list is built in the same order as the
+                        // creature list, so the index carries the species.
+                        let partner_species = agents[partner_idx].3;
+                        let action = desired_action(
+                            &self.diplomacy,
+                            &out,
+                            c.species,
+                            partner_species,
+                        );
+                        proposals.push((index, partner_idx, action));
+                    }
+                }
+
                 let (steer_x, steer_y, speed_mult_extra) =
-                    act_steer(c, &out, &scan, &agents);
+                    act_steer(c, &out, &scan, &agents, &centroids, &ds);
                 // Creatures move at a walking pace. The old clamp of 2.6 cells
-                // per step made them dart across the screen.
-                c.vx = (out[0] * 0.8 + steer_x * 0.8).clamp(-MAX_SPEED, MAX_SPEED);
-                c.vy = (out[1] * 0.8 + steer_y * 0.8 + 0.2).clamp(-MAX_SPEED, MAX_SPEED);
+                // per step made them dart across the screen. A juvenile moves
+                // slower still, and a hollow-boned one moves faster.
+                let speed_cap = c.speed_cap();
+                c.vx = (out[0] * 0.8 + steer_x * 0.8).clamp(-speed_cap, speed_cap);
+                c.vy = (out[1] * 0.8 + steer_y * 0.8 + 0.2).clamp(-speed_cap, speed_cap);
 
 
                 act_move(world, c, speed_mult_extra);
 
-                let ate_something = act_eat(world, c, &out);
-                act_mine(world, c, &out);
+                // These results belong to the outer variables: a `let` here
+                // would shadow them, and the melee attackers, the eat and
+                // build counters and the structure total would never be
+                // picked up after the block.
+                ate_something = act_eat(world, c, &out);
+                act_mine(world, c, &out, company);
 
-                let (built_something, structures_total) =
-                    act_build(world, c, &out, &mut self.structures, &mut self.events);
+                let (built, built_count) =
+                    act_build(world, c, &out, &mut self.structures, &mut self.events, company);
+                built_something = built;
+                structures_total += built_count;
 
-                let crafted = act_craft(c, &out, &mut self.events);
+                act_craft(c, &out, &mut self.events);
+
+                // ---- What the colony learns from what it does ----
+                //
+                // Doing a thing again and again teaches the colony how to
+                // do it. The practices accumulate and are inherited.
+                if built_something {
+                    learned.push((index, Culture::Architecture));
+                }
+                if c.tool != Tool::None {
+                    learned.push((index, Culture::Craft));
+                }
+                if out[12] > 0.35 {
+                    learned.push((index, Culture::Mining));
+                }
 
                 let shots_before = shots.len();
-                let wants_attack = act_combat(
+                wants_attack = act_combat(
                     c,
                     &out,
                     &grid,
                     &agents,
                     &mut shots,
                     &mut self.events,
+                    &self.diplomacy,
                 );
                 shots_fired += (shots.len() - shots_before) as u32;
+
+                // A colony that keeps fighting learns to fight.
+                if wants_attack {
+                    learned.push((index, Culture::Warfare));
+                }
+                if ate_something {
+                    learned.push((index, Culture::Hunting));
+                    if c.inventory[10] > 0 {
+                        learned.push((index, Culture::Cultivation));
+                    }
+                }
 
 
                 // Cast spell (output[7] = cast, [11] = switch spell)
@@ -257,6 +480,7 @@ impl CreatureSystem {
                         };
                     }
                     cast_spell = true;
+                    learned.push((index, Culture::Ritual));
                 }
 
                 // Mount / dismount (output[8] = mount)
@@ -295,8 +519,24 @@ impl CreatureSystem {
                                 color: c.team_color,
                             });
                             c.reputation = (c.reputation as i32 + 1).clamp(-100, 100) as i16;
-                            c.energy = (c.energy + 5.0).min(c.max_energy);
+                            // A signed trade pact makes the exchange far more
+                            // valuable: the goods are the same, but the
+                            // terms are better.
+                            let pact = self.diplomacy.has_treaty(
+                                c.species,
+                                ospecies,
+                                Treaty::TradePact,
+                            );
+                            // A colony that has traded for generations gets
+                            // better terms still.
+                            let gain = if pact { 18.0 } else { 5.0 }
+                                * c.culture_factor(Culture::Commerce);
+                            c.energy = (c.energy + gain).min(c.max_energy);
                             c.energy = (c.energy - energy_cost::TRADE).max(0.0);
+                            // Trading warms the relations up: a pact is
+                            // built out of repeated small exchanges.
+                            self.diplomacy.adjust_trust(c.species, ospecies, 0.8);
+                            learned.push((index, Culture::Commerce));
                             break;
                         }
                     }
@@ -334,7 +574,17 @@ impl CreatureSystem {
                 // also occasionally bud off a child so a colony keeps evolving.
                 // A soft population cap keeps the sim responsive while still
                 // allowing real generational turnover.
-                let nn_wants_reproduce = out[3] > 0.05;
+                //
+                // A juvenile is too young to breed, and a creature that is
+                // looking for a mate will mate instead of budding.
+                let seeking_mate = out[outputs::SEEK_MATE] > 0.35
+                    && c.stage.can_breed()
+                    && c.energy > 260.0
+                    && c.cooldown == 0
+                    && c.hunger < 70.0
+                    && pop_now < REPRO_SOFT_CAP;
+                mate_willing[index] = seeking_mate;
+                let nn_wants_reproduce = out[3] > 0.05 && !seeking_mate;
                 let exploratory_reproduce = c.energy > 380.0 && c.cooldown == 0
                     && c.hunger < 60.0 && c.thirst < 70.0
                     && (c.age * 13 + c.id * 29) % 120 < 2;
@@ -351,9 +601,15 @@ impl CreatureSystem {
                     Role::Builder => c.energy > 430.0 && c.hunger < 60.0 && (c.age * 11 + c.id * 13) % 220 < 2,
                     Role::Explorer => c.energy > 410.0 && c.hunger < 60.0 && (c.age * 7 + c.id * 11) % 220 < 2,
                     Role::Shaman => c.energy > 440.0 && c.hunger < 60.0 && (c.age * 17 + c.id * 19) % 220 < 2,
+                    Role::Envoy => c.energy > 420.0 && c.hunger < 60.0 && (c.age * 11 + c.id * 29) % 220 < 2,
                 };
-                if can_reproduce && (nn_wants_reproduce || exploratory_reproduce)
-                    && c.energy > 340.0 && c.cooldown == 0 && pop_now < REPRO_SOFT_CAP {
+                if can_reproduce
+                    && (nn_wants_reproduce || exploratory_reproduce)
+                    && c.energy > 340.0
+                    && c.cooldown == 0
+                    && pop_now < REPRO_SOFT_CAP
+                    && c.stage.can_breed()
+                {
                     // Fertile species raise young more cheaply.
                     let fertile = if c.traits & trait_bits::FERTILE != 0 { 0.6 } else { 1.0 };
                     c.energy -= 110.0 * fertile;
@@ -514,7 +770,7 @@ impl CreatureSystem {
                     + (c.energy / c.max_energy) * 0.12
                     + c.offspring as f32 * 0.18
                     + c.kills as f32 * 0.12
-                    + (c.carried / CARRY_CAP) * 0.08
+                    + (c.carried / c.carry_cap()) * 0.08
                     + (c.tech_level as f32) * 0.1
                     + (c.tool as u8 as f32) * 0.04
                     + (c.mana / c.max_mana) * 0.06
@@ -558,8 +814,85 @@ impl CreatureSystem {
         self.resolve_projectiles(world, shots);
         self.stats.shots += shots_fired;
         self.resolve_attacks(&grid, &attackers);
+
+        // ---- Speciation: a colony too big for its ground splits ----
+        //
+        // A species that has outgrown its patch of world sends a few of its
+        // members away. If they travel far enough they become a species of
+        // their own, which is what keeps a world varied.
+        if self.tick % 120 == 0 {
+            let pressure = world.pressure.scarcity;
+            let species: Vec<u32> = {
+                let mut v: Vec<u32> = self.list.iter().map(|c| c.species).collect();
+                v.sort_unstable();
+                v.dedup();
+                v
+            };
+            for sp in species {
+                if self.rng.chance(0.06) {
+                    self.begin_migration(sp, pressure);
+                }
+            }
+            self.update_migrations(120);
+        }
+
+        // ---- What the colony learned ----
+        //
+        // The practices are applied after the loop, because a discovery
+        // joins the memory of the whole species, not just of one animal.
+        for (index, culture) in learned {
+            self.learn_culture(index, culture);
+        }
+
+        // ---- Courtship: the pairs that were made this tick ----
+        //
+        // A child with two parents inherits from both, so the mating is
+        // resolved here, after every creature has decided what it wanted.
+        // It has to happen before the dead are removed, because the grid
+        // still points at the positions the creatures had when it was
+        // built.
+        let conceived = self.resolve_mating(&mate_willing, &grid, pop_now);
+        births.extend(conceived);
+
         self.resolve_deaths(world, &dead);
         self.resolve_births(world, births);
+
+        // ---- Diplomacy: conclude the talks that were under way ----
+        //
+        // The talks are resolved after the loop, because signing a treaty
+        // changes the relations of two species and that would otherwise
+        // change what the other creatures decide to do in this same tick.
+        for (actor, partner, action) in proposals {
+            let willing = diplo_willing.get(partner).copied().unwrap_or(0.0) > 0.2;
+            let Some((act, accepted)) =
+                self.advance_negotiation(actor, partner, action, willing)
+            else {
+                continue;
+            };
+            if actor >= self.list.len() || partner >= self.list.len() {
+                continue;
+            }
+            let (x, y, color) = {
+                let a = &self.list[actor];
+                let p = &self.list[partner];
+                ((a.x + p.x) * 0.5, (a.y + p.y) * 0.5, a.team_color)
+            };
+            match act {
+                DiplomaticAction::War => {
+                    self.events.push(SimEvent::War { x, y, color });
+                }
+                DiplomaticAction::None => {}
+                other => {
+                    let label = if accepted {
+                        format!("{} SIGNED", other.name())
+                    } else {
+                        format!("{} REFUSED", other.name())
+                    };
+                    self.events.push(SimEvent::Treaty { x, y, color, label });
+                }
+            }
+        }
+        self.tick_diplomacy();
 
         // Apply accumulated stats
         self.trades_total = self.trades_total.saturating_add(traded_total);

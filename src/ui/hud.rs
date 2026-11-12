@@ -1,4 +1,5 @@
 use crate::creature::{CreatureSystem, trait_list};
+use crate::ui::diplomacy::diplomacy_summary;
 use crate::world::World;
 use crate::W;
 use macroquad::prelude::*;
@@ -307,6 +308,18 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         p.extremes * 100.0,
         p.volcanic * 100.0
     );
+    // The diplomatic state of the world, in one line.
+    let line8 = diplomacy_summary(creatures);
+    // The life of the world: how the colony is aged, and what it has
+    // learned.
+    let line9 = format!(
+        "ages: {} young  {} old   pairs {}   splits {}   practices {}",
+        stats.juveniles,
+        stats.elders,
+        stats.matings,
+        stats.splits,
+        stats.practices
+    );
 
     draw_text(&line1, 18.0, 66.0, 17.0, Color::new(0.85, 0.9, 0.95, 0.8));
     draw_text(&line2, 18.0, 88.0, 17.0, Color::new(0.6, 0.66, 0.74, 0.8));
@@ -315,8 +328,10 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
     draw_text(&line5, 18.0, 154.0, 17.0, Color::new(0.6, 0.5, 0.58, 0.8));
     draw_text(&line6, 18.0, 176.0, 17.0, Color::new(0.55, 0.85, 0.7, 0.85));
     draw_text(&line7, 18.0, 198.0, 15.0, Color::new(0.85, 0.55, 0.45, 0.8));
+    draw_text(&line8, 18.0, 218.0, 15.0, Color::new(0.45, 0.7, 1.0, 0.82));
+    draw_text(&line9, 18.0, 238.0, 15.0, Color::new(0.8, 0.65, 0.85, 0.82));
 
-    let help = "WASD/Arrows: move  |  scroll: zoom  |  P: pause  |  R: reroll  |  K: knowledge  |  +/-: sim speed  |  hover: inspect  |  ESC: quit";
+    let help = "WASD/Arrows: move  |  scroll: zoom  |  P: pause  |  R: reroll  |  K: knowledge  |  G: diplomacy  |  +/-: sim speed  |  hover: inspect  |  ESC: quit";
     let dims = measure_text(help, None, 15, 1.0);
     draw_text(
         help,

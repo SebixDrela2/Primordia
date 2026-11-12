@@ -8,6 +8,8 @@ pub(crate) fn act_steer(
     out: &[f32],
     scan: &LocalScan,
     agents: &[(u32, f32, f32, u32, u8, f32)],
+    foreign_bases: &[(u32, f32, f32)],
+    ds: &DiplomaticSense,
 ) -> (f32, f32, f32) {
                 // Outputs: [0]=move_x, [1]=move_y, [2]=eat, [3]=reproduce, [4]=attack,
                 // [5]=build, [6]=craft, [7]=cast_spell, [8]=mount/dismount, [9]=trade,
@@ -18,7 +20,21 @@ pub(crate) fn act_steer(
                 let mut steer_y = 0.0f32;
                 let mut speed_mult_extra = 1.0f32;
 
+                // ---- The temperament of this particular animal ----
+                //
+                // A bold creature keeps its nerve when an enemy is close, a
+                // curious one is willing to walk further from the colony,
+                // a cautious one is the first to run and the last to go
+                // underground, and a sociable one wants to be near its own
+                // kind.
+                let bold = c.personality.aggression;
+                let wary = c.personality.caution;
+
                 // --- Flee: run from the closest enemy ---
+                //
+                // The distance at which a creature gives in depends on how
+                // brave it is and how close it is to being hurt.
+                let flee_range = 45.0 - bold * 22.0 + wary * 10.0;
                 let mut flee_target: Option<(f32, f32, f32)> = None;
                 for &(id, ox, oy, ospecies, _orole, _ohp) in agents {
                     if id == c.id || ospecies == c.species {
@@ -27,17 +43,21 @@ pub(crate) fn act_steer(
                     let dx = ox - c.x;
                     let dy = oy - c.y;
                     let d = (dx * dx + dy * dy).sqrt();
-                    if d < 45.0 && flee_target.map_or(true, |t| d < t.2) {
+                    if d < flee_range && flee_target.map_or(true, |t| d < t.2) {
                         flee_target = Some((dx, dy, d));
                     }
                 }
 
                 // --- Seek: head for whatever the creature needs most ---
-                let seek_target: Option<(f32, f32, f32)> = if c.thirst > 45.0 && scan.water.2 < 30.0 {
+                //
+                // A curious creature will range further to find what it
+                // needs; a cautious one settles for what is close by.
+                let range_bonus = c.personality.curiosity * 8.0 - wary * 4.0;
+                let seek_target: Option<(f32, f32, f32)> = if c.thirst > 45.0 && scan.water.2 < 30.0 + range_bonus {
                     Some(scan.water)
-                } else if c.hunger > 45.0 && scan.food.2 < 30.0 {
+                } else if c.hunger > 45.0 && scan.food.2 < 30.0 + range_bonus {
                     Some(scan.food)
-                } else if c.energy < c.max_energy * 0.5 && scan.food.2 < 30.0 {
+                } else if c.energy < c.max_energy * 0.5 && scan.food.2 < 30.0 + range_bonus {
                     Some(scan.food)
                 } else {
                     None
@@ -76,12 +96,109 @@ pub(crate) fn act_steer(
                         }
                     }
                 }
-                if out[18] > 0.3 {
+                if out[18] > 0.3 && !c.migrating {
                     let bx = c.base_x - c.x;
                     let by = c.base_y - c.y;
                     let bd = (bx * bx + by * by).sqrt().max(0.1);
                     steer_x += bx / bd;
                     steer_y += by / bd;
+                }
+
+                // --- The pull of the colony ---
+                //
+                // A sociable creature does not like to be alone, and a
+                // juvenile has no business wandering off: both are pulled
+                // back towards the base. A solitary creature minds none of
+                // this and is free to roam. An animal that has left its
+                // colony is pulled the other way.
+                let home_pull = if c.stage == Stage::Juvenile {
+                    1.2
+                } else {
+                    // A sociable creature wants to be near its own kind.
+                    (c.personality.sociability - 0.45).max(0.0) * 0.8
+                };
+                if home_pull > 0.0 && !c.migrating {
+                    let bx = c.base_x - c.x;
+                    let by = c.base_y - c.y;
+                    let bd = (bx * bx + by * by).sqrt();
+                    if bd > 12.0 {
+                        steer_x += (bx / bd) * home_pull;
+                        steer_y += (by / bd) * home_pull;
+                    }
+                }
+
+                // --- Courtship: head for the nearest creature of its kind ---
+                //
+                // A creature that wants a mate goes looking for one. The
+                // mating itself is handled in the step, but the walking
+                // here is what brings two animals together at all.
+                if out[outputs::SEEK_MATE] > 0.35 {
+                    let mut best: Option<(f32, f32, f32)> = None;
+                    for &(id, ox, oy, ospecies, _orole, _ohp) in agents {
+                        if id == c.id || ospecies != c.species {
+                            continue;
+                        }
+                        let dx = ox - c.x;
+                        let dy = oy - c.y;
+                        let d = (dx * dx + dy * dy).sqrt();
+                        if d < 40.0 && best.map_or(true, |t| d < t.2) {
+                            best = Some((dx, dy, d));
+                        }
+                    }
+                    if let Some((dx, dy, d)) = best {
+                        if d > 2.0 {
+                            steer_x += dx / d;
+                            steer_y += dy / d;
+                            speed_mult_extra = speed_mult_extra.max(1.1);
+                        }
+                    }
+                }
+
+                // --- Migration: walk away from the old colony ---
+                //
+                // The animals that have left their colony do not go back.
+                // They push away from the place they came from, and if they
+                // get far enough they become a species of their own.
+                if c.migrating {
+                    let bx = c.x - c.base_x;
+                    let by = c.y - c.base_y;
+                    let bd = (bx * bx + by * by).sqrt().max(0.1);
+                    steer_x += (bx / bd) * 1.3;
+                    steer_y += (by / bd) * 1.3;
+                    speed_mult_extra = speed_mult_extra.max(1.2);
+                }
+
+                // --- Diplomacy: walk to the foreign colony to open talks ---
+                //
+                // A diplomat that wants to negotiate does not wait for a
+                // stranger to bump into it: it travels to the nearest colony
+                // of another species. This is what makes an embassy a real
+                // journey across the map instead of a chance encounter.
+                if out[outputs::NEGOTIATE] > 0.4 {
+                    if let Some(partner) = ds.partner {
+                        // A colony that is at war with us is a target, not a
+                        // negotiating partner: head for it with intent.
+                        let mut best: Option<(f32, f32, f32)> = None;
+                        for (sp, bx, by) in foreign_bases {
+                            if *sp != partner {
+                                continue;
+                            }
+                            let dx = bx - c.x;
+                            let dy = by - c.y;
+                            let d = (dx * dx + dy * dy).sqrt();
+                            if best.map_or(true, |t| d < t.2) {
+                                best = Some((dx, dy, d));
+                            }
+                        }
+                        if let Some((dx, dy, d)) = best {
+                            if d > 1.0 {
+                                let inv = 1.0 / d;
+                                steer_x += dx * inv;
+                                steer_y += dy * inv;
+                                speed_mult_extra = speed_mult_extra.max(1.15);
+                            }
+                        }
+                    }
                 }
 
     (steer_x, steer_y, speed_mult_extra)
@@ -114,6 +231,14 @@ pub(crate) fn act_move(world: &mut World, c: &mut Creature, behaviour_speed: f32
                 let tx = nx.round() as i32;
                 let ty = ny.round() as i32;
                 let mut ok = !world.is_blocked(tx, ty);
+                // Swimming is hard work. A creature that is at home in the
+                // water does not mind; the others tire quickly in a lake.
+                if ok && c.traits & trait_bits::AMPHIBIOUS == 0 {
+                    let here = world.get(c.x.round() as i32, c.y.round() as i32);
+                    if here == Elem::Water || world.get(tx, ty) == Elem::Water {
+                        c.stamina = (c.stamina - 0.22).max(0.0);
+                    }
+                }
                 if !ok && can_dig(world.get(tx, ty), c.tool) {
                     world.set_xy(tx, ty, Elem::Empty);
                     c.stamina = (c.stamina - 0.35).max(0.0);
@@ -194,6 +319,10 @@ pub(crate) fn act_eat(world: &mut World, c: &mut Creature, out: &[f32]) -> bool 
                             // Modest returns: food is a real resource, so a
                             // colony has to keep foraging instead of trivially
                             // maxing out after a couple of bites.
+                            //
+                            // A colony that has hunted for generations gets
+                            // more out of the same carcass.
+                            let nutrition = nutrition * c.hunting_bonus();
                             c.energy = (c.energy + nutrition * 4.0).min(c.max_energy);
                             c.hunger = (c.hunger - nutrition * 4.0).max(0.0);
                             if eaten_elem == Elem::Water {
@@ -205,37 +334,43 @@ pub(crate) fn act_eat(world: &mut World, c: &mut Creature, out: &[f32]) -> bool 
                             match eaten_elem {
                                 Elem::Stone | Elem::Brick | Elem::Concrete | Elem::Wall => {
                                     c.inventory[0] = (c.inventory[0].saturating_add(5)).min(255);
-                                    c.carried = (c.carried + 30.0).min(CARRY_CAP);
+                                    c.carried = (c.carried + 30.0).min(c.carry_cap());
                                 }
                                 Elem::Metal | Elem::Wire => {
                                     c.inventory[1] = (c.inventory[1].saturating_add(3)).min(255);
-                                    c.carried = (c.carried + 40.0).min(CARRY_CAP);
+                                    c.carried = (c.carried + 40.0).min(c.carry_cap());
                                 }
                                 Elem::Copper => {
                                     c.inventory[2] = (c.inventory[2].saturating_add(3)).min(255);
-                                    c.carried = (c.carried + 40.0).min(CARRY_CAP);
+                                    c.carried = (c.carried + 40.0).min(c.carry_cap());
                                 }
                                 Elem::Gold => {
                                     c.inventory[3] = (c.inventory[3].saturating_add(2)).min(255);
-                                    c.carried = (c.carried + 50.0).min(CARRY_CAP);
+                                    c.carried = (c.carried + 50.0).min(c.carry_cap());
                                 }
                                 Elem::Crystal => {
                                     c.inventory[4] = (c.inventory[4].saturating_add(2)).min(255);
-                                    c.carried = (c.carried + 30.0).min(CARRY_CAP);
+                                    c.carried = (c.carried + 30.0).min(c.carry_cap());
                                 }
                                 Elem::Gem => {
                                     c.inventory[5] = (c.inventory[5].saturating_add(1)).min(255);
-                                    c.carried = (c.carried + 60.0).min(CARRY_CAP);
+                                    c.carried = (c.carried + 60.0).min(c.carry_cap());
                                 }
                                 Elem::Wood | Elem::Plant | Elem::Fungus => {
                                     c.inventory[6] = (c.inventory[6].saturating_add(4)).min(255);
-                                    c.carried = (c.carried + 20.0).min(CARRY_CAP);
+                                    c.carried = (c.carried + 20.0).min(c.carry_cap());
+                                }
+                                Elem::Crop => {
+                                    // A harvested crop is stored as grain: it can
+                                    // be planted again or eaten later.
+                                    c.inventory[10] = (c.inventory[10].saturating_add(3)).min(255);
+                                    c.carried = (c.carried + 15.0).min(c.carry_cap());
                                 }
                                 Elem::Energy => {
                                     c.inventory[7] = (c.inventory[7].saturating_add(10)).min(255);
                                 }
                                 Elem::Glass | Elem::Circuit | Elem::Tool | Elem::Machine => {
-                                    c.carried = (c.carried + 30.0).min(CARRY_CAP);
+                                    c.carried = (c.carried + 30.0).min(c.carry_cap());
                                 }
                                 Elem::Water => {
                                     c.inventory[8] = (c.inventory[8].saturating_add(5)).min(255);
@@ -267,24 +402,34 @@ pub(crate) fn act_eat(world: &mut World, c: &mut Creature, out: &[f32]) -> bool 
 }
 
 /// Mine ore out of the rock (never food).
-pub(crate) fn act_mine(world: &mut World, c: &mut Creature, out: &[f32]) {
+pub(crate) fn act_mine(world: &mut World, c: &mut Creature, out: &[f32], company: f32) {
                 // Mining / gathering (output[12]). Takes solid resources out of
                 // the world for building but is explicitly *not* food.
+                //
+                // A colony that has mined for generations digs better, and a
+                // species that reads metal in the rock finds more of it.
+                let skill = c.culture_factor(Culture::Mining) * c.affinity.mine_factor() * company;
                 let wants_mine = (out[12] > 0.35 || out[17] > 0.3) && world.mine_budget > 0;
                 let exploratory_mine = c.carried < 60.0
                     && c.stamina > 8.0
                     && matches!(c.role, Role::Worker | Role::Builder | Role::Explorer)
                     && (c.age.wrapping_add(c.id) % 400) < 1;
+                // A juvenile is no use with a pickaxe.
+                if c.stage == Stage::Juvenile {
+                    return;
+                }
                 if (wants_mine || (exploratory_mine && world.mine_budget > 0)) && c.stamina > 5.0 {
                     let gx = c.x.round() as i32;
                     let gy = c.y.round() as i32;
-                    if let Some((mx, my)) = world.find_resource(gx, gy, 8) {
+                    // A metallophilic creature reaches further for the ore.
+                    let reach = 8 + if c.traits & trait_bits::METALLOPHILIC != 0 { 5 } else { 0 };
+                    if let Some((mx, my)) = world.find_resource(gx, gy, reach) {
                         world.mine_budget -= 1;
                         let me = world.get(mx, my);
                         world.set_xy(mx, my, Elem::Empty);
                         c.stamina = (c.stamina - 0.8).max(0.0);
-                        c.energy = (c.energy - energy_cost::MINE).max(0.0);
-                        c.carried = (c.carried + 15.0).min(CARRY_CAP);
+                        c.energy = (c.energy - energy_cost::MINE * skill).max(0.0);
+                        c.carried = (c.carried + 15.0 * skill).min(c.carry_cap());
                         // Every excavation also yields a little stone.
                         c.inventory[0] = c.inventory[0].saturating_add(1).min(255);
                         match me {
@@ -311,7 +456,7 @@ pub(crate) fn act_mine(world: &mut World, c: &mut Creature, out: &[f32]) {
                             }
                             Elem::Gunpowder => {
                                 c.inventory[9] = c.inventory[9].saturating_add(2).min(255);
-                                c.carried = (c.carried + 10.0).min(CARRY_CAP);
+                                c.carried = (c.carried + 10.0).min(c.carry_cap());
                             }
                             _ => {}
                         }
@@ -326,16 +471,29 @@ pub(crate) fn act_build(
     out: &[f32],
     structures: &mut Vec<Structure>,
     events: &mut Vec<SimEvent>,
+    company: f32,
 ) -> (bool, u32) {
     let mut built_something = false;
     let mut structures_total = 0u32;
                 // Build / place structures (output[5])
+                //
+                // A colony that has built for generations builds better and
+                // faster, and a species adapted to timber raises its
+                // structures in half the time.
+                let skill = c.culture_factor(Culture::Architecture) * c.affinity.build_factor() * company;
                 let nn_wants_build = out[5] > 0.2;
                 let exploratory_build = c.carried > 80.0 && c.build_cooldown == 0
                     && (c.age * 17 + c.id * 23) % 100 < 1;
-                let built = (nn_wants_build || exploratory_build) && c.carried >= 20.0 && c.build_cooldown == 0;
+                // A juvenile cannot raise a building.
+                let built = (nn_wants_build || exploratory_build)
+                    && c.carried >= 20.0
+                    && c.build_cooldown == 0
+                    && c.stage != Stage::Juvenile;
                 if built {
-                    c.energy = (c.energy - energy_cost::BUILD).max(0.0);
+                    c.energy = (c.energy - energy_cost::BUILD / skill).max(0.0);
+                    // A colony that farms will keep a farm even when it is
+                    // not yet desperate: the practice is part of the culture.
+                    let farming = c.knows(Culture::Cultivation);
                     let gx = c.x.round() as i32;
                     let gy = c.y.round() as i32;
                     let bx = c.base_x.round() as i32;
@@ -349,14 +507,30 @@ pub(crate) fn act_build(
                     let want_wall = c.inventory[0] >= 3 && c.tech_level < 2;
                     let want_door = c.inventory[0] >= 5 && c.role == Role::Builder;
                     let want_chest = c.inventory[1] >= 3 && c.carried > 150.0;
-                    let want_farm = c.inventory[6] >= 4 && c.tech_level >= 1;
+                    // A farm needs 4 wood and someone who knows what to do
+                    // with it (tech 1). A colony only keeps a handful of
+                    // plots: a farm that nobody tends is just a field of
+                    // weeds, so more than a few is wasted effort.
+                    let farms_built = structures
+                        .iter()
+                        .filter(|s| s.species == c.species && s.kind == 3)
+                        .count();
+                    let want_farm = c.inventory[6] >= 4
+                        && c.tech_level >= 1
+                        && farms_built < MAX_FARMS;
                     let want_temple = c.inventory[4] >= 2 && c.tech_level >= 3 && c.role == Role::Priest;
                     // A turret needs a stockpile: 8 wood and tech 1.
                     let want_tower = c.tech_level >= 1
                         && c.inventory[6] >= 8
                         && matches!(c.role, Role::Explorer | Role::Soldier | Role::Builder | Role::Worker);
 
-                    let chosen = if want_tower { Buildable::Tower }
+                    // A hungry colony prefers a farm to a wall: a farm is
+                    // the only thing that makes food grow back. A colony
+                    // that has farmed for generations prefers it even when
+                    // it is not desperate, because farming is what it knows.
+                    let starving = c.hunger > 45.0;
+                    let chosen = if want_farm && (starving || farming) { Buildable::Farm }
+                        else if want_tower { Buildable::Tower }
                         else if want_temple { Buildable::Temple }
                         else if want_chest { Buildable::Chest }
                         else if want_farm { Buildable::Farm }
@@ -375,8 +549,29 @@ pub(crate) fn act_build(
                         Buildable::Bridge => Elem::Bridge,
                     };
 
+                    // A farm has its own placement rule: it must stand on the
+                    // surface with water within reach, or it is dead ground
+                    // that never grows anything. The plot also sows its
+                    // first seedling straight away.
+                    if chosen == Buildable::Farm && !placed {
+                        if let Some((tx, ty, px, py)) = world.find_farm_site(gx, gy, 14) {
+                            world.set_xy(tx, ty, Elem::Farm);
+                            // Sow the first seedling so the plot is not
+                            // empty when the creature walks away.
+                            world.set_xy(px, py, Elem::Plant);
+                            place_x = tx;
+                            place_y = ty;
+                            c.carried = (c.carried - 15.0).max(0.0);
+                            c.build_cooldown = if c.traits & trait_bits::INDUSTRIOUS != 0 { 6 } else { 10 };
+                            c.build_cooldown = ((c.build_cooldown as f32) / skill).round() as u32;
+                            placed = true;
+                            built_something = true;
+                            structures_total += 1;
+                        }
+                    }
+
                     // Try base perimeter first if near base
-                    if dist_to_base < (BASE_RADIUS * BASE_RADIUS) as f32 {
+                    if !placed && dist_to_base < (BASE_RADIUS * BASE_RADIUS) as f32 {
                         for r in 3..=BASE_RADIUS {
                             for angle in 0..24 {
                                 let tx = bx + (r as f32 * (angle as f32 * 0.26).cos()) as i32;
@@ -387,6 +582,7 @@ pub(crate) fn act_build(
                                     place_y = ty;
                                     c.carried = (c.carried - 15.0).max(0.0);
                                     c.build_cooldown = if c.traits & trait_bits::INDUSTRIOUS != 0 { 6 } else { 10 };
+                            c.build_cooldown = ((c.build_cooldown as f32) / skill).round() as u32;
                                     placed = true;
                                     built_something = true;
                                     structures_total += 1;
@@ -408,6 +604,7 @@ pub(crate) fn act_build(
                                 place_y = ty;
                                 c.carried = (c.carried - 15.0).max(0.0);
                                 c.build_cooldown = if c.traits & trait_bits::INDUSTRIOUS != 0 { 6 } else { 10 };
+                            c.build_cooldown = ((c.build_cooldown as f32) / skill).round() as u32;
                                 built_something = true;
                                 structures_total += 1;
                                 placed = true;
@@ -439,6 +636,22 @@ pub(crate) fn act_build(
                     }
 
                     if placed {
+                        if chosen == Buildable::Farm {
+                            // A farm costs 4 wood to build.
+                            c.inventory[6] = c.inventory[6].saturating_sub(4);
+                            // The plot is recorded so the colony knows how
+                            // many it has, and so the cap below applies.
+                            structures.push(Structure {
+                                x: place_x as f32,
+                                y: place_y as f32,
+                                species: c.species,
+                                color: c.team_color,
+                                hp: 100.0,
+                                cooldown: 0,
+                                armed: false,
+                                kind: 3,
+                            });
+                        }
                         if chosen == Buildable::Tower {
                             // Turrets are armed: they will shoot at other species.
                             // A colony keeps a limited battery of them.
@@ -488,15 +701,23 @@ pub(crate) fn act_build(
 pub(crate) fn act_craft(c: &mut Creature, out: &[f32], events: &mut Vec<SimEvent>) -> bool {
     let mut crafted = false;
                 // Tool crafting (output[6] = craft)
+                //
+                // A colony that has crafted for generations makes better
+                // tools: the craft costs less and the tool lasts longer.
+                let skill = c.culture_factor(Culture::Craft);
                 let nn_wants_craft = out[6] > 0.25;
                 let exploratory_craft = c.tool == Tool::None && c.craft_cooldown == 0
                     && (c.age * 13 + c.id * 17) % 25 < 1;
-                let wants_craft = nn_wants_craft || exploratory_craft;
+                // A craft can only be attempted when the creature is not still waiting
+                // for the last one to finish. Without this the network can
+                // ask for a craft on every single step.
+                let wants_craft = c.craft_cooldown == 0
+                    && (nn_wants_craft || exploratory_craft)
+                    && c.stage != Stage::Juvenile;
                 let tool_before = c.tool;
+                let bombs_before = c.bombs;
+                let salves_before = c.salves;
                 if wants_craft {
-                    // Crafting burns energy even if the materials are
-                    // missing, because the attempt itself is the work.
-                    c.energy = (c.energy - energy_cost::CRAFT).max(0.0);
                     // Pickaxe: 5 stone + 2 wood (tech 0)
                     if c.tool == Tool::None && c.inventory[0] >= 5 && c.inventory[6] >= 2 {
                         c.inventory[0] = c.inventory[0].saturating_sub(5);
@@ -619,6 +840,25 @@ pub(crate) fn act_craft(c: &mut Creature, out: &[f32], events: &mut Vec<SimEvent
                         c.salves += 1;
                         c.craft_cooldown = 40;
                     }
+                    // Nothing was made: the materials are missing.
+                    //
+                    // A failed attempt must NOT cost the full price of a
+                    // craft. Charging for work that never happened turned
+                    // every toolless creature into an energy sink: it
+                    // tried to craft every few steps, paid 5 energy each
+                    // time, and starved next to the materials it could
+                    // never afford. A failed attempt now costs nothing and
+                    // puts the creature on a short cooldown so it stops
+                    // hammering the same impossible recipe.
+                    else {
+                        c.craft_cooldown = 25;
+                    }
+                }
+
+                // The energy is only spent when something is actually made.
+                if c.tool != tool_before || c.bombs != bombs_before || c.salves != salves_before {
+                    c.energy = (c.energy - energy_cost::CRAFT / skill).max(0.0);
+                    crafted = true;
                 }
 
                 // Tool durability decay
@@ -653,12 +893,59 @@ pub(crate) fn act_combat(
     agents: &[(u32, f32, f32, u32, u8, f32)],
     shots: &mut Vec<Projectile>,
     events: &mut Vec<SimEvent>,
+    diplomacy: &Diplomacy,
 ) -> bool {
     let mut wants_attack = false;
+                // The nearest foreign creature: the species it belongs to
+                // decides whether a first strike is allowed at all.
+                let mut nearest_foreign: Option<(u32, f32)> = None;
+                grid.near(c.x, c.y, 16, |idx| {
+                    let a = &agents[idx as usize];
+                    if a.0 == c.id || a.3 == c.species {
+                        return;
+                    }
+                    let d = ((a.1 - c.x).powi(2) + (a.2 - c.y).powi(2)).sqrt();
+                    if nearest_foreign.map_or(true, |(_, bd)| d < bd) {
+                        nearest_foreign = Some((a.3, d));
+                    }
+                });
+                // A ceasefire suppresses the first strike: the two species
+                // have agreed to stop, and only a defensive blow breaks it.
+                let truce = nearest_foreign.map_or(false, |(sp, _)| {
+                    diplomacy.has_treaty(c.species, sp, Treaty::Ceasefire)
+                        && !diplomacy.at_war(c.species, sp)
+                });
+
                 // Attack intent (output[4] = attack)
-                if out[4] > 0.45 {
+                //
+                // A bold animal needs less provocation to start a fight, a
+                // timid one needs more, and a juvenile has no business
+                // fighting at all.
+                let bold = c.personality.aggression;
+                let attack_threshold = 0.45 - (bold - 0.5) * 0.3;
+                if out[4] > attack_threshold && !truce && c.stage.can_fight() {
                     // Peaceful species refuse to start a fight.
                     if c.traits & trait_bits::PEACEFUL == 0 {
+                        wants_attack = true;
+                    }
+                }
+
+                // A war overrides the peaceful temperament: once the banners
+                // are up, a peaceful species fights back. Only enemies that
+                // are actually close count, otherwise the whole world would
+                // be at war with the whole world.
+                if out[4] > 0.25 || out[outputs::HOSTILE] > 0.5 {
+                    let mut enemy_near = false;
+                    grid.near(c.x, c.y, 18, |idx| {
+                        let a = &agents[idx as usize];
+                        if a.0 == c.id || a.3 == c.species {
+                            return;
+                        }
+                        if diplomacy.at_war(c.species, a.3) {
+                            enemy_near = true;
+                        }
+                    });
+                    if enemy_near {
                         wants_attack = true;
                     }
                 }
@@ -693,6 +980,10 @@ pub(crate) fn act_combat(
                     grid.near(c.x, c.y, 32, |idx| {
                         let a = &agents[idx as usize];
                         if a.0 == c.id || a.3 == c.species {
+                            return;
+                        }
+                        // Allies are never shot at.
+                        if diplomacy.are_allied(c.species, a.3) {
                             return;
                         }
                         let dx = a.1 - c.x;
