@@ -590,6 +590,14 @@ fn paint(
             g *= season_g;
             b *= season_b;
 
+            // In winter the first few cells under the sky are covered in snow.
+            if season == 3 && depth < 3.0 {
+                let s = (1.0 - depth * (1.0 / 3.0)) * 0.6;
+                r += (232.0 - r) * s;
+                g += (238.0 - g) * s;
+                b += (248.0 - b) * s;
+            }
+
             // Biome tint: deserts glow warm, tundra cold, forests green. It
             // fades out with depth so only the surface reads as "biome".
             let fade = (1.0 - depth * (1.0 / 60.0)).clamp(0.0, 1.0);
@@ -608,6 +616,11 @@ fn paint(
                     r += wave * fx.color[0];
                     g += wave * fx.color[1];
                     b += wave * fx.color[2];
+                    // Water catches a little of the sky above it.
+                    let sky = sky_base[rx as usize];
+                    r += sky[0] * 0.02;
+                    g += sky[1] * 0.02;
+                    b += sky[2] * 0.03;
                 }
                 Fx::Flicker => {
                     let flicker =
