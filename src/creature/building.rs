@@ -17,6 +17,10 @@ pub(crate) fn act_build(
 ) -> (bool, u32) {
     let mut built_something = false;
     let mut structures_total = 0u32;
+    // The world can only hold so many buildings.
+    if structures.len() >= MAX_STRUCTURES {
+        return (built_something, structures_total);
+    }
                 // Build / place structures (output[5])
                 //
                 // A colony that has built for generations builds better and
@@ -61,9 +65,15 @@ pub(crate) fn act_build(
                         && c.tech_level >= 1
                         && farms_built < MAX_FARMS;
                     let want_temple = c.inventory[4] >= 2 && c.tech_level >= 3 && c.role == Role::Priest;
-                    // A turret needs a stockpile: 8 wood and tech 1.
+                    // A turret needs a stockpile: 8 wood and tech 1. A colony
+                    // keeps only a few of them.
+                    let towers_built = structures
+                        .iter()
+                        .filter(|s| s.species == c.species && s.kind == 1)
+                        .count();
                     let want_tower = c.tech_level >= 1
                         && c.inventory[6] >= 8
+                        && towers_built < MAX_TOWERS
                         && matches!(c.role, Role::Explorer | Role::Soldier | Role::Builder | Role::Worker);
                     // The buildings of a settlement. Each one needs timber
                     // and metal, and each one is worth having beside the

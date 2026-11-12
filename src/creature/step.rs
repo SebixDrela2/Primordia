@@ -1021,6 +1021,8 @@ impl CreatureSystem {
 
         // ---- What the species have worked out for themselves ----
         self.check_discoveries();
+        self.share_discoveries();
+        self.raid_structures(world);
 
         // ---- An outbreak ----
         self.maybe_outbreak();

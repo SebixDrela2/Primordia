@@ -177,6 +177,42 @@ impl CreatureSystem {
         }
     }
 
+    /// Allies share what they know.
+    ///
+    /// Knowledge travels along a treaty: an allied species can pick up a
+    /// discovery its partner worked out, which is what makes an alliance
+    /// worth having.
+    pub(crate) fn share_discoveries(&mut self) {
+        if self.tick % 240 != 0 {
+            return;
+        }
+        let mut pairs: Vec<(u32, u32)> = Vec::new();
+        for rel in self.diplomacy.relations.iter() {
+            if rel.has(Treaty::Alliance) {
+                pairs.push((rel.a, rel.b));
+            }
+        }
+        for (a, b) in pairs {
+            let da = self.species_discoveries(a);
+            let db = self.species_discoveries(b);
+            if da & !db != 0 {
+                self.note_discovery(b, da & !db);
+                self.diplomacy.log_event(
+                    format!("species {} shares its knowledge with species {}", a, b),
+                    self.species_color(a),
+                    self.tick,
+                );
+            } else if db & !da != 0 {
+                self.note_discovery(a, db & !da);
+                self.diplomacy.log_event(
+                    format!("species {} shares its knowledge with species {}", b, a),
+                    self.species_color(b),
+                    self.tick,
+                );
+            }
+        }
+    }
+
     /// Look for the next thing a species could work out.
     ///
     /// A discovery needs the practice behind it, enough generations of

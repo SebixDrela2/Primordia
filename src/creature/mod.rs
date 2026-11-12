@@ -26,6 +26,7 @@ mod mating;
 mod names;
 mod personality;
 mod plague;
+mod raids;
 mod senses;
 mod speciation;
 mod stats;
@@ -114,6 +115,10 @@ pub mod energy_cost {
 /// tends is just a field of weeds. A handful is enough to feed a colony
 /// and keeps the wood for other things.
 pub const MAX_FARMS: usize = 4;
+/// How many turrets one colony may keep.
+pub const MAX_TOWERS: usize = 4;
+/// How many buildings the whole world may have at once.
+pub const MAX_STRUCTURES: usize = 420;
 
 /// How fast a creature may move, in cells per step.
 ///

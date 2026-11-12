@@ -104,6 +104,7 @@ fn main() {
     println!("  treaties:    {}", d.stats.treaties);
     println!("  tributes:    {}", d.stats.tributes);
     println!("  betrayals:   {}", d.stats.betrayals);
+    println!("  raids:       {}", d.stats.raids);
     println!("  negotiations:{}", d.stats.negotiations);
     println!("  envoys:      {}", d.stats.envoys);
     println!("  peak pairs:  {}", peak_relations);

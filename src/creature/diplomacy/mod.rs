@@ -239,6 +239,7 @@ pub struct DiplomacyStats {
     pub envoys: u32,
     pub negotiations: u32,
     pub betrayals: u32,
+    pub raids: u32,
 }
 
 /// The whole diplomatic state of the world.
