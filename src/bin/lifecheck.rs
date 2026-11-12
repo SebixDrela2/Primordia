@@ -172,6 +172,22 @@ fn main() {
         );
     }
 
+    // ---- The food web: who eats whom ----
+    println!("\n--- predation ---");
+    let mut fear_rows: Vec<(u32, u32, f32)> = creatures.predation.entries().to_vec();
+    fear_rows.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+    for (prey, predator, fear) in fear_rows.iter().take(12) {
+        println!(
+            "  the {} fears the {}: {:.0}",
+            creature::species_name_for(*prey),
+            creature::species_name_for(*predator),
+            fear
+        );
+    }
+    if fear_rows.is_empty() {
+        println!("  (nothing has been hunted)");
+    }
+
     // ---- The life of the colony ----
     println!("\n--- colony ---");
     let s = &creatures.stats;
@@ -310,6 +326,18 @@ fn main() {
     if creatures.two_parent_births == 0 {
         println!("FAIL: no young was born to two parents");
         failures += 1;
+    }
+    // The fear of a species has to stay in range, and a species can never
+    // fear itself.
+    for (prey, predator, fear) in creatures.predation.entries().iter() {
+        if !(0.0..=100.0).contains(fear) {
+            println!("FAIL: fear out of range: {}", fear);
+            failures += 1;
+        }
+        if prey == predator {
+            println!("FAIL: a species fears itself");
+            failures += 1;
+        }
     }
 
     if failures == 0 {

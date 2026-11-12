@@ -27,6 +27,7 @@ impl CreatureSystem {
             projectiles: Vec::new(),
             structures: Vec::new(),
             claims: Vec::new(),
+            predation: PredationMemory::default(),
             events: Vec::new(),
             bombs: Vec::new(),
             diplomacy: Diplomacy::default(),

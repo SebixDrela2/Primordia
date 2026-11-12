@@ -170,6 +170,10 @@ impl CreatureSystem {
         // after the loop, because learning touches the whole colony.
         let mut learned: Vec<(usize, Culture)> = Vec::new();
 
+        // The predation memory, laid out as a table so the behaviours can
+        // look a fear up in constant time.
+        let fear_entries = FearTable::build(self.predation.entries(), self.next_species as usize + 8);
+
         for index in 0..self.list.len() {
             // The results of the actions. They are assigned inside the
             // block below and read after it, so they are declared without a
@@ -496,6 +500,7 @@ impl CreatureSystem {
                     &grid,
                     &centroids,
                     &ds,
+                    &fear_entries,
                     world.weather,
                     &place,
                     volcano,
@@ -1034,6 +1039,12 @@ impl CreatureSystem {
         // ---- Diplomacy: conclude the talks that were under way ----
         self.conclude_negotiations(&proposals, &diplo_willing);
         self.tick_diplomacy();
+
+        // The fear of the prey fades slowly: a species that is not hunted
+        // for a while forgets the danger.
+        if self.tick % 120 == 0 {
+            self.predation.decay();
+        }
 
         // Apply accumulated stats
         self.trades_total = self.trades_total.saturating_add(traded_total);

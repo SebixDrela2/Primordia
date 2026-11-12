@@ -414,6 +414,10 @@ impl CreatureSystem {
                         // a war.
                         let victim_species = self.list[j].species;
                         self.adjust_trust(a_species, victim_species, -2.5);
+                        // The prey remembers the hunter. The fear belongs to
+                        // the whole species, so the animals that never saw
+                        // the kill still know of it.
+                        self.predation.record_kill(victim_species, a_species);
                     }
                 }
             }

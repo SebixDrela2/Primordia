@@ -11,6 +11,7 @@ pub(crate) fn act_steer(
     grid: &SpatialGrid,
     foreign_bases: &[(u32, f32, f32)],
     ds: &DiplomaticSense,
+    fear: &FearTable,
     weather: crate::world::Weather,
     place: &crate::world::LandmarkBonus,
     volcano: Option<(f32, f32)>,
@@ -65,7 +66,7 @@ pub(crate) fn act_steer(
                 // The nearest creatures are looked for through the spatial
                 // grid: walking the whole population for every animal was
                 // the last O(n^2) loop in the simulation.
-                let search = flee_range.max(hunt_range) as usize;
+                let search = (flee_range + 22.0).max(hunt_range) as usize;
                 grid.near(c.x, c.y, search, |idx| {
                     let a = &agents[idx as usize];
                     let (id, ox, oy, ospecies) = (a.0, a.1, a.2, a.3);
@@ -75,7 +76,11 @@ pub(crate) fn act_steer(
                     let dx = ox - c.x;
                     let dy = oy - c.y;
                     let d = (dx * dx + dy * dy).sqrt();
-                    if d < flee_range && flee_target.map_or(true, |t| d < t.2) {
+                    // A species that has been hunted keeps well away from
+                    // the hunter: the fear of the herd lengthens the run.
+                    let fright = fear.fear_of(c.species, ospecies) * 0.22;
+                    let run = flee_range + fright;
+                    if d < run && flee_target.map_or(true, |t| d < t.2) {
                         flee_target = Some((dx, dy, d));
                     }
                     if d < hunt_range && prey.map_or(true, |t| d < t.2) {
@@ -88,7 +93,13 @@ pub(crate) fn act_steer(
                 // A colony that has learned to hunt does not wait for its
                 // food to come to it. A hungry hunter goes after the nearest
                 // animal of another species and closes on it.
-                if c.knows(Culture::Hunting)
+                //
+                // A species that has been hunted hard enough learns to hunt
+                // itself: the ones that were eaten start eating. This is
+                // how a prey species turns into a predator.
+                let hunted_hard = fear.total_of(c.species);
+                let will_hunt = c.knows(Culture::Hunting) || hunted_hard > 45.0;
+                if will_hunt
                     && prey.is_some()
                     && (c.hunger > 25.0 || out[4] > 0.4)
                     && c.stage.can_fight()

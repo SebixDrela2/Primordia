@@ -219,6 +219,23 @@ pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx
             for line in relations.iter().take(4) {
                 lines.push(line.clone());
             }
+            // Who this species is afraid of, and who fears it.
+            let fears: Vec<String> = creatures
+                .predation
+                .entries()
+                .iter()
+                .filter(|(p, _, f)| *p == c.species && *f > 1.0)
+                .map(|(_, q, f)| {
+                    format!(
+                        "afraid of the {} (fear {:.0})",
+                        crate::creature::species_name_for(*q),
+                        f
+                    )
+                })
+                .collect();
+            for line in fears.iter().take(3) {
+                lines.push(line.clone());
+            }
             // What the treaties actually mean, spelled out for the player.
             for line in crate::ui::diplomacy::treaty_blurbs(creatures, c.species) {
                 lines.push(format!("  {}", line));

@@ -27,6 +27,7 @@ mod mating;
 mod names;
 mod personality;
 mod plague;
+mod predation;
 mod raids;
 mod senses;
 mod speciation;
@@ -410,6 +411,8 @@ pub struct CreatureSystem {
     /// The ground each colony holds: (species, centre x, centre y, radius).
     /// Rebuilt once per tick.
     pub claims: Vec<(u32, f32, f32, f32)>,
+    /// Who eats whom, and what the prey remembers about it.
+    pub predation: PredationMemory,
     /// Events for the renderer, drained every frame by the UI.
     pub events: Vec<SimEvent>,
     /// Bombs currently in flight.
@@ -476,6 +479,7 @@ pub use mating::*;
 pub use names::*;
 pub use personality::*;
 pub use plague::*;
+pub use predation::*;
 pub use senses::*;
 pub use speciation::*;
 pub use technology::*;
