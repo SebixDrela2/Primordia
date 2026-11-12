@@ -365,6 +365,8 @@ async fn main() {
                     alliances: 0,
                     wars: 0,
                     treaties: 0,
+                    traits: Vec::new(),
+                    discoveries: Vec::new(),
                 });
                 paused = true;
             } else {
@@ -401,6 +403,16 @@ async fn main() {
                             treaties += r.treaties.len() as u32;
                         }
                     }
+                    // What the winning lineage evolved and worked out.
+                    let traits: Vec<&'static str> = crate::creature::trait_list(rep.traits)
+                        .iter()
+                        .map(|t| t.name())
+                        .collect();
+                    let discoveries: Vec<&'static str> =
+                        crate::creature::discovery_list(creatures.species_discoveries(winner))
+                            .iter()
+                            .map(|d| d.name())
+                            .collect();
                     victory = Some(VictoryScreen {
                         winner: name,
                         color: rep.team_color,
@@ -412,6 +424,8 @@ async fn main() {
                         alliances,
                         wars,
                         treaties,
+                        traits,
+                        discoveries,
                     });
                     paused = true;
                 }

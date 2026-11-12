@@ -15,6 +15,10 @@ pub struct VictoryScreen {
     pub     alliances: u32,
     pub     wars: u32,
     pub     treaties: u32,
+    /// The traits the winning lineage evolved.
+    pub     traits: Vec<&'static str>,
+    /// What the winning species worked out for itself.
+    pub     discoveries: Vec<&'static str>,
 }
 
 pub fn draw_victory(v: &VictoryScreen) {
@@ -113,6 +117,31 @@ pub fn draw_victory(v: &VictoryScreen) {
         14.0,
         Color::new(0.45, 0.72, 1.0, 0.88),
     );
+
+    // What the winning lineage became: the traits it evolved and what it
+    // worked out for itself.
+    if !v.traits.is_empty() {
+        let evolved = format!("evolved: {}", v.traits.join(", "));
+        let ed = measure_text(&evolved, None, 14, 1.0);
+        draw_text(
+            &evolved,
+            (sw - ed.width) / 2.0,
+            y + 282.0,
+            14.0,
+            Color::new(0.55, 0.9, 0.7, 0.9),
+        );
+    }
+    if !v.discoveries.is_empty() {
+        let found = format!("worked out: {}", v.discoveries.join(", "));
+        let fd = measure_text(&found, None, 13, 1.0);
+        draw_text(
+            &found,
+            (sw - fd.width) / 2.0,
+            y + 302.0,
+            13.0,
+            Color::new(0.85, 0.75, 0.55, 0.9),
+        );
+    }
 
     let countdown = format!("restarting in {:.1}s", v.timer.max(0.0));
     let cd = measure_text(&countdown, None, 14, 1.0);
