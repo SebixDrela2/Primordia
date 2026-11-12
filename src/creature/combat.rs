@@ -442,7 +442,18 @@ impl CreatureSystem {
                     c.bond,
                 )
             };
+            let (was_queen, species) = {
+                let c = &self.list[i];
+                (c.role == Role::Queen, c.species)
+            };
             world.scavenge(cx, cy);
+            // When the queen dies the colony falls into a crisis: it holds
+            // no ground, builds nothing and loses heart. The rivals take
+            // the chance, and the colony has to find a new queen to pull
+            // itself together again.
+            if was_queen {
+                self.begin_succession(species);
+            }
             // A creature that loses its partner grieves: it loses heart and
             // it loses weight for a while.
             if let Some(partner_id) = bond {
@@ -486,6 +497,10 @@ impl CreatureSystem {
                     y: cy,
                     color: child.team_color,
                 });
+                // A new queen takes the throne, and the crisis is over.
+                if child.role == Role::Queen {
+                    self.end_succession(child.species);
+                }
             }
         }
 

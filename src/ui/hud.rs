@@ -320,6 +320,18 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         stats.practices,
         stats.discoveries
     );
+    // The colonies that have lost their queen. They hold no ground and
+    // build nothing, so the player should know about it.
+    let crises = creatures.species_in_crisis();
+    let line10 = if crises.is_empty() {
+        String::new()
+    } else {
+        let names: Vec<String> = crises
+            .iter()
+            .map(|sp| crate::creature::species_name_for(*sp))
+            .collect();
+        format!("SUCCESSION CRISIS: {}", names.join(", "))
+    };
 
     draw_text(&line1, 18.0, 66.0, 17.0, Color::new(0.85, 0.9, 0.95, 0.8));
     draw_text(&line2, 18.0, 88.0, 17.0, Color::new(0.6, 0.66, 0.74, 0.8));
@@ -330,6 +342,9 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
     draw_text(&line7, 18.0, 198.0, 15.0, Color::new(0.85, 0.55, 0.45, 0.8));
     draw_text(&line8, 18.0, 218.0, 15.0, Color::new(0.45, 0.7, 1.0, 0.82));
     draw_text(&line9, 18.0, 238.0, 15.0, Color::new(0.8, 0.65, 0.85, 0.82));
+    if !line10.is_empty() {
+        draw_text(&line10, 18.0, 258.0, 15.0, Color::new(0.95, 0.55, 0.35, 0.9));
+    }
 
     // The volcano: a warning banner while the mountain is awake.
     match world.volcano_state() {

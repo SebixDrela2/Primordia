@@ -28,6 +28,7 @@ impl CreatureSystem {
             structures: Vec::new(),
             claims: Vec::new(),
             predation: PredationMemory::default(),
+            succession: Vec::new(),
             events: Vec::new(),
             bombs: Vec::new(),
             diplomacy: Diplomacy::default(),
@@ -137,6 +138,11 @@ impl CreatureSystem {
         let mut builders: Vec<(u32, u32)> = Vec::new();
         for c in self.list.iter() {
             if c.role == Role::Queen {
+                // A colony in crisis has nobody to defend it, so it holds
+                // no ground at all.
+                if in_crisis(&self.succession, c.species, self.tick) {
+                    continue;
+                }
                 centres.push((c.species, c.base_x, c.base_y));
             }
             if c.role == Role::Queen || c.role == Role::Builder {
@@ -348,6 +354,11 @@ impl CreatureSystem {
 
         // Determine role: first of species = Queen, then ~10% Soldiers, rest Workers
         // Children of queens become workers/soldiers; children of workers/soldiers inherit with small mutation
+        //
+        // A colony in crisis raises queens far more readily: without a
+        // queen there is nobody to organise the colony, so the animals
+        // put their effort into finding one. This is what ends the crisis.
+        let crisis = in_crisis(&self.succession, species, self.tick);
         let role = if is_child {
             match parent_role {
                 Role::Queen => {
@@ -355,33 +366,57 @@ impl CreatureSystem {
                     // 5% queen (a rare princess). Envoys are the diplomats
                     // that carry treaties between species.
                     let r = self.rng.f32();
-                    if r < 0.78 { Role::Worker }
-                    else if r < 0.88 { Role::Soldier }
-                    else if r < 0.95 { Role::Envoy }
-                    else { Role::Queen }
+                    if crisis {
+                        // The colony is looking for a queen.
+                        if r < 0.35 { Role::Queen }
+                        else if r < 0.65 { Role::Worker }
+                        else if r < 0.85 { Role::Soldier }
+                        else { Role::Envoy }
+                    } else if r < 0.78 {
+                        Role::Worker
+                    } else if r < 0.88 {
+                        Role::Soldier
+                    } else if r < 0.95 {
+                        Role::Envoy
+                    } else {
+                        Role::Queen
+                    }
                 }
                 Role::Worker => {
                     // Worker offspring: mostly workers, rare soldier or a new
                     // princess that can found a fresh colony/lineage.
                     let r = self.rng.f32();
-                    if r < 0.05 { Role::Queen }
-                    else if r < 0.06 { Role::Soldier }
-                    else if r < 0.10 { Role::Envoy }
-                    else { Role::Worker }
+                    let queen_chance = if crisis { 0.30 } else { 0.05 };
+                    if r < queen_chance {
+                        Role::Queen
+                    } else if r < queen_chance + 0.01 {
+                        Role::Soldier
+                    } else if r < queen_chance + 0.05 {
+                        Role::Envoy
+                    } else {
+                        Role::Worker
+                    }
                 }
                 Role::Soldier => {
                     // Soldiers mostly breed soldiers, occasionally a queen.
                     let r = self.rng.f32();
-                    if r < 0.03 { Role::Queen }
-                    else if r < 0.04 { Role::Worker }
-                    else if r < 0.06 { Role::Envoy }
-                    else { Role::Soldier }
+                    let queen_chance = if crisis { 0.22 } else { 0.03 };
+                    if r < queen_chance {
+                        Role::Queen
+                    } else if r < queen_chance + 0.01 {
+                        Role::Worker
+                    } else if r < queen_chance + 0.03 {
+                        Role::Envoy
+                    } else {
+                        Role::Soldier
+                    }
                 }
                 Role::Envoy => {
                     // Envoys breed envoys most of the time, but they can also
                     // produce ordinary workers.
                     let r = self.rng.f32();
-                    if r < 0.60 { Role::Envoy }
+                    if crisis && r < 0.12 { Role::Queen }
+                    else if r < 0.60 { Role::Envoy }
                     else if r < 0.70 { Role::Merchant }
                     else if r < 0.80 { Role::Priest }
                     else { Role::Worker }

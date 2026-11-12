@@ -31,6 +31,7 @@ mod predation;
 mod raids;
 mod senses;
 mod speciation;
+mod succession;
 mod stats;
 mod step;
 mod technology;
@@ -413,6 +414,9 @@ pub struct CreatureSystem {
     pub claims: Vec<(u32, f32, f32, f32)>,
     /// Who eats whom, and what the prey remembers about it.
     pub predation: PredationMemory,
+    /// The species that are without a queen: (species, tick the crisis
+    /// started). A colony in crisis holds no ground and builds nothing.
+    pub succession: Vec<(u32, u64)>,
     /// Events for the renderer, drained every frame by the UI.
     pub events: Vec<SimEvent>,
     /// Bombs currently in flight.
@@ -482,4 +486,5 @@ pub use plague::*;
 pub use predation::*;
 pub use senses::*;
 pub use speciation::*;
+pub use succession::*;
 pub use technology::*;

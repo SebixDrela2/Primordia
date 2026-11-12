@@ -6,6 +6,7 @@ impl CreatureSystem {
 
         // Work out the ground every colony holds. Everything that asks for
         // a claim this tick reads the cache.
+        self.update_succession();
         self.rebuild_claims();
 
         // Advance day/night cycle (full cycle = 7200 ticks ~ 2 min at 60fps)
@@ -173,6 +174,22 @@ impl CreatureSystem {
         // The predation memory, laid out as a table so the behaviours can
         // look a fear up in constant time.
         let fear_entries = FearTable::build(self.predation.entries(), self.next_species as usize + 8);
+        // The colonies that are in crisis, copied out so the loop can read
+        // them without borrowing the whole system.
+        let succession = self.succession.clone();
+        let crisis_drain_of = |species: u32, tick: u64| -> f32 {
+            let start = succession
+                .iter()
+                .find(|(sp, _)| *sp == species)
+                .map(|(_, s)| *s)
+                .unwrap_or(tick);
+            if tick.saturating_sub(start) < CRISIS_TICKS {
+                let age = tick.saturating_sub(start) as f32;
+                (0.004 + age * 0.000012).min(0.05)
+            } else {
+                0.0
+            }
+        };
 
         for index in 0..self.list.len() {
             // The results of the actions. They are assigned inside the
@@ -233,6 +250,13 @@ impl CreatureSystem {
                 // Hardy species tire of hunger more slowly.
                 let hardy = if c.traits & trait_bits::HARDY != 0 { 0.7 } else { 1.0 };
                 c.hunger = (c.hunger + 0.06 * hardy).clamp(0.0, 100.0);
+                // A colony without a queen loses heart: the animals burn
+                // their energy faster and the colony falls apart.
+                let crisis = crisis_drain_of(c.species, self.tick);
+                if crisis > 0.0 {
+                    c.energy = (c.energy - crisis).max(0.0);
+                    c.mood = Mood::Depressed;
+                }
                 // Rich soil means the colony does not go hungry.
                 if place.food {
                     c.hunger = (c.hunger - 0.035).clamp(0.0, 100.0);
@@ -543,8 +567,21 @@ impl CreatureSystem {
                 ate_something = act_eat(world, c, &out);
                 act_mine(world, c, &out, company);
 
-                let (built, built_count) =
-                    act_build(world, c, &out, &mut self.structures, &mut self.events, company);
+                // A colony in crisis builds slowly: there is nobody to
+                // decide what should be built, and nobody to keep it.
+                let (built, built_count) = act_build(
+                    world,
+                    c,
+                    &out,
+                    &mut self.structures,
+                    &mut self.events,
+                    company,
+                );
+                if built && crisis > 0.0 {
+                    // The building goes up, but it takes twice as long to
+                    // raise the next one.
+                    c.build_cooldown = c.build_cooldown.max(60);
+                }
                 built_something = built;
                 structures_total += built_count;
 
@@ -1045,6 +1082,11 @@ impl CreatureSystem {
         if self.tick % 120 == 0 {
             self.predation.decay();
         }
+
+        // A colony that has lost its queen is in crisis: it holds no
+        // ground, builds nothing and loses heart. The crisis ends the
+        // moment a new queen takes the throne.
+        self.update_succession();
 
         // Apply accumulated stats
         self.trades_total = self.trades_total.saturating_add(traded_total);

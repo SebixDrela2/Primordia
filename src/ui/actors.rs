@@ -158,6 +158,33 @@ pub fn draw_actors(
                     );
                 }
             }
+            // A colony in crisis: its border flickers and breaks, because
+            // there is nobody left to defend the ground.
+            for (species, _) in &creatures.succession {
+                let Some((cx, cy, radius)) = creatures.claim_of(*species) else {
+                    continue;
+                };
+                let sx = (cx - view_x) * scale_x;
+                let sy = (cy - view_y) * scale_y;
+                let r = radius * scale_x.min(scale_y);
+                let flick = 0.4 + 0.4 * (now * 5.0 + cx).sin();
+                let segments = 36;
+                for i in 0..segments {
+                    if i % 3 == 2 {
+                        continue;
+                    }
+                    let a0 = i as f32 / segments as f32 * std::f32::consts::TAU;
+                    let a1 = (i + 1) as f32 / segments as f32 * std::f32::consts::TAU;
+                    draw_line(
+                        sx + a0.cos() * r,
+                        sy + a0.sin() * r,
+                        sx + a1.cos() * r,
+                        sy + a1.sin() * r,
+                        1.6,
+                        Color::new(0.95, 0.35, 0.25, 0.35 * flick),
+                    );
+                }
+            }
         }
 
         // The bonds: a thin line between two animals that are partners.
