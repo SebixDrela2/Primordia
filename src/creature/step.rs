@@ -94,8 +94,6 @@ impl CreatureSystem {
         let mut input_buf = vec![0.0f32; INPUTS];
         let mut net_act: Vec<f32> = Vec::with_capacity(INPUTS);
         let mut net_next: Vec<f32> = Vec::with_capacity(24);
-        let positions: Vec<(usize, u32, f32, f32, u32)> =
-            self.list.iter().enumerate().map(|(i, c)| (i, c.id, c.x, c.y, c.species)).collect();
         // Richer per-agent view for the senses: id, x, y, species, role, health.
         let agents: Vec<(u32, f32, f32, u32, u8, f32)> = self
             .list
@@ -408,7 +406,17 @@ impl CreatureSystem {
                     c.mood_timer = (self.rng.range(120) + 60) as u16;
                 } else { c.mood_timer -= 1; }
 
-                let scan = scan_local(world, c.x.round() as i32, c.y.round() as i32);
+                // The brain is only re-thought every other tick: a creature
+                // moves slowly, so yesterday's decision is still a good one.
+                // Halving the work here is the single biggest saving in the
+                // simulation. The look at the world around the creature
+                // rides along with it: on a tick where the brain does not
+                // run, the picture from the last time it did is used.
+                let think = self.tick % 2 == 0 || !c.brain_ready;
+                if think {
+                    c.scan_cache = scan_local(world, c.x.round() as i32, c.y.round() as i32);
+                }
+                let scan = c.scan_cache;
                 let own_pop = species_counts
                     .iter()
                     .find(|(id, _)| *id == c.species)
@@ -420,11 +428,9 @@ impl CreatureSystem {
                     .map(|(_, n)| *n)
                     .unwrap_or(0);
 
-                // The brain is only re-thought every other tick: a creature
-                // moves slowly, so yesterday's decision is still a good one.
-                // Halving the work here is the single biggest saving in the
-                // simulation.
-                if self.tick % 2 == 0 || !c.brain_ready {
+                // The brain is only re-thought every other tick, with the
+                // decision kept between the ticks it does not run on.
+                if think {
                     Self::sense(
                         &agents,
                         &grid,
@@ -624,41 +630,51 @@ impl CreatureSystem {
                 let trade_wanted = out[9] > 0.4
                     || (c.traits & trait_bits::PEACEFUL != 0 && out[15] < 0.3);
                 if trade_wanted && c.craft_cooldown == 0 {
-                    for &(list_idx, oid, ox, oy, ospecies) in &positions {
-                        if oid == c.id { continue; }
-                        let d = ((ox - c.x).powi(2) + (oy - c.y).powi(2)).sqrt();
-                        if d < 6.0 && ospecies != c.species {
-                            traded = true;
-                            // A trade is a negotiation, not a per-tick income.
-                            c.craft_cooldown = 25;
-                            self.events.push(SimEvent::Trade {
-                                x: (c.x + ox) * 0.5,
-                                y: (c.y + oy) * 0.5,
-                                color: c.team_color,
-                            });
-                            c.reputation = (c.reputation as i32 + 1).clamp(-100, 100) as i16;
-                            // A signed trade pact makes the exchange far more
-                            // valuable: the goods are the same, but the
-                            // terms are better.
-                            let pact = self.diplomacy.has_treaty(
-                                c.species,
-                                ospecies,
-                                Treaty::TradePact,
-                            );
-                            // A colony that has traded for generations gets
-                            // better terms still.
-                            let gain = if pact { 18.0 } else { 5.0 }
-                                * c.culture_factor(Culture::Commerce);
-                            // A market makes the exchange worth much more.
-                            let gain = if near_market { gain * 1.6 } else { gain };
-                            c.energy = (c.energy + gain).min(c.max_energy);
-                            c.energy = (c.energy - energy_cost::TRADE).max(0.0);
-                            // Trading warms the relations up: a pact is
-                            // built out of repeated small exchanges.
-                            self.diplomacy.adjust_trust(c.species, ospecies, 0.8);
-                            learned.push((index, Culture::Commerce));
-                            break;
+                    // The trade partner is looked for through the spatial
+                    // grid: scanning the whole population for every trader
+                    // was the slowest loop in the step.
+                    let (cx, cy, cspecies) = (c.x, c.y, c.species);
+                    let mut partner: Option<(f32, f32, u32)> = None;
+                    grid.near(cx, cy, 6, |ji| {
+                        if partner.is_some() {
+                            return;
                         }
+                        let other = &agents[ji as usize];
+                        if other.3 == cspecies {
+                            return;
+                        }
+                        let d = ((other.1 - cx).powi(2) + (other.2 - cy).powi(2)).sqrt();
+                        if d < 6.0 {
+                            partner = Some((other.1, other.2, other.3));
+                        }
+                    });
+                    if let Some((ox, oy, ospecies)) = partner {
+                        traded = true;
+                        // A trade is a negotiation, not a per-tick income.
+                        c.craft_cooldown = 25;
+                        self.events.push(SimEvent::Trade {
+                            x: (cx + ox) * 0.5,
+                            y: (cy + oy) * 0.5,
+                            color: c.team_color,
+                        });
+                        c.reputation = (c.reputation as i32 + 1).clamp(-100, 100) as i16;
+                        // A signed trade pact makes the exchange far more
+                        // valuable: the goods are the same, but the
+                        // terms are better.
+                        let pact =
+                            self.diplomacy.has_treaty(cspecies, ospecies, Treaty::TradePact);
+                        // A colony that has traded for generations gets
+                        // better terms still.
+                        let gain =
+                            if pact { 18.0 } else { 5.0 } * c.culture_factor(Culture::Commerce);
+                        // A market makes the exchange worth much more.
+                        let gain = if near_market { gain * 1.6 } else { gain };
+                        c.energy = (c.energy + gain).min(c.max_energy);
+                        c.energy = (c.energy - energy_cost::TRADE).max(0.0);
+                        // Trading warms the relations up: a pact is
+                        // built out of repeated small exchanges.
+                        self.diplomacy.adjust_trust(cspecies, ospecies, 0.8);
+                        learned.push((index, Culture::Commerce));
                     }
                 }
 
@@ -819,14 +835,18 @@ impl CreatureSystem {
                     spells_cast_total += 1;
                     match c.active_spell {
                         Spell::Fireball => {
-                            for &(list_idx, oid, ox, oy, ospecies) in &positions {
-                                if oid == c.id { continue; }
-                                if ospecies == c.species { continue; }
-                                let d = ((ox - c.x).powi(2) + (oy - c.y).powi(2)).sqrt();
-                                if d < 10.0 {
-                                    spell_targets.push((index, list_idx, 35.0));
+                            let (sx, sy, ssp) = (c.x, c.y, c.species);
+                            grid.near(sx, sy, 10, |ji| {
+                                let j = ji as usize;
+                                let other = &agents[j];
+                                if other.3 == ssp {
+                                    return;
                                 }
-                            }
+                                let d = ((other.1 - sx).powi(2) + (other.2 - sy).powi(2)).sqrt();
+                                if d < 10.0 {
+                                    spell_targets.push((index, j, 35.0));
+                                }
+                            });
                         }
                         Spell::Heal => {
                             c.health = (c.health + 40.0).min(100.0);
@@ -853,28 +873,36 @@ impl CreatureSystem {
                             // Will spawn a minion (handled in births)
                         }
                         Spell::Curse => {
-                            for &(list_idx, oid, ox, oy, ospecies) in &positions {
-                                if oid == c.id { continue; }
-                                if ospecies == c.species { continue; }
-                                let d = ((ox - c.x).powi(2) + (oy - c.y).powi(2)).sqrt();
-                                if d < 8.0 {
-                                    disease_targets.push(list_idx);
+                            let (sx, sy, ssp) = (c.x, c.y, c.species);
+                            grid.near(sx, sy, 8, |ji| {
+                                let j = ji as usize;
+                                let other = &agents[j];
+                                if other.3 == ssp {
+                                    return;
                                 }
-                            }
+                                let d = ((other.1 - sx).powi(2) + (other.2 - sy).powi(2)).sqrt();
+                                if d < 8.0 {
+                                    disease_targets.push(j);
+                                }
+                            });
                         }
                         Spell::Bless => {
                             c.health = (c.health + 20.0).min(100.0);
                             c.energy = (c.energy + 20.0).min(c.max_energy);
                         }
                         Spell::Lightning => {
-                            for &(list_idx, oid, ox, oy, ospecies) in &positions {
-                                if oid == c.id { continue; }
-                                if ospecies == c.species { continue; }
-                                let d = ((ox - c.x).powi(2) + (oy - c.y).powi(2)).sqrt();
-                                if d < 6.0 {
-                                    spell_targets.push((index, list_idx, 50.0));
+                            let (sx, sy, ssp) = (c.x, c.y, c.species);
+                            grid.near(sx, sy, 6, |ji| {
+                                let j = ji as usize;
+                                let other = &agents[j];
+                                if other.3 == ssp {
+                                    return;
                                 }
-                            }
+                                let d = ((other.1 - sx).powi(2) + (other.2 - sy).powi(2)).sqrt();
+                                if d < 6.0 {
+                                    spell_targets.push((index, j, 50.0));
+                                }
+                            });
                         }
                         _ => {}
                     }
@@ -885,13 +913,18 @@ impl CreatureSystem {
                 // A disease jumps to a neighbour of another species: the
                 // sick ones and the well ones meet at the border.
                 if c.disease != Disease::None && self.rng.chance(0.02) {
-                    for &(list_idx, oid, ox, oy, ospecies) in &positions {
-                        if oid == c.id { continue; }
-                        let d = ((ox - c.x).powi(2) + (oy - c.y).powi(2)).sqrt();
-                        if d < 4.0 && ospecies != c.species && self.rng.chance(0.15) {
-                            disease_targets.push(list_idx);
+                    let (dx0, dy0, dsp) = (c.x, c.y, c.species);
+                    grid.near(dx0, dy0, 4, |ji| {
+                        let j = ji as usize;
+                        let other = &agents[j];
+                        if other.3 == dsp {
+                            return;
                         }
-                    }
+                        let d = ((other.1 - dx0).powi(2) + (other.2 - dy0).powi(2)).sqrt();
+                        if d < 4.0 && self.rng.chance(0.15) {
+                            disease_targets.push(j);
+                        }
+                    });
                 }
                 // The disease does its work: it burns energy, takes health
                 // and slows the host down.

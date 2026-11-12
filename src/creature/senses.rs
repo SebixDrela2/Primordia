@@ -76,6 +76,10 @@ pub(crate) struct ElemTables {
     toxicity: [f32; Elem::TABLE_LEN],
     /// Bit flags: wood | metal | crystal | hazard | poison | plant
     classes: [u8; Elem::TABLE_LEN],
+    /// The metals a creature can work with.
+    metal: [bool; Elem::TABLE_LEN],
+    /// The crystals a creature can work with.
+    crystal: [bool; Elem::TABLE_LEN],
 }
 
 const CLASS_WOOD: u8 = 1;
@@ -88,6 +92,8 @@ const CLASS_PLANT: u8 = 32;
 impl ElemTables {
     pub(crate) fn new() -> Self {
         let mut classes = [0u8; Elem::TABLE_LEN];
+        let mut metal = [false; Elem::TABLE_LEN];
+        let mut crystal = [false; Elem::TABLE_LEN];
         let mut i = 0;
         while i < Elem::TABLE_LEN {
             classes[i] = match Elem::from_u8(i as u8) {
@@ -107,6 +113,23 @@ impl ElemTables {
                 Elem::Plant | Elem::Moss | Elem::Spore | Elem::Fungus => CLASS_PLANT,
                 _ => 0,
             };
+            // The metals and crystals the senses look for. These are the
+            // same lists the old matching used, kept as tables so the hot
+            // loop never touches the enum.
+            metal[i] = matches!(
+                Elem::from_u8(i as u8),
+                Elem::Metal
+                    | Elem::Copper
+                    | Elem::Gold
+                    | Elem::Iron
+                    | Elem::Silver
+                    | Elem::Wire
+                    | Elem::Circuit
+            );
+            crystal[i] = matches!(
+                Elem::from_u8(i as u8),
+                Elem::Crystal | Elem::Gem | Elem::Diamond | Elem::Mana
+            );
             i += 1;
         }
         ElemTables {
@@ -115,6 +138,8 @@ impl ElemTables {
             nutrition: Elem::nutrition_table(),
             toxicity: Elem::toxicity_table(),
             classes,
+            metal,
+            crystal,
         }
     }
 }
@@ -240,40 +265,55 @@ impl CreatureSystem {
         let cy = c.y.round() as i32;
 
         // 8 directions × 6 channels = 48 (food, hazard, water, solid, metal, crystal)
-        for (d, (dx, dy)) in DIRS8.iter().enumerate() {
-            let mut food = 0.0;
-            let mut hazard = 0.0;
-            let mut water = 0.0;
-            let mut solid = 0.0;
-            let mut metal = 0.0;
-            let mut crystal = 0.0;
-            for step in 1..=8i32 {
-                let sx = cx + dx * step;
-                let sy = cy + dy * step;
-                if sx < 0 || sy < 0 || sx >= world.w as i32 || sy >= world.h as i32 {
-                    continue;
+        // The element properties come from the lookup tables: this loop runs
+        // for every creature and matching on the enum here is far too slow.
+        TABLES.with(|tab| {
+            for (d, (dx, dy)) in DIRS8.iter().enumerate() {
+                let mut food = 0.0;
+                let mut hazard = 0.0;
+                let mut water = 0.0;
+                let mut solid = 0.0;
+                let mut metal = 0.0;
+                let mut crystal = 0.0;
+                for step in 1..=8i32 {
+                    let sx = cx + dx * step;
+                    let sy = cy + dy * step;
+                    if sx < 0 || sy < 0 || sx >= world.w as i32 || sy >= world.h as i32 {
+                        continue;
+                    }
+                    let k = world.kind[sy as usize * world.w + sx as usize] as usize;
+                    if k == Elem::Empty as usize {
+                        continue;
+                    }
+                    let w = 1.0 / step as f32;
+                    if tab.nutrition[k] > 0.0 {
+                        food += w;
+                    }
+                    if tab.toxicity[k] > 0.0 {
+                        hazard += w;
+                    }
+                    if k == Elem::Water as usize {
+                        water += w;
+                    }
+                    if tab.solid[k] {
+                        solid += w;
+                    }
+                    if tab.metal[k] {
+                        metal += w;
+                    }
+                    if tab.crystal[k] {
+                        crystal += w;
+                    }
                 }
-                let k = world.kind[sy as usize * world.w + sx as usize];
-                if k == Elem::Empty as u8 {
-                    continue;
-                }
-                let e = Elem::from_u8(k);
-                let w = 1.0 / step as f32;
-                if e.nutrition() > 0.0 { food += w; }
-                if e.toxicity() > 0.0 { hazard += w; }
-                if k == Elem::Water as u8 { water += w; }
-                if e.is_solid() { solid += w; }
-                if matches!(e, Elem::Metal | Elem::Copper | Elem::Gold | Elem::Iron | Elem::Silver | Elem::Wire | Elem::Circuit) { metal += w; }
-                if matches!(e, Elem::Crystal | Elem::Gem | Elem::Diamond | Elem::Mana) { crystal += w; }
+                let base = d * 6;
+                input[base] = food.min(1.0);
+                input[base + 1] = hazard.min(1.0);
+                input[base + 2] = water.min(1.0);
+                input[base + 3] = solid.min(1.0);
+                input[base + 4] = metal.min(1.0);
+                input[base + 5] = crystal.min(1.0);
             }
-            let base = d * 6;
-            input[base] = food.min(1.0);
-            input[base + 1] = hazard.min(1.0);
-            input[base + 2] = water.min(1.0);
-            input[base + 3] = solid.min(1.0);
-            input[base + 4] = metal.min(1.0);
-            input[base + 5] = crystal.min(1.0);
-        }
+        });
 
         // Creature proximity: one pass over the colony gives the nearest
         // neighbour, the nearest rival, the nearest ally and the local

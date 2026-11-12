@@ -221,6 +221,10 @@ pub struct Creature {
     pub out_cache: [f32; OUTPUTS],
     /// Has the brain run at least once for this creature?
     pub brain_ready: bool,
+    /// The last look at the world around the creature. It is refreshed on
+    /// the same tick the brain runs on, so the steering uses a picture that
+    /// is one tick old at worst.
+    pub(crate) scan_cache: LocalScan,
     pub size: f32,
     pub last_x: f32,
     pub last_y: f32,
