@@ -32,6 +32,17 @@ pub struct Renderer {
     /// Per-element visual effects, so the pixel loop never matches on the
     /// element enum.
     fx: Vec<FxEntry>,
+    /// Per-column aurora band height. The band only depends on the column, so
+    /// it is worked out once per frame instead of twice per pixel.
+    aurora_col: Vec<f32>,
+    /// Per-column biome tint delta (the tint minus one), so the pixel loop only
+    /// has to add it.
+    biome_delta: Vec<[f32; 3]>,
+    /// Per-column sky gradient: the colour at the horizon and the slope over
+    /// the height of the sky. The sky is the biggest part of the screen, so
+    /// the gradient is worked out once per column instead of per pixel.
+    sky_base: Vec<[f32; 3]>,
+    sky_slope: Vec<[f32; 3]>,
 }
 
 impl Renderer {
@@ -41,6 +52,10 @@ impl Renderer {
             cloud_row: Vec::new(),
             light_rows: Vec::new(),
             fx: fx_table(),
+            aurora_col: Vec::new(),
+            biome_delta: Vec::new(),
+            sky_base: Vec::new(),
+            sky_slope: Vec::new(),
         }
     }
 
@@ -175,6 +190,63 @@ impl Renderer {
         }
         self.light_rows.copy_from_slice(&self.light.buf);
 
+        // The aurora band depends only on the column, so it is worked out
+        // once per frame instead of twice for every pixel of that column.
+        if self.aurora_col.len() != rw as usize {
+            self.aurora_col.clear();
+            self.aurora_col.resize(rw as usize, 0.0);
+        }
+        for i in 0..rw as usize {
+            let x = x0 + i as i32;
+            self.aurora_col[i] = ((x as f32 * 0.021 + time * 0.08).sin() * 34.0
+                + (x as f32 * 0.007 - time * 0.03).sin() * 22.0
+                + 90.0);
+        }
+
+        // The biome tint delta per column, so the pixel loop only adds it.
+        if self.biome_delta.len() != rw as usize {
+            self.biome_delta.clear();
+            self.biome_delta.resize(rw as usize, [0.0; 3]);
+        }
+        // The sky gradient is separable: the colour depends on the column
+        // (biome, weather, season, time of day) and the row (the height in
+        // the sky). Working the column part out once turns the per-pixel sky
+        // into a multiply and an add.
+        if self.sky_base.len() != rw as usize {
+            self.sky_base.clear();
+            self.sky_base.resize(rw as usize, [0.0; 3]);
+            self.sky_slope.clear();
+            self.sky_slope.resize(rw as usize, [0.0; 3]);
+        }
+        let day = 0.5 - 0.5 * (day_night * std::f32::consts::TAU).cos();
+        let dim = 0.45 + 0.55 * day;
+        let (sr, sg, sb) = match season {
+            0 => (0.94f32, 1.0f32, 0.95f32),
+            1 => (1.0, 0.99, 0.92),
+            2 => (1.0, 0.93, 0.82),
+            _ => (0.85, 0.92, 1.0),
+        };
+        let weather_sky = match weather {
+            Weather::Clear => [1.0f32, 1.0, 1.0],
+            Weather::Rain => [0.78, 0.82, 0.90],
+            Weather::Storm => [0.62, 0.66, 0.76],
+            Weather::Snow => [0.92, 0.95, 1.02],
+            Weather::Meteor => [0.88, 0.80, 0.86],
+        };
+        for i in 0..rw as usize {
+            let x = (x0 + i as i32).clamp(0, w as i32 - 1) as usize;
+            let bt = world.biome_tint[x];
+            self.biome_delta[i] = [bt[0] - 1.0, bt[1] - 1.0, bt[2] - 1.0];
+            // Sky colour at the horizon and the slope over the sky height.
+            let k = [
+                dim * sr * weather_sky[0] * (1.0 + (bt[0] - 1.0) * 0.55),
+                dim * sg * weather_sky[1] * (1.0 + (bt[1] - 1.0) * 0.55),
+                dim * sb * weather_sky[2] * (1.0 + (bt[2] - 1.0) * 0.55),
+            ];
+            self.sky_base[i] = [11.0 * k[0], 18.0 * k[1], 32.0 * k[2]];
+            self.sky_slope[i] = [30.0 * k[0], 44.0 * k[1], 58.0 * k[2]];
+        }
+
         let __t3 = std::time::Instant::now();
         // The hot loop takes plain slices, so nothing has to be reloaded from
         // the renderer state for every pixel.
@@ -184,6 +256,10 @@ impl Renderer {
             &self.cloud_row,
             &self.fx,
             &self.light_rows,
+            &self.aurora_col,
+            &self.biome_delta,
+            &self.sky_base,
+            &self.sky_slope,
             lw,
             lh,
             x0,
@@ -197,7 +273,15 @@ impl Renderer {
             gx0,
             gy0,
         );
-        eprintln!("blur {:.3}  paint {:.3}", __t2, __t3.elapsed().as_secs_f64()*1000.0);
+        // The per-frame timing print is only useful while profiling, and
+        // printing every frame costs more than the render itself.
+        if std::env::var_os("PRIMORDIA_RENDER_TIMING").is_some() {
+            eprintln!(
+                "blur {:.3}  paint {:.3}",
+                __t2,
+                __t3.elapsed().as_secs_f64() * 1000.0
+            );
+        }
     }
 }
 
@@ -210,6 +294,10 @@ fn paint(
     cloud_row: &[f32],
     fx: &[FxEntry],
     light_rows: &[[f32; 3]],
+    aurora_col: &[f32],
+    biome_delta: &[[f32; 3]],
+    sky_base: &[[f32; 3]],
+    sky_slope: &[[f32; 3]],
     lw: usize,
     lh: usize,
     x0: i32,
@@ -255,6 +343,13 @@ fn paint(
         sb * weather_sky[2],
     ];
 
+    // The terrain shading uses the same factors for every pixel, so they are
+    // worked out once here instead of once per pixel.
+    let season_r = 0.96 + 0.04 * sr;
+    let season_g = 0.96 + 0.04 * sg;
+    let season_b = 0.96 + 0.04 * sb;
+    let light_f = 0.62 + 0.38 * light_level;
+
     // The aurora only shows on cold, clear nights, so the check is hoisted
     // out of the pixel loop.
     let aurora = day < 0.32;
@@ -277,7 +372,7 @@ fn paint(
     let ground = &world.ground;    let ground_inv = &world.ground_inv;
     let biome_tint = &world.biome_tint;
     let biome = &world.biome;
-
+    let _ = biome_tint;
     for ry in 0..rh {
         let y = y0 + ry;
         if y < 0 || y >= h as i32 {
@@ -320,37 +415,33 @@ fn paint(
             let cell = row_base + x as usize;
             let o = (ry as usize * rw as usize + rx as usize) * 4;
             let e = kind[cell];
+            // The biome tint is a per-column value; the delta is what is
+            // actually needed, so it is looked up directly.
+            let bt = biome_delta[x as usize];
 
             if e == empty {
                 let surf = ground[x as usize] as f32;
                 let n = noise(x, y);
                 if (y as f32) < surf {
                     // ---- Sky ----
+                    // The gradient was worked out per column, so a pixel only
+                    // needs one multiply and one add per channel.
                     let t = (y as f32 * ground_inv[x as usize]).clamp(0.0, 1.0);
-                    let mut r = 11.0 + t * 30.0;
-                    let mut g = 18.0 + t * 44.0;
-                    let mut b = 32.0 + t * 58.0;
-
-                    let dim = 0.45 + 0.55 * day;
-                    // The season tint and the weather mute are folded into a
-                    // single multiplier, so the sky costs one multiply per
-                    // channel instead of four.
-                    r *= dim * sky_mul[0];
-                    g *= dim * sky_mul[1];
-                    b *= dim * sky_mul[2];
-
-                    // The sky takes on the colour of the biome below it.
-                    let bt = biome_tint[x as usize];
-                    r *= 1.0 + (bt[0] - 1.0) * 0.55;
-                    g *= 1.0 + (bt[1] - 1.0) * 0.55;
-                    b *= 1.0 + (bt[2] - 1.0) * 0.55;
+                    let base = sky_base[rx as usize];
+                    let slope = sky_slope[rx as usize];
+                    let mut r = base[0] + t * slope[0];
+                    let mut g = base[1] + t * slope[1];
+                    let mut b = base[2] + t * slope[2];
 
                     // A sparse field of stars appears as night falls.
-                    if day < 0.38 && n > 0.9968 {
-                        let star = 90.0 + 110.0 * n;
-                        r = r.max(star * 0.85);
-                        g = g.max(star * 0.9);
-                        b = b.max(star);
+                    if day < 0.38 {
+                        let n = noise(x, y);
+                        if n > 0.9968 {
+                            let star = 90.0 + 110.0 * n;
+                            r = r.max(star * 0.85);
+                            g = g.max(star * 0.9);
+                            b = b.max(star);
+                        }
                     }
 
                     // Sun or moon, with a soft halo. Only the cells around it
@@ -374,10 +465,7 @@ fn paint(
 
                     // Aurora over the tundra on cold, clear nights.
                     if aurora && biome[x as usize] == Biome::Tundra {
-                        let band = ((x as f32 * 0.021 + time * 0.08).sin() * 34.0
-                            + (x as f32 * 0.007 - time * 0.03).sin() * 22.0
-                            + 90.0)
-                            - y as f32;
+                        let band = aurora_col[rx as usize] - y as f32;
                         if band.abs() < 30.0 {
                             let amt = (1.0 - band.abs() / 30.0) * 0.5 * (1.0 - day / 0.32);
                             let (ar, ag, ab) = if band > 0.0 {
@@ -459,23 +547,22 @@ fn paint(
             // fades into shadow.
             let depth = (y as f32 - ground[x as usize] as f32).max(0.0);
             let depth_fade = (1.0 - depth * 0.0032).clamp(0.62, 1.0);
-            let shade = depth_fade * (0.62 + 0.38 * light_level) * (0.94 + n * 0.12);
+            let shade = depth_fade * light_f * (0.94 + n * 0.12);
             r *= shade;
             g *= shade;
             b *= shade;
 
             // Seasonal tint.
-            r *= 0.96 + 0.04 * sr;
-            g *= 0.96 + 0.04 * sg;
-            b *= 0.96 + 0.04 * sb;
+            r *= season_r;
+            g *= season_g;
+            b *= season_b;
 
             // Biome tint: deserts glow warm, tundra cold, forests green. It
             // fades out with depth so only the surface reads as "biome".
-            let bt = biome_tint[x as usize];
-            let fade = (1.0 - depth / 60.0).clamp(0.0, 1.0);
-            r *= 1.0 + (bt[0] - 1.0) * fade;
-            g *= 1.0 + (bt[1] - 1.0) * fade;
-            b *= 1.0 + (bt[2] - 1.0) * fade;
+            let fade = (1.0 - depth * (1.0 / 60.0)).clamp(0.0, 1.0);
+            r += bt[0] * fade;
+            g += bt[1] * fade;
+            b += bt[2] * fade;
 
             // ---- Element-specific life and light ----
             // The effect is described by a table entry, so the pixel loop

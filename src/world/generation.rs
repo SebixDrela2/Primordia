@@ -337,7 +337,7 @@ impl World {
                 }
                 // Denser in the middle depths, sparser near the surface.
                 let depth = (wy - top).max(0) as f32;
-                let chance = 0.55 - (depth / (bottom - top).max(1) as f32) * 0.25;
+                let chance = 0.30 - (depth / (bottom - top).max(1) as f32) * 0.12;
                 if self.rng.chance(chance) {
                     seed[gy * gw + gx] = true;
                 }
@@ -365,7 +365,7 @@ impl World {
                     angle += (self.rng.f32() - 0.5) * 1.1;
                     tx += (angle.cos() * 2.0) as i32;
                     ty += (angle.sin() * 2.0) as i32;
-                    let radius = 2 + self.rng.range(3) as i32;
+                    let radius = 1 + self.rng.range(3) as i32;
                     // Carve a blob around the tunnel centre.
                     for y in (ty - radius).max(0)..(ty + radius).min(h as i32) {
                         for x in (tx - radius).max(0)..(tx + radius).min(w as i32) {
@@ -377,8 +377,8 @@ impl World {
                         }
                     }
                 }
-                // A wider chamber where the tunnel starts.
-                let rr = 4 + self.rng.range(4) as i32;
+                // A slightly wider chamber where the tunnel starts.
+                let rr = 3 + self.rng.range(3) as i32;
                 for y in (cy - rr).max(0)..(cy + rr).min(h as i32) {
                     for x in (cx - rr).max(0)..(cx + rr).min(w as i32) {
                         let dx = (x - cx) as f32 / rr as f32;

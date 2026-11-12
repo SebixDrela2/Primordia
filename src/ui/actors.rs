@@ -46,6 +46,21 @@ pub fn draw_actors(
                 let sx = (fx - view_x) * scale_x;
                 let sy = (fy - view_y) * scale_y;
                 let flicker = 0.75 + 0.25 * ((now * 6.0 + fx) * 1.7).sin();
+                // A wide, very faint wash of the species colour: the map
+                // slowly becomes a picture of who holds what.
+                for (radius, alpha) in [(120.0f32, 0.018f32), (70.0, 0.026)] {
+                    draw_circle(
+                        sx,
+                        sy,
+                        radius * scale_x.min(1.0),
+                        Color::new(
+                            col[0] as f32 / 255.0,
+                            col[1] as f32 / 255.0,
+                            col[2] as f32 / 255.0,
+                            alpha,
+                        ),
+                    );
+                }
                 for (radius, alpha) in [(26.0f32, 0.05f32), (15.0, 0.08), (7.0, 0.12)] {
                     draw_circle(
                         sx,
@@ -65,6 +80,33 @@ pub fn draw_actors(
                     3.0 * scale_x.min(1.5),
                     Color::new(1.0, 0.85, 0.45, 0.9),
                 );
+            }
+        }
+
+        // Fireflies: little lights drifting over the ground at night.
+        {
+            let night = (creatures.day_night - 0.55).abs() > 0.45;
+            if night && zoom < 3.0 {
+                let scale_x = scr_w / view_w;
+                let scale_y = scr_h / view_h;
+                for i in 0..70 {
+                    let fi = i as f32;
+                    // A slow, looping drift so the motes never sit still.
+                    let px = view_x
+                        + ((fi * 37.1 + now * 6.0 + (fi * 13.0).sin() * 9.0)
+                            .rem_euclid(view_w.max(1.0)));
+                    let py = view_y
+                        + ((fi * 91.7 + now * 4.0 + (fi * 7.0).cos() * 5.0)
+                            .rem_euclid(view_h.max(1.0)));
+                    let blink = ((now * 1.6 + fi * 2.3).sin() * 0.5 + 0.5).powi(3);
+                    if blink < 0.15 {
+                        continue;
+                    }
+                    let sx = (px - view_x) * scale_x;
+                    let sy = (py - view_y) * scale_y;
+                    draw_circle(sx, sy, 1.6, Color::new(0.95, 1.0, 0.6, 0.5 * blink));
+                    draw_circle(sx, sy, 4.0, Color::new(0.9, 1.0, 0.5, 0.07 * blink));
+                }
             }
         }
 

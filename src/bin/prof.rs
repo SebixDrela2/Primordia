@@ -19,26 +19,29 @@ fn main() {
     w.seed();
     let mut cs = CreatureSystem::new(seed);
     cs.populate(&w, 64);
-    for _ in 0..900 { w.step(); cs.step(&mut w); }
-    let pop = cs.list.len();
-    let n = 1200;
-    let t = Instant::now();
-    for _ in 0..n { w.step(); }
-    let world_ms = t.elapsed().as_secs_f64() * 1000.0 / n as f64;
-    let t = Instant::now();
-    for _ in 0..n { cs.step(&mut w); }
-    let creature_ms = t.elapsed().as_secs_f64() * 1000.0 / n as f64;
-    let mut buf = vec![0u8; 1280 * 720 * 4];
-    let mut renderer = render::Renderer::new();
-    // Warm up so the measurement does not include the first-call costs.
-    for i in 0..10 {
-        renderer.render_world(&w, &cs, &mut buf, i as f32 * 0.016, 0.25, 0, w.weather);
+    for _ in 0..900 {
+        w.step();
+        cs.step(&mut w);
     }
+
+    let mut r = render::Renderer::new();
+    let mut buf = vec![0u8; 1280 * 720 * 4];
+
     let t = Instant::now();
-    for i in 0..60 { renderer.render_world(&w, &cs, &mut buf, i as f32 * 0.016, 0.25, 0, w.weather); }
-    let render_ms = t.elapsed().as_secs_f64() * 1000.0 / 60.0;
-    println!(
-        "pop {} | world {:.3} ms | creature {:.3} ms | render {:.3} ms",
-        pop, world_ms, creature_ms, render_ms
-    );
+    for i in 0..20 {
+        r.render_region(
+            &w, &cs, &mut buf, 0, 0, 1280, 470, i as f32 * 0.016, 0.3, 0, world::Weather::Clear,
+        );
+    }
+    let sky = t.elapsed().as_secs_f64() * 1000.0 / 20.0;
+
+    let t = Instant::now();
+    for i in 0..20 {
+        r.render_region(
+            &w, &cs, &mut buf, 0, 470, 1280, 250, i as f32 * 0.016, 0.3, 0, world::Weather::Clear,
+        );
+    }
+    let ground = t.elapsed().as_secs_f64() * 1000.0 / 20.0;
+
+    println!("sky {:.3} ms   ground {:.3} ms", sky, ground);
 }
