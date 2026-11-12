@@ -413,6 +413,11 @@ fn paint(
         }
         let mut cv_row = 0.0f32;
         let row_base = y as usize * w;
+        // The rock strata of this row. The layers of stone run across the
+        // world, so the band of a row is worked out once for the whole
+        // row and the per-pixel noise breaks it up.
+        let row_band = ((y as f32 * 0.28).sin() * 0.5 + 0.5)
+            * ((y as f32 * 0.11).sin() * 0.5 + 0.5);
         // The row of the light field that this row of the region reads. It is
         // hoisted out of the pixel loop so the inner loop only shifts.
         // The light field is read through a shared reference, so the compiler
@@ -685,6 +690,25 @@ fn paint(
                     r += sheen * fx.color[0];
                     g += sheen * fx.color[1];
                     b += sheen * fx.color[2];
+                }
+                Fx::Strata => {
+                    // The rock is layered: a band of colour across the
+                    // whole row, roughened by the per-cell noise so the
+                    // layers do not look like painted stripes.
+                    let amt = row_band * 0.9 + n * 0.4;
+                    r += fx.color[0] * amt;
+                    g += fx.color[1] * amt;
+                    b += fx.color[2] * amt;
+                }
+                Fx::Vein => {
+                    // The ore catches the light. A slow twinkle, so the
+                    // veins of metal read as metal and not as coloured rock.
+                    let twinkle = ((time * 1.1 + n * 9.0).sin() * 0.5 + 0.5) * 0.7
+                        + (n * 0.6);
+                    let amt = twinkle * fx.gain;
+                    r += fx.color[0] * amt;
+                    g += fx.color[1] * amt;
+                    b += fx.color[2] * amt;
                 }
             }
 

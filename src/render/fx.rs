@@ -33,6 +33,10 @@ pub enum Fx {
     Grain,
     /// Tar: a slow glossy sheen.
     Sheen,
+    /// Rock: horizontal bands of colour, the way a cliff is layered.
+    Strata,
+    /// Ore: a metallic glint, brighter the deeper it lies.
+    Vein,
 }
 
 /// One entry per element byte.
@@ -90,6 +94,27 @@ pub fn fx_table() -> Vec<FxEntry> {
     set(Elem::Snow, Fx::Glint, [4.8, 6.4, 8.0], 0.9, 1.0);
     set(Elem::Charcoal, Fx::Grain, [6.0, 3.0, 0.0], 0.0, 1.0);
     set(Elem::Tar, Fx::Sheen, [5.0, 4.0, 3.5], 0.5, 1.0);
+
+    // The rock of the deep world is layered, the way a cliff is layered.
+    // The bands are what makes the underground read as stone rather than
+    // as a flat grey field.
+    set(Elem::Stone, Fx::Strata, [16.0, 15.0, 13.0], 0.0, 1.0);
+    set(Elem::Granite, Fx::Strata, [18.0, 15.0, 16.0], 0.0, 1.0);
+    set(Elem::Obsidian, Fx::Strata, [14.0, 11.0, 22.0], 0.0, 1.0);
+    set(Elem::Sand, Fx::Strata, [20.0, 17.0, 9.0], 0.0, 1.0);
+    set(Elem::Mud, Fx::Strata, [12.0, 9.0, 6.0], 0.0, 1.0);
+    set(Elem::Dust, Fx::Strata, [12.0, 11.0, 10.0], 0.0, 1.0);
+
+    // The ore catches the light. The deeper it lies, the more it glints.
+    set(Elem::Metal, Fx::Vein, [26.0, 24.0, 20.0], 0.0, 1.0);
+    set(Elem::Copper, Fx::Vein, [30.0, 16.0, 6.0], 0.0, 1.0);
+    set(Elem::Tin, Fx::Vein, [22.0, 22.0, 24.0], 0.0, 1.0);
+    set(Elem::Bronze, Fx::Vein, [28.0, 18.0, 8.0], 0.0, 1.0);
+    set(Elem::Iron, Fx::Vein, [20.0, 20.0, 24.0], 0.0, 1.0);
+    set(Elem::Steel, Fx::Vein, [24.0, 26.0, 30.0], 0.0, 1.0);
+    set(Elem::Gold, Fx::Vein, [34.0, 26.0, 6.0], 0.0, 1.0);
+    set(Elem::Silver, Fx::Vein, [28.0, 30.0, 32.0], 0.0, 1.0);
+    set(Elem::Rust, Fx::Vein, [26.0, 12.0, 5.0], 0.0, 1.0);
 
     t
 }

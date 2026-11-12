@@ -147,7 +147,12 @@ async fn main() {
     let mut paused = false;
     // Scroll wheel zoom (0.5 = whole world visible, 6.0 = close-up).
     // Every run starts fully zoomed out.
-    let mut zoom: f32 = MIN_ZOOM;
+    // PRIMORDIA_ZOOM can be set to start at a different zoom.
+    let mut zoom: f32 = std::env::var("PRIMORDIA_ZOOM")
+        .ok()
+        .and_then(|v| v.parse::<f32>().ok())
+        .unwrap_or(MIN_ZOOM)
+        .clamp(MIN_ZOOM, MAX_ZOOM);
     // Endless "revival" lineage: run 1 is the original population, then each
     // victory seeds a new world from the winning species' genome.
     let mut revival: u32 = 1;
