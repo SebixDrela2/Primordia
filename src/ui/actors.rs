@@ -262,6 +262,20 @@ pub fn draw_actors(
                 Stage::Adult => {}
             }
 
+            // After dark the animals catch the light with their eyes.
+            if (creatures.day_night - 0.55).abs() > 0.45 {
+                let eye = (r * 0.16).max(0.9);
+                let shine = 0.55 + 0.45 * ((now * 3.0 + c.id as f32) * 0.7).sin();
+                for side in [-1.0f32, 1.0] {
+                    draw_circle(
+                        sx + side * r * 0.32,
+                        sy - r * 0.22,
+                        eye,
+                        Color::new(1.0, 0.95, 0.65, 0.35 + 0.45 * shine),
+                    );
+                }
+            }
+
             // A creature that has left its colony is marked with a pale
             // outline: it does not belong to the colony any more.
             if c.migrating {

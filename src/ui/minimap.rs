@@ -127,15 +127,43 @@ pub fn draw_minimap(
         draw_circle_lines(px, py, 4.5, 1.0, col);
     }
 
+    // The volcano, marked so the danger is visible at a glance.
+    if let Some((vx, vy)) = world.volcano() {
+        let px = x + (vx as f32 / W as f32).clamp(0.0, 1.0) * mw;
+        let py = y + (vy as f32 / H as f32).clamp(0.0, 1.0) * mh;
+        let hot = match world.volcano_state() {
+            crate::world::Volcano::Erupting => 1.0,
+            crate::world::Volcano::Grumbling => 0.6,
+            crate::world::Volcano::Sleeping => 0.25,
+        };
+        draw_circle(px, py, 3.0, Color::new(1.0, 0.45 + 0.3 * hot, 0.15, 0.9));
+        draw_circle_lines(px, py, 5.0, 1.2, Color::new(1.0, 0.5, 0.2, 0.5 + 0.5 * hot));
+    }
+
+    // The species that are at war are marked in red, so the state of the
+    // world can be read from the map.
+    let mut warring: Vec<u32> = Vec::new();
+    for r in creatures.diplomacy.relations.iter() {
+        if r.state == crate::creature::RelationState::War {
+            warring.push(r.a);
+            warring.push(r.b);
+        }
+    }
+
     for c in &creatures.list {
-        let px = x + (c.x / W as f32).clamp(0.0, 1.0) * mw;
-        let py = y + (c.y / H as f32).clamp(0.0, 1.0) * mh;
-        let color = Color::new(
-            c.team_color[0] as f32 / 255.0,
-            c.team_color[1] as f32 / 255.0,
-            c.team_color[2] as f32 / 255.0,
-            0.95,
-        );
+        let px = x + (c.x / W as f32).clamp(0.0,1.0) * mw;
+        let py = y + (c.y / H as f32).clamp(0.0,1.0) * mh;
+        let at_war = warring.contains(&c.species);
+        let color = if at_war {
+            Color::new(1.0, 0.35, 0.3, 0.95)
+        } else {
+            Color::new(
+                c.team_color[0] as f32 / 255.0,
+                c.team_color[1] as f32 / 255.0,
+                c.team_color[2] as f32 / 255.0,
+                0.95,
+            )
+        };
         draw_rectangle(px - 1.0, py - 1.0, 2.0, 2.0, color);
     }
 
