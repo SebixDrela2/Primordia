@@ -21,7 +21,8 @@
   the creatures and (with `PRIMORDIA_RENDER_TIMING=1`) the renderer.
 - `PRIMORDIA_SNAPSHOT=shot.png PRIMORDIA_SNAPSHOT_AFTER=60 primordia`
   makes the game write a picture of itself and exit. Add
-  `PRIMORDIA_PANEL=diplomacy` to open the diplomacy panel in it.
+  `PRIMORDIA_PANEL=diplomacy` to open the diplomacy panel in it, and
+  `PRIMORDIA_ZOOM=3.0` to start closer to the ground.
 
 ## Code size rules
 - **No file may exceed ~1000 lines.** A file may run slightly over that
@@ -41,7 +42,8 @@
                    maintain, census, query
   - `src/creature/` brain, enums, names, senses, colony, step, actions,
                    building, bonds, combat, diplomacy, personality,
-                   heritage, mating, speciation, plague, technology, stats
+                   heritage, mating, speciation, plague, predation,
+                   succession, spells, technology, stats
   - `src/ui/`      effects, hud, knowledge, minimap, victory, actors,
                    diplomacy
   - `src/render/`  mod.rs (pixel loop), fx.rs (element effects),
@@ -114,4 +116,21 @@
   colonies.
 - The seasons change the world: spring grows plants fast, summer dries the
   shallow water, autumn is lean and winter freezes the surface.
+- Every colony holds the ground around its home, and the claim grows with
+  the buildings it has. A soldier of another species that walks into the
+  claim is the first thing the colony throws itself at, and the owner of
+  the ground remembers the insult. The border is drawn on the map as a
+  dashed ring in the colour of the species that holds it.
+- A war that goes on long enough ends in a tired truce: the weariness of a
+  war climbs with its length, and when neither side can afford it any more
+  they lay down their arms and sign a ceasefire.
+- The prey remembers the hunter. When a species loses animals to another
+  species, the survivors keep a fear of that hunter; it belongs to the
+  species, not to the individual. A frightened animal runs from the hunter
+  much earlier, and a species that has been hunted hard enough learns to
+  hunt itself.
+- A colony is organised around its queen. When she dies the colony falls
+  into a crisis: it holds no ground, it builds slowly and its animals lose
+  heart. The crisis ends when a new queen takes the throne, and a colony
+  in crisis raises queens far more readily than a colony that has one.
 
