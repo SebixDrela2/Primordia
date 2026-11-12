@@ -471,6 +471,79 @@ pub fn draw_actors(
             );
         }
 
+        // ---- Ambient atmosphere ----
+        //
+        // The air is never still. Motes drift in the light, leaves fall in
+        // the autumn and ash comes down from the volcano. These are drawn
+        // from the clock alone, so they cost nothing to simulate.
+        {
+            let scale_x = scr_w / view_w;
+            let scale_y = scr_h / view_h;
+            let season = world.season;
+            let volcano = world.volcano();
+            // Motes of dust and pollen, always present but stronger in the
+            // warm light of the day.
+            let motes = 46;
+            for i in 0..motes {
+                let fi = i as f32;
+                let seed = fi * 1.618;
+                // Each mote drifts on its own little circle.
+                let px = (seed * 137.0 + now * (7.0 + (i % 5) as f32 * 2.5)) % scr_w;
+                let py = (seed * 91.0 + now * (4.0 + (i % 3) as f32 * 1.7)) % scr_h;
+                let sway = ((now * 1.3 + seed) * 2.0).sin() * 7.0;
+                let alpha = 0.05 + 0.07 * ((now * 0.8 + seed).sin() * 0.5 + 0.5);
+                draw_circle(
+                    px + sway,
+                    py,
+                    1.0 + (i % 2) as f32 * 0.6,
+                    Color::new(1.0, 0.96, 0.85, alpha),
+                );
+            }
+            // Falling leaves in the autumn, and ash from the volcano.
+            if season == 2 || volcano.is_some() {
+                let n = if season == 2 { 26 } else { 14 };
+                for i in 0..n {
+                    let fi = i as f32;
+                    let seed = fi * 2.399;
+                    let px = (seed * 173.0 + now * (26.0 + (i % 6) as f32 * 9.0)) % scr_w;
+                    let py = (seed * 61.0 + now * (34.0 + (i % 4) as f32 * 11.0)) % scr_h;
+                    let sway = ((now * 2.1 + seed) * 3.0).sin() * 11.0;
+                    let (r, g, b) = if season == 2 {
+                        // Leaves: rust, gold and the last green.
+                        match i % 3 {
+                            0 => (0.82, 0.48, 0.16),
+                            1 => (0.90, 0.72, 0.24),
+                            _ => (0.55, 0.62, 0.22),
+                        }
+                    } else {
+                        // Ash from the crater: grey and slow.
+                        (0.55, 0.53, 0.52)
+                    };
+                    draw_line(
+                        px + sway,
+                        py,
+                        px + sway + 2.5,
+                        py + 4.0,
+                        1.4,
+                        Color::new(r, g, b, 0.30),
+                    );
+                }
+            }
+            // Fireflies on a warm summer night.
+            if season == 1 && (creatures.day_night - 0.55).abs() > 0.4 {
+                for i in 0..22 {
+                    let fi = i as f32;
+                    let seed = fi * 3.71;
+                    let px = (seed * 211.0 + now * (10.0 + (i % 4) as f32 * 6.0)) % scr_w;
+                    let py = (seed * 83.0 + now * (7.0 + (i % 3) as f32 * 4.0)) % scr_h;
+                    let pulse = ((now * 2.6 + seed).sin() * 0.5 + 0.5).powi(3);
+                    draw_circle(px, py, 1.6, Color::new(0.75, 1.0, 0.45, pulse * 0.55));
+                    draw_circle(px, py, 4.5, Color::new(0.7, 1.0, 0.4, pulse * 0.10));
+                }
+            }
+            let _ = (scale_x, scale_y);
+        }
+
         // ---- Weather overlay ----
         draw_weather(world.weather, now);
 
