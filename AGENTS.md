@@ -102,4 +102,11 @@
   fertile soil and old ruins are worth settling beside, and a colony that
   can have one takes it. Two colonies that want the same grove fight over
   it.
+- The world fights back. There is **one volcano** in the world: it sleeps,
+  grumbles and erupts, throwing lava, fire and ash over the map and melting
+  the ground around it. Creatures steer away from the crater and an
+  eruption burns anything within thirty cells of it.
+- The ground moves: **earthquakes** shake dust out of cave roofs and bring
+  unsupported rock down, so the shape of the caves changes under the
+  colonies.
 

@@ -7,6 +7,27 @@ impl World {
 
         self.update_pressure();
 
+        // ---- Earthquakes ----
+        //
+        // The ground moves now and then: dust falls, weak rock comes
+        // down and the shape of the caves changes under the colonies.
+        if frame % 600 == 0 && frame > 0 && self.rng.chance(0.05 + self.pressure.extremes * 0.06) {
+            let ex = self.rng.range(w as u32) as i32;
+            let ey = self.surface_y(ex) + 20 + self.rng.range(40) as i32;
+            let radius = 40 + self.rng.range(30) as i32;
+            self.tremor(ex, ey, radius);
+        }
+
+        // ---- The volcano ----
+        // The mountain keeps its own time. The deeper the pressure under it,
+        // the sooner it goes off.
+        self.tick_volcano();
+        if self.volcano_state == Volcano::Grumbling
+            && self.rng.chance(0.004 + self.pressure.volcanic * 0.02)
+        {
+            self.erupt();
+        }
+
         // Keep the cached ground level fresh (the renderer reads it).
         if frame % 15 == 0 {
             self.update_ground();

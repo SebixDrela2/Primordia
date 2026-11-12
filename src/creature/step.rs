@@ -532,8 +532,29 @@ impl CreatureSystem {
                     }
                 }
 
-                let (steer_x, steer_y, speed_mult_extra) =
-                    act_steer(c, &out, &scan, &agents, &centroids, &ds, world.weather, &place);
+                let volcano = world.volcano().map(|(vx, vy)| (vx as f32, vy as f32));
+                let (steer_x, steer_y, speed_mult_extra) = act_steer(
+                    c,
+                    &out,
+                    &scan,
+                    &agents,
+                    &centroids,
+                    &ds,
+                    world.weather,
+                    &place,
+                    volcano,
+                );
+                // Standing in the blast of an eruption burns.
+                if world.volcano_state() == crate::world::Volcano::Erupting {
+                    if let Some((vx, vy)) = volcano {
+                        let dx = c.x - vx;
+                        let dy = c.y - vy;
+                        let d2 = dx * dx + dy * dy;
+                        if d2 < 900.0 {
+                            c.health -= 3.0;
+                        }
+                    }
+                }
                 // Creatures move at a walking pace. The old clamp of 2.6 cells
                 // per step made them dart across the screen. A juvenile moves
                 // slower still, a hollow-boned one faster, and the wind and

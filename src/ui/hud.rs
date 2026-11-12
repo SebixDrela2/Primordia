@@ -331,6 +331,39 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
     draw_text(&line8, 18.0, 218.0, 15.0, Color::new(0.45, 0.7, 1.0, 0.82));
     draw_text(&line9, 18.0, 238.0, 15.0, Color::new(0.8, 0.65, 0.85, 0.82));
 
+    // The volcano: a warning banner while the mountain is awake.
+    match world.volcano_state() {
+        crate::world::Volcano::Erupting => {
+            let flash = 0.6 + 0.4 * (get_time() as f32 * 6.0).sin();
+            let w = 360.0;
+            let x = (screen_width() - w) / 2.0;
+            let y = 92.0;
+            draw_rectangle(x, y, w, 40.0, Color::new(0.18, 0.03, 0.02, 0.82));
+            draw_rectangle_lines(x, y, w, 40.0, 2.0, Color::new(1.0, 0.45, 0.15, 0.55 + 0.4 * flash));
+            draw_text(
+                "THE VOLCANO IS ERUPTING",
+                x + 20.0,
+                y + 27.0,
+                22.0,
+                Color::new(1.0, 0.65, 0.3, 0.6 + 0.4 * flash),
+            );
+        }
+        crate::world::Volcano::Grumbling => {
+            let w = 300.0;
+            let x = (screen_width() - w) / 2.0;
+            draw_rectangle(x, 92.0, w, 30.0, Color::new(0.12, 0.06, 0.03, 0.7));
+            draw_rectangle_lines(x, 92.0, w, 30.0, 1.5, Color::new(1.0, 0.55, 0.2, 0.5));
+            draw_text(
+                "the mountain is grumbling",
+                x + 20.0,
+                92.0 + 21.0,
+                16.0,
+                Color::new(1.0, 0.6, 0.3, 0.8),
+            );
+        }
+        crate::world::Volcano::Sleeping => {}
+    }
+
     let help = "WASD/Arrows: move  |  scroll: zoom  |  P: pause  |  R: reroll  |  K: knowledge  |  G: diplomacy  |  +/-: sim speed  |  hover: inspect  |  ESC: quit";
     let dims = measure_text(help, None, 15, 1.0);
     draw_text(

@@ -300,6 +300,7 @@ impl World {
         // The places worth living in. They go on the surface, so they are
         // painted before the ground level is cached.
         self.generate_landmarks(w, h);
+        self.generate_volcano(w, h);
         self.bury_floating_resources(w, h);
 
         self.census = self.count();

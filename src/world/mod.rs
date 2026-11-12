@@ -29,13 +29,16 @@ mod physics;
 mod query;
 mod reactions;
 mod structures;
+mod quakes;
 mod terrain;
+mod volcano;
 mod vaults;
 
 pub use landmarks::*;
 
 use crate::elements::{Behavior, Elem};
 use crate::rng::Rng;
+pub use volcano::Volcano;
 
 /// The climate bands that run across the world.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -268,6 +271,10 @@ pub struct World {
     pub emissive: [bool; Elem::TABLE_LEN],
     /// Lookup: the light colour an element radiates.
     pub emission: [[f32; 3]; Elem::TABLE_LEN],
+    /// The volcano: where it is and what it is doing.
+    pub volcano: Option<(i32, i32)>,
+    pub volcano_state: Volcano,
+    pub volcano_timer: u32,
     /// Current weather and how long it lasts.
     pub weather: Weather,
     pub weather_timer: u32,

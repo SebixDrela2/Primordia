@@ -417,7 +417,7 @@ fn paint(
             let e = kind[cell];
             // The biome tint is a per-column value; the delta is what is
             // actually needed, so it is looked up directly.
-            let bt = biome_delta[x as usize];
+            let bt = biome_delta[rx as usize];
 
             if e == empty {
                 let surf = ground[x as usize] as f32;

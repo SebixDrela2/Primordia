@@ -12,6 +12,7 @@ pub(crate) fn act_steer(
     ds: &DiplomaticSense,
     weather: crate::world::Weather,
     place: &crate::world::LandmarkBonus,
+    volcano: Option<(f32, f32)>,
 ) -> (f32, f32, f32) {
                 // Outputs: [0]=move_x, [1]=move_y, [2]=eat, [3]=reproduce, [4]=attack,
                 // [5]=build, [6]=craft, [7]=cast_spell, [8]=mount/dismount, [9]=trade,
@@ -21,6 +22,22 @@ pub(crate) fn act_steer(
                 let mut steer_x = 0.0f32;
                 let mut steer_y = 0.0f32;
                 let mut speed_mult_extra = 1.0f32;
+
+                // ---- The volcano ----
+                //
+                // Nothing wants to live under a mountain that can erupt, so
+                // everything near the crater walks away from it. A colony that
+                // settled too close will move rather than burn.
+                if let Some((vx, vy)) = volcano {
+                    let dx = c.x - vx;
+                    let dy = c.y - vy;
+                    let d = (dx * dx + dy * dy).sqrt().max(0.1);
+                    if d < 55.0 {
+                        steer_x += dx / d * 2.2;
+                        steer_y += dy / d * 2.2;
+                        speed_mult_extra = speed_mult_extra.max(1.45);
+                    }
+                }
 
                 // ---- The temperament of this particular animal ----
                 //
