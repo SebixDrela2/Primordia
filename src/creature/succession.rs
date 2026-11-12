@@ -97,24 +97,4 @@ impl CreatureSystem {
             0.0
         }
     }
-
-    /// How much the animals of a colony in crisis lose their nerve.
-    ///
-    /// The energy drains away: without a queen to organise them, the
-    /// colony falls apart.
-    pub fn crisis_drain(&self, species: u32) -> f32 {
-        if in_crisis(&self.succession, species, self.tick) {
-            // The longer the crisis goes on, the worse it gets.
-            let start = self
-                .succession
-                .iter()
-                .find(|(sp, _)| *sp == species)
-                .map(|(_, s)| *s)
-                .unwrap_or(self.tick);
-            let age = self.tick.saturating_sub(start) as f32;
-            (0.004 + age * 0.000012).min(0.05)
-        } else {
-            0.0
-        }
-    }
 }

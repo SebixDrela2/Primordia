@@ -172,6 +172,14 @@ fn main() {
         );
     }
 
+    // ---- The colonies and their queens ----
+    println!("\n--- succession ---");
+    let in_crisis = creatures.species_in_crisis();
+    println!("  colonies in crisis: {} of {}", in_crisis.len(), creatures.stats.species);
+    for sp in in_crisis.iter().take(8) {
+        println!("    the {} has no queen", creature::species_name_for(*sp));
+    }
+
     // ---- The food web: who eats whom ----
     println!("\n--- predation ---");
     let mut fear_rows: Vec<(u32, u32, f32)> = creatures.predation.entries().to_vec();
@@ -336,6 +344,20 @@ fn main() {
         }
         if prey == predator {
             println!("FAIL: a species fears itself");
+            failures += 1;
+        }
+    }
+    // A colony that has a queen must never be in crisis: the crisis is
+    // about the absence of a queen.
+    let queens: Vec<u32> = creatures
+        .list
+        .iter()
+        .filter(|c| c.role == creature::Role::Queen)
+        .map(|c| c.species)
+        .collect();
+    for sp in creatures.species_in_crisis() {
+        if queens.contains(&sp) {
+            println!("FAIL: a colony with a queen is in crisis");
             failures += 1;
         }
     }
