@@ -403,6 +403,9 @@ pub struct CreatureSystem {
     pub projectiles: Vec<Projectile>,
     /// Player-built structures (turrets) with an owner.
     pub structures: Vec<Structure>,
+    /// The ground each colony holds: (species, centre x, centre y, radius).
+    /// Rebuilt once per tick.
+    pub claims: Vec<(u32, f32, f32, f32)>,
     /// Events for the renderer, drained every frame by the UI.
     pub events: Vec<SimEvent>,
     /// Bombs currently in flight.

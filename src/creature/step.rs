@@ -4,6 +4,10 @@ impl CreatureSystem {
     pub fn step(&mut self, world: &mut World) {
         self.tick += 1;
 
+        // Work out the ground every colony holds. Everything that asks for
+        // a claim this tick reads the cache.
+        self.rebuild_claims();
+
         // Advance day/night cycle (full cycle = 7200 ticks ~ 2 min at 60fps)
         self.day_night += 0.000139;
         if self.day_night > 1.0 { self.day_night -= 1.0; }

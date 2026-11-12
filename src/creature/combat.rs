@@ -275,6 +275,37 @@ impl CreatureSystem {
                     best = Some((j, d));
                 }
             });
+            // A trespasser is the first thing a colony throws itself at:
+            // another species walking through its claim is asking for it.
+            if a_role == Role::Soldier {
+                if let Some((cx, cy, radius)) = self.claim_of(a_species) {
+                    let mut trespass: Option<(usize, f32)> = None;
+                    grid.near(ax, ay, 14, |ji| {
+                        let j = ji as usize;
+                        if j == a {
+                            return;
+                        }
+                        let other = &self.list[j];
+                        if other.species == a_species {
+                            return;
+                        }
+                        if self.diplomacy.are_allied(a_species, other.species) {
+                            return;
+                        }
+                        let inside =
+                            (other.x - cx).powi(2) + (other.y - cy).powi(2) < radius * radius;
+                        if inside {
+                            let d = ((other.x - ax).powi(2) + (other.y - ay).powi(2)).sqrt();
+                            if d < 14.0 && trespass.map_or(true, |t| d < t.1) {
+                                trespass = Some((j, d));
+                            }
+                        }
+                    });
+                    if let Some((j, d)) = trespass {
+                        best = Some((j, d - 12.0));
+                    }
+                }
+            }
             // No target of its own? Follow the squad's call.
             if best.is_none() && a_squad > 0 {
                 if let Some((_, tj)) = squad_targets.iter().find(|(sq, _)| *sq == a_squad) {

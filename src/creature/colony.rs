@@ -26,6 +26,7 @@ impl CreatureSystem {
             season_timer: 0,
             projectiles: Vec::new(),
             structures: Vec::new(),
+            claims: Vec::new(),
             events: Vec::new(),
             bombs: Vec::new(),
             diplomacy: Diplomacy::default(),
@@ -109,6 +110,51 @@ impl CreatureSystem {
             }
         }
         found
+    }
+
+    /// The ground a species holds: the middle of its colony and how far its
+    /// claim reaches.
+    ///
+    /// A colony with buildings holds more ground, so a rich colony pushes the
+    /// others out.
+    pub fn claim_of(&self, species: u32) -> Option<(f32, f32, f32)> {
+        self.claims
+            .iter()
+            .find(|(id, _, _, _)| *id == species)
+            .map(|(_, cx, cy, r)| (*cx, *cy, *r))
+    }
+
+    /// Work out the ground every colony holds.
+    ///
+    /// A colony with buildings holds more ground, so a rich colony pushes
+    /// the others out. The result is cached for the tick: the claim is asked
+    /// for by every soldier that looks for a trespasser, and walking the
+    /// whole population each time would be far too slow.
+    pub fn rebuild_claims(&mut self) {
+        self.claims.clear();
+        let mut centres: Vec<(u32, f32, f32)> = Vec::new();
+        let mut builders: Vec<(u32, u32)> = Vec::new();
+        for c in self.list.iter() {
+            if c.role == Role::Queen {
+                centres.push((c.species, c.base_x, c.base_y));
+            }
+            if c.role == Role::Queen || c.role == Role::Builder {
+                if let Some(e) = builders.iter_mut().find(|(id, _)| *id == c.species) {
+                    e.1 += 1;
+                } else {
+                    builders.push((c.species, 1));
+                }
+            }
+        }
+        for (id, cx, cy) in centres {
+            let buildings = builders
+                .iter()
+                .find(|(bid, _)| *bid == id)
+                .map(|(_, n)| *n)
+                .unwrap_or(1);
+            let radius = (18.0 + buildings as f32 * 4.0).min(46.0);
+            self.claims.push((id, cx, cy, radius));
+        }
     }
 
     /// Scatter a burst of short-lived energy motes into the world.

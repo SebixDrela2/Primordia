@@ -110,6 +110,56 @@ pub fn draw_actors(
             }
         }
 
+        // The territory each colony holds, drawn as a faint ring.
+        {
+            let mut claims: Vec<(f32, f32, f32, [u8; 3])> = Vec::new();
+            for c in &creatures.list {
+                if c.role != Role::Queen {
+                    continue;
+                }
+                if claims.iter().any(|(_, _, _, col)| col == &c.team_color) {
+                    continue;
+                }
+                let radius = creatures
+                    .claim_of(c.species)
+                    .map(|(_, _, r)| r)
+                    .unwrap_or(18.0);
+                claims.push((c.base_x, c.base_y, radius, c.team_color));
+            }
+            let scale_x = scr_w / view_w;
+            let scale_y = scr_h / view_h;
+            for (cx, cy, radius, col) in claims {
+                let sx = (cx - view_x) * scale_x;
+                let sy = (cy - view_y) * scale_y;
+                let r = radius * scale_x.min(scale_y);
+                if sx + r < 0.0 || sx - r > scr_w || sy + r < 0.0 || sy - r > scr_h {
+                    continue;
+                }
+                // A dashed border: the edge of what the colony holds.
+                let segments = 48;
+                for i in 0..segments {
+                    if i % 2 == 1 {
+                        continue;
+                    }
+                    let a0 = i as f32 / segments as f32 * std::f32::consts::TAU;
+                    let a1 = (i + 1) as f32 / segments as f32 * std::f32::consts::TAU;
+                    draw_line(
+                        sx + a0.cos() * r,
+                        sy + a0.sin() * r,
+                        sx + a1.cos() * r,
+                        sy + a1.sin() * r,
+                        1.2,
+                        Color::new(
+                            col[0] as f32 / 255.0,
+                            col[1] as f32 / 255.0,
+                            col[2] as f32 / 255.0,
+                            0.28,
+                        ),
+                    );
+                }
+            }
+        }
+
         // The bonds: a thin line between two animals that are partners.
         for c in &creatures.list {
             let Some(partner_id) = c.bond else {

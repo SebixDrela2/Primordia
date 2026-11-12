@@ -610,6 +610,35 @@ impl CreatureSystem {
                     homes.push((c.species, c.base_x, c.base_y));
                 }
             }
+            // The ground each colony holds.
+            let mut claims: Vec<(u32, f32, f32, f32)> = Vec::new();
+            for (id, hx, hy) in homes.iter() {
+                if let Some((cx, cy, radius)) = self.claim_of(*id) {
+                    claims.push((*id, cx, cy, radius));
+                }
+            }
+            // How many animals of each species are standing on the ground
+            // another one holds. A colony that is trespassed on takes it
+            // personally.
+            let mut trespass: Vec<(u32, u32, u32)> = Vec::new();
+            for (owner, x, y, radius) in claims {
+                for c in self.list.iter() {
+                    if c.species == owner {
+                        continue;
+                    }
+                    if (c.x - x).powi(2) + (c.y - y).powi(2) > radius * radius {
+                        continue;
+                    }
+                    if let Some(e) = trespass
+                        .iter_mut()
+                        .find(|(o, v, _)| *o == owner && *v == c.species)
+                    {
+                        e.2 += 1;
+                    } else {
+                        trespass.push((owner, c.species, 1));
+                    }
+                }
+            }
             for r in self.diplomacy.relations.iter_mut() {
                 if r.state == RelationState::War {
                     r.war_weariness = (r.war_weariness + 0.01).min(1.0);
@@ -627,6 +656,15 @@ impl CreatureSystem {
                         0.0
                     };
                     r.trust += (anchor - r.trust) * 0.02;
+                    // Trespassing: an animal of one species on the ground of
+                    // another is an insult that is remembered.
+                    for (owner, intruder, count) in trespass.iter() {
+                        let pair = (*owner == r.a && *intruder == r.b)
+                            || (*owner == r.b && *intruder == r.a);
+                        if pair && !r.has(Treaty::Alliance) {
+                            r.trust -= (*count as f32).min(6.0) * 0.12;
+                        }
+                    }
                     // Neighbours: the closer two colonies live, the less they
                     // like each other, unless they have signed a treaty.
                     if !r.has(Treaty::Alliance) && !r.has(Treaty::NonAggression) {
