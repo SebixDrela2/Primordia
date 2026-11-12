@@ -179,6 +179,11 @@ impl CreatureSystem {
                 .iter()
                 .map(|(_, c)| c.count_ones())
                 .sum(),
+            discoveries: self
+                .discoveries
+                .iter()
+                .map(|(_, d)| d.count_ones())
+                .sum(),
         };
     }
 }

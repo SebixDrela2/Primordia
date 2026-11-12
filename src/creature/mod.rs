@@ -14,6 +14,7 @@
 //! - stats.rs      population statistics
 
 mod actions;
+mod bonds;
 mod brain;
 mod building;
 mod colony;
@@ -29,6 +30,7 @@ mod senses;
 mod speciation;
 mod stats;
 mod step;
+mod technology;
 
 use crate::elements::Elem;
 use crate::rng::Rng;
@@ -183,6 +185,8 @@ pub enum SimEvent {
     Speciation { x: f32, y: f32, color: [u8; 3] },
     /// A disease has broken out in a colony.
     Plague { x: f32, y: f32, color: [u8; 3] },
+    /// A species has worked out something new.
+    Discovery { x: f32, y: f32, color: [u8; 3] },
 }
 
 /// Uniform spatial hash so neighbour queries do not scan the whole colony.
@@ -259,7 +263,7 @@ pub struct Creature {
     pub genes: [f32; 32],
     pub mutations: u16,
     /// Evolutionary traits decoded from the genes.
-    pub traits: u16,
+    pub traits: u32,
     /// The individual's temperament: the part of it that is not a species
     /// trait but a personal one.
     pub personality: Personality,
@@ -275,6 +279,8 @@ pub struct Creature {
     pub sired: u32,
     /// This animal has left its colony and is on its own.
     pub migrating: bool,
+    /// The creature it is bonded with.
+    pub bond: Option<u32>,
     // Needs
     pub hunger: f32,
     pub thirst: f32,
@@ -355,6 +361,8 @@ pub struct CreatureStats {
     pub splits: u32,
     /// How many practices the species have learned.
     pub practices: u32,
+    /// How many discoveries the species have made.
+    pub discoveries: u32,
 }
 
 pub struct CreatureSystem {
@@ -405,6 +413,8 @@ pub struct CreatureSystem {
     pub migrations_started: u32,
     /// How many disease outbreaks have begun in this run.
     pub plagues_started: u32,
+    /// What each species has worked out for itself, by species id.
+    pub discoveries: Vec<(u32, u16)>,
 }
 
 struct Vehicle {
@@ -438,6 +448,7 @@ pub struct RevivalGenome {
 }
 
 pub use actions::*;
+pub use bonds::*;
 pub use brain::*;
 pub use building::*;
 pub use diplomacy::*;
@@ -449,3 +460,4 @@ pub use personality::*;
 pub use plague::*;
 pub use senses::*;
 pub use speciation::*;
+pub use technology::*;

@@ -232,6 +232,7 @@ impl CreatureSystem {
         rival_population: u32,
         ds: &DiplomaticSense,
         near_beacon: bool,
+        discoveries: u16,
         input: &mut [f32],
     ) {
         input.fill(0.0);
@@ -303,6 +304,10 @@ impl CreatureSystem {
         // further from it.
         if near_beacon {
             vision *= 1.5;
+        }
+        // A colony that has learned to read the stars sees much further.
+        if discoveries & discovery_bits::ASTRONOMY != 0 {
+            vision *= 1.4;
         }
         vision *= c.vision_factor(day_night);
         grid.near(c.x, c.y, vision as usize, |idx| {

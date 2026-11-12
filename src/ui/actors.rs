@@ -68,6 +68,39 @@ pub fn draw_actors(
             }
         }
 
+        // The bonds: a thin line between two animals that are partners.
+        for c in &creatures.list {
+            let Some(partner_id) = c.bond else {
+                continue;
+            };
+            let Some(p) = creatures.list.iter().find(|o| o.id == partner_id) else {
+                continue;
+            };
+            if p.health <= 0.0 || p.id <= c.id {
+                continue;
+            }
+            let in_view = (c.x) >= view_x
+                && (c.x) < (view_x + view_w)
+                && (c.y) >= view_y
+                && (c.y) < (view_y + view_h);
+            if !in_view {
+                continue;
+            }
+            let scale_x = scr_w / view_w;
+            let scale_y = scr_h / view_h;
+            let sx = (c.x - view_x) * scale_x;
+            let sy = (c.y - view_y) * scale_y;
+            let px = (p.x - view_x) * scale_x;
+            let py = (p.y - view_y) * scale_y;
+            let col = Color::new(
+                c.team_color[0] as f32 / 255.0,
+                c.team_color[1] as f32 / 255.0,
+                c.team_color[2] as f32 / 255.0,
+                0.35,
+            );
+            draw_line(sx, sy, px, py, 1.2, col);
+        }
+
         for c in &creatures.list {
             let in_view = (c.x) >= view_x
                 && (c.x) < (view_x + view_w)

@@ -465,8 +465,12 @@ pub(crate) fn act_mine(world: &mut World, c: &mut Creature, out: &[f32], company
                 if (wants_mine || (exploratory_mine && world.mine_budget > 0)) && c.stamina > 5.0 {
                     let gx = c.x.round() as i32;
                     let gy = c.y.round() as i32;
-                    // A metallophilic creature reaches further for the ore.
-                    let reach = 8 + if c.traits & trait_bits::METALLOPHILIC != 0 { 5 } else { 0 };
+                    // A metallophilic creature reaches further for the ore,
+                    // and a deep digger digs further still.
+                    let deep = c.traits & trait_bits::DEEP_DIGGER != 0;
+                    let reach = 8
+                        + if c.traits & trait_bits::METALLOPHILIC != 0 { 5 } else { 0 }
+                        + if deep { 4 } else { 0 };
                     if let Some((mx, my)) = world.find_resource(gx, gy, reach) {
                         world.mine_budget -= 1;
                         let me = world.get(mx, my);
@@ -504,6 +508,19 @@ pub(crate) fn act_mine(world: &mut World, c: &mut Creature, out: &[f32], company
                             }
                             _ => {}
                         }
+                        // A deep digger sometimes breaks through into a pocket
+                        // of something better than plain rock.
+                        if deep && world.rng.chance(0.06) {
+                            let prize = match world.rng.range(4) {
+                                0 => Elem::Crystal,
+                                1 => Elem::Gem,
+                                2 => Elem::Gold,
+                                _ => Elem::Iron,
+                            };
+                            let _ = prize;
+                            c.inventory[4] = c.inventory[4].saturating_add(1).min(255);
+                            c.carried = (c.carried + 20.0).min(c.carry_cap());
+                        }
                     }
                 }
 }
@@ -515,6 +532,7 @@ pub(crate) fn act_craft(
     events: &mut Vec<SimEvent>,
     workshop: bool,
     ruins: bool,
+    discoveries: u16,
 ) -> bool {
     let mut crafted = false;
                 // Tool crafting (output[6] = craft)
@@ -527,6 +545,10 @@ pub(crate) fn act_craft(
                 let skill = c.culture_factor(Culture::Craft)
                     * if workshop { 1.5 } else { 1.0 }
                     * if ruins { 1.35 } else { 1.0 };
+                // A colony that has worked out the craft can make the thing
+                // without the awkward materials.
+                let knows_ranged = discoveries & discovery_bits::RANGED != 0;
+                let knows_medicine = discoveries & discovery_bits::MEDICINE != 0;
                 let nn_wants_craft = out[6] > 0.25;
                 let exploratory_craft = c.tool == Tool::None && c.craft_cooldown == 0
                     && (c.age * 13 + c.id * 17) % 25 < 1;
@@ -580,11 +602,16 @@ pub(crate) fn act_craft(
                         c.tool_durability = 2000;
                         c.craft_cooldown = 50;
                     }
-                    // Bow: 3 wood + 2 string(plant) (tech 1)
-                    else if c.tool == Tool::None && c.tech_level >= 1 && c.inventory[6] >= 3 && c.inventory[6] >= 2 {
-                        c.inventory[6] = c.inventory[6].saturating_sub(5);
+                    // Bow: 3 wood + 2 string(plant) (tech 1).
+                    // A colony that has worked out the craft can make one
+                    // from wood alone.
+                    else if c.tool == Tool::None
+                        && c.tech_level >= 1
+                        && (knows_ranged || (c.inventory[6] >= 3 && c.inventory[6] >= 2))
+                    {
+                        c.inventory[6] = c.inventory[6].saturating_sub(if knows_ranged { 3 } else { 5 });
                         c.tool = Tool::Bow;
-                        c.tool_durability = 500;
+                        c.tool_durability = if knows_ranged { 800 } else { 500 };
                         c.craft_cooldown = 30;
                     }
                     // Spear: 2 wood + 1 stone (tech 0)
@@ -655,10 +682,18 @@ pub(crate) fn act_craft(
                         c.bombs += 1;
                         c.craft_cooldown = 40;
                     }
-                    // Salve: 2 plant + 1 crystal - heals a wounded colonymate
-                    else if c.salves < 3 && c.inventory[9] == 0 && c.inventory[6] >= 2 && c.inventory[4] >= 1 {
+                    // Salve: 2 plant + 1 crystal - heals a wounded colonymate.
+                    // A colony that has worked out medicine can make one
+                    // from plants alone.
+                    else if c.salves < 3
+                        && c.inventory[9] == 0
+                        && (knows_medicine
+                            || (c.inventory[6] >= 2 && c.inventory[4] >= 1))
+                    {
                         c.inventory[6] = c.inventory[6].saturating_sub(2);
-                        c.inventory[4] = c.inventory[4].saturating_sub(1);
+                        if !knows_medicine {
+                            c.inventory[4] = c.inventory[4].saturating_sub(1);
+                        }
                         c.salves += 1;
                         c.craft_cooldown = 40;
                     }

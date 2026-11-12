@@ -312,12 +312,13 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
     // The life of the world: how the colony is aged, and what it has
     // learned.
     let line9 = format!(
-        "ages: {} young  {} old   pairs {}   splits {}   practices {}",
+        "ages: {} young  {} old   pairs {}   splits {}   practices {}   discoveries {}",
         stats.juveniles,
         stats.elders,
         stats.matings,
         stats.splits,
-        stats.practices
+        stats.practices,
+        stats.discoveries
     );
 
     draw_text(&line1, 18.0, 66.0, 17.0, Color::new(0.85, 0.9, 0.95, 0.8));

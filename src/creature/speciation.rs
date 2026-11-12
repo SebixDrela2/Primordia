@@ -59,6 +59,29 @@ impl Migration {
 }
 
 impl CreatureSystem {
+    /// A colony that has outgrown its ground may send some of its members
+    /// away.
+    ///
+    /// If they travel far enough they become a species of their own, which
+    /// is what keeps a world varied.
+    pub(crate) fn maybe_speciate(&mut self, pressure: f32) {
+        if self.tick % 120 != 0 {
+            return;
+        }
+        let species: Vec<u32> = {
+            let mut v: Vec<u32> = self.list.iter().map(|c| c.species).collect();
+            v.sort_unstable();
+            v.dedup();
+            v
+        };
+        for sp in species {
+            if self.rng.chance(0.06) {
+                self.begin_migration(sp, pressure);
+            }
+        }
+        self.update_migrations(120);
+    }
+
     /// Start a migration out of a colony that has outgrown its ground.
     ///
     /// Returns the migration if one was started.

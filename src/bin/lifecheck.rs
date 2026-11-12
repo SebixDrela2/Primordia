@@ -184,9 +184,57 @@ fn main() {
     println!("  most traits:   {}", max_trait_count);
     println!("  splits:        {}", creatures.splits_total);
     println!("  plagues:       {}", creatures.plagues_started);
+    println!("  bonds:         {}", creatures.bond_count());
+    println!(
+        "  discoveries:   {} made by {} species",
+        creatures
+            .discoveries
+            .iter()
+            .map(|(_, d)| d.count_ones())
+            .sum::<u32>(),
+        creatures.discoveries.len()
+    );
+    for (sp, bits) in creatures.discoveries.iter() {
+        let names: Vec<&str> = creature::discovery_list(*bits)
+            .iter()
+            .map(|d| d.name())
+            .collect();
+        println!(
+            "    {:<16} {}",
+            creature::species_name_for(*sp),
+            names.join(", ")
+        );
+    }
+
+    // ---- The life histories of the species that are left ----
+    println!("\n--- life histories ---");
+    let mut seen: Vec<u32> = Vec::new();
+    for c in &creatures.list {
+        if seen.contains(&c.species) {
+            continue;
+        }
+        seen.push(c.species);
+        let strategy = if c.traits & creature::trait_bits::PROLIFIC != 0 {
+            "prolific"
+        } else if c.traits & creature::trait_bits::PROLONGED != 0 {
+            "prolonged"
+        } else {
+            "balanced"
+        };
+        println!(
+            "  {:<16} strategy {:<10} litter {}  cost {:.0}  lives {:.0} ticks  matures at {:.0}%",
+            creature::species_name_for(c.species),
+            strategy,
+            c.litter_size(),
+            c.brood_cost(),
+            c.lifespan(),
+            c.maturity_fraction() * 100.0,
+        );
+    }
 
     // ---- The landmarks and who settled beside them ----
     println!("\n--- landmarks ---");
+    let mut owners: Vec<Vec<String>> = Vec::new();
     for l in world.landmarks.iter() {
         let names: Vec<String> = landmark_claims
             .iter()
@@ -195,6 +243,15 @@ fn main() {
             })
             .map(|(_, _, sp)| creature::species_name_for(*sp))
             .collect();
+        // A landmark belongs to the colony that settled there first; the
+        // others are squatters that will end up fighting over it.
+        let mut uniq: Vec<String> = Vec::new();
+        for n in names.iter() {
+            if !uniq.contains(n) {
+                uniq.push(n.clone());
+            }
+        }
+        owners.push(uniq.clone());
         println!(
             "  {:<14} at ({:4.0},{:4.0})  radius {:4.0}  settled by: {}",
             l.kind.name(),
@@ -208,11 +265,22 @@ fn main() {
             }
         );
     }
-    println!(
-        "  landmarks claimed: {} of {}",
-        landmark_claims.len(),
-        world.landmarks.len()
-    );
+    let claimed = owners.iter().filter(|o| !o.is_empty()).count();
+    println!("  landmarks claimed: {} of {}", claimed, world.landmarks.len());
+    if claimed > world.landmarks.len() {
+        println!("FAIL: more landmarks claimed than there are landmarks");
+        failures += 1;
+    }
+    // A landmark can only have one owner; squatters are the ones that fight
+    // over it.
+    for (i, o) in owners.iter().enumerate() {
+        if o.len() > 1 {
+            println!(
+                "NOTE: landmark {} is contested by {:?}",
+                i, o
+            );
+        }
+    }
 
     // ---- Invariants ----
     if !saw_juvenile {

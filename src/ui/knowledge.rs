@@ -143,6 +143,30 @@ pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx
                 c.affinity.name(),
                 c.affinity.blurb()
             ));
+            // The life history of the species.
+            let strategy = if c.traits & creature::trait_bits::PROLIFIC != 0 {
+                "prolific"
+            } else if c.traits & creature::trait_bits::PROLONGED != 0 {
+                "prolonged"
+            } else {
+                "balanced"
+            };
+            lines.push(format!(
+                "life history: {}  ({} young, {:.0} ticks, lives {:.0})",
+                strategy,
+                c.litter_size(),
+                c.lifespan() as f32,
+                c.brood_cost()
+            ));
+            // The bond, if it has one.
+            if let Some(partner) = c.bond {
+                let alive = creatures.list.iter().any(|o| o.id == partner && o.health > 0.0);
+                lines.push(format!(
+                    "bonded to {} ({})",
+                    partner,
+                    if alive { "alive" } else { "lost" }
+                ));
+            }
             // What the species has learned to do.
             let culture: Vec<String> = culture_list(c.culture)
                 .iter()
@@ -349,7 +373,7 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
 
     {
         // (species, members, traits, colour, affinity, culture)
-        let mut counts: Vec<(u32, u32, u16, [u8; 3], Affinity, u16)> = Vec::new();
+        let mut counts: Vec<(u32, u32, u32, [u8; 3], Affinity, u16)> = Vec::new();
         for c in &creatures.list {
             match counts.iter_mut().find(|(id, _, _, _, _, _)| *id == c.species) {
                 Some(e) => e.1 += 1,
@@ -419,6 +443,13 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
                 let hunting = culture_list(*culture)
                     .iter()
                     .any(|cu| *cu == creature::Culture::Hunting);
+                // What the species has worked out for itself.
+                let found: Vec<&str> = creature::discovery_list(
+                    creatures.species_discoveries(*sp),
+                )
+                .iter()
+                .map(|d| d.name())
+                .collect();
                 let extra = format!(
                     "adapted to: {}   practices: {}{}",
                     affinity.name(),
@@ -436,6 +467,16 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
                     11.0,
                     Color::new(0.6, 0.66, 0.78, 0.8),
                 );
+                if !found.is_empty() {
+                    draw_text(
+                        &format!("knows: {}", found.join(", ")),
+                        x + 40.0,
+                        yy + 38.0,
+                        11.0,
+                        Color::new(0.95, 0.82, 0.45, 0.85),
+                    );
+                    yy += 14.0;
+                }
                 yy += 40.0;
             }
             yy += 10.0;

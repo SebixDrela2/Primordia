@@ -282,10 +282,50 @@ pub fn desired_action(
 }
 
 impl CreatureSystem {
-    /// Advance the negotiation between two creatures.
+    /// Conclude all the talks that were under way this tick.
     ///
-    /// Returns `Some` when the talks concluded this tick (with the action
-    /// that was attempted and whether it was accepted).
+    /// The talks are resolved after the creature loop, because signing a
+    /// treaty changes the relations of two species, and that would
+    /// otherwise change what the other creatures decide to do in the very
+    /// same tick.
+    pub(crate) fn conclude_negotiations(
+        &mut self,
+        proposals: &[(usize, usize, DiplomaticAction)],
+        willing: &[f32],
+    ) {
+        for (actor, partner, action) in proposals {
+            let ready = willing.get(*partner).copied().unwrap_or(0.0) > 0.2;
+            let Some((act, accepted)) =
+                self.advance_negotiation(*actor, *partner, *action, ready)
+            else {
+                continue;
+            };
+            if *actor >= self.list.len() || *partner >= self.list.len() {
+                continue;
+            }
+            let (x, y, color) = {
+                let a = &self.list[*actor];
+                let p = &self.list[*partner];
+                ((a.x + p.x) * 0.5, (a.y + p.y) * 0.5, a.team_color)
+            };
+            match act {
+                DiplomaticAction::War => {
+                    self.events.push(SimEvent::War { x, y, color });
+                }
+                DiplomaticAction::None => {}
+                other => {
+                    let label = if accepted {
+                        format!("{} SIGNED", other.name())
+                    } else {
+                        format!("{} REFUSED", other.name())
+                    };
+                    self.events.push(SimEvent::Treaty { x, y, color, label });
+                }
+            }
+        }
+    }
+
+    /// Advance the negotiation between two creatures.
     pub(crate) fn advance_negotiation(
         &mut self,
         index: usize,

@@ -227,8 +227,12 @@ impl CreatureSystem {
                 let other = &self.list[j];
                 if other.species == a_species {
                     // Madness drives a creature to attack its own kind.
-                    // Nothing else does.
+                    // Nothing else does - except a pacific creature, which
+                    // will not raise a hand against its own people at all.
                     if !self.list[a].is_mad() {
+                        return;
+                    }
+                    if self.list[a].traits & trait_bits::PACIFIC != 0 {
                         return;
                     }
                 }
@@ -331,10 +335,15 @@ impl CreatureSystem {
                     if attacker.traits & trait_bits::FEROCIOUS != 0 {
                         dmg *= 1.35;
                     }
-                    // A colony that has fought for generations fights better.
+                    // A colony that has learned to fight fights better.
                     dmg *= attacker.culture_factor(Culture::Warfare);
                     // A bold animal swings harder than a timid one.
                     dmg *= 0.8 + attacker.personality.aggression * 0.4;
+                    // And a colony that has worked out how to make a blade
+                    // properly hits harder still.
+                    if self.species_discoveries(a_species) & discovery_bits::SMITHING != 0 {
+                        dmg *= 1.3;
+                    }
                     if attacker.active_spell == Spell::Fireball && attacker.spell_cd[1] == 0 { dmg += 20.0; }
                     // The victim's own build decides how much of it lands.
                     let dmg = self.list[j].damage_taken(dmg);
@@ -386,7 +395,7 @@ impl CreatureSystem {
     // The dead are removed and burst into energy.
         // Remove the dead
         for &i in dead.iter().rev() {
-            let (cx, cy, color, size, dx, dy) = {
+            let (cx, cy, color, size, dx, dy, bond) = {
                 let c = &self.list[i];
                 (
                     c.x.round() as i32,
@@ -395,9 +404,22 @@ impl CreatureSystem {
                     c.size,
                     c.x,
                     c.y,
+                    c.bond,
                 )
             };
             world.scavenge(cx, cy);
+            // A creature that loses its partner grieves: it loses heart and
+            // it loses weight for a while.
+            if let Some(partner_id) = bond {
+                for c in self.list.iter_mut() {
+                    if c.id == partner_id && c.health > 0.0 {
+                        c.mood = Mood::Depressed;
+                        c.mood_timer = 900;
+                        c.energy = (c.energy - 60.0).max(0.0);
+                        c.bond = None;
+                    }
+                }
+            }
             // A dying organism bursts into a spray of energy particles.
             let burst = 8 + self.rng.range(9);
             self.spawn_energy_burst(world, cx, cy, burst, color);
@@ -462,8 +484,23 @@ impl CreatureSystem {
 
         // Apply healing from salves.
         for (target_id, _hx, _hy) in heal_targets {
+            // The species of the one being healed decides how good the salve
+            // is.
+            let power = {
+                let species = self
+                    .list
+                    .iter()
+                    .find(|t| t.id == target_id)
+                    .map(|t| t.species)
+                    .unwrap_or(0);
+                if self.species_discoveries(species) & discovery_bits::MEDICINE != 0 {
+                    1.5
+                } else {
+                    1.0
+                }
+            };
             if let Some(target) = self.list.iter_mut().find(|t| t.id == target_id) {
-                target.health = (target.health + 35.0).min(100.0);
+                target.health = (target.health + 35.0 * power).min(100.0);
                 target.energy = (target.energy + 40.0).min(target.max_energy);
             }
         }

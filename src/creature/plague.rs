@@ -179,6 +179,52 @@ impl Creature {
     pub fn is_mad(&self) -> bool {
         self.disease != Disease::None && Plague::from(self.disease).maddens()
     }
+
+    /// The resistance this creature has to a disease.
+    ///
+    /// `0` is no resistance, `1` is resistance and `2` is immunity.
+    pub fn resistance(&self, disease: Disease) -> u8 {
+        self.immunity[disease as usize]
+    }
+
+    /// How likely the disease is to take hold in this creature.
+    ///
+    /// A resistant animal shrugs it off most of the time; an immune one
+    /// never catches it at all.
+    pub fn catch_chance(&self, disease: Disease) -> f32 {
+        match self.resistance(disease) {
+            0 => 1.0,
+            1 => 0.35,
+            _ => 0.0,
+        }
+    }
+}
+
+/// The genes that give resistance to a disease, and the disease they guard
+/// against.
+///
+/// Resistance is genetic, so it is inherited and it evolves: a plague that
+/// sweeps through a colony selects for the animals that can stand it, and
+/// their descendants are born resistant.
+pub const IMMUNITY_GENES: [(usize, Disease); 4] = [
+    (23, Disease::Flu),
+    (24, Disease::Plague),
+    (25, Disease::Infection),
+    (26, Disease::Madness),
+];
+
+/// The resistance a genome gives, worked out from the genes.
+pub fn immunity_from_genes(genes: &[f32; 32]) -> [u8; 8] {
+    let mut immunity = [0u8; 8];
+    for (gene, disease) in IMMUNITY_GENES {
+        let g = genes[gene];
+        if g > 0.74 {
+            immunity[disease as usize] = 2;
+        } else if g > 0.58 {
+            immunity[disease as usize] = 1;
+        }
+    }
+    immunity
 }
 
 /// Turn the old disease enum into the richer plague table.
@@ -201,19 +247,72 @@ impl From<Disease> for Plague {
 }
 
 impl CreatureSystem {
+    /// A disease breaks out in a crowded colony.
+    ///
+    /// Diseases do not only come from venom and curses: a colony that has
+    /// grown too crowded breeds them. Every so often one animal falls ill,
+    /// and from there the disease does its own work.
+    pub(crate) fn maybe_outbreak(&mut self) {
+        if self.tick % 400 != 0 || self.list.len() <= 20 {
+            return;
+        }
+        let sick = self
+            .list
+            .iter()
+            .filter(|c| c.disease != Disease::None)
+            .count();
+        // A colony that is already suffering is not ready for another
+        // outbreak.
+        if sick * 6 >= self.list.len() || !self.rng.chance(0.25) {
+            return;
+        }
+        let victim = self.rng.range(self.list.len() as u32) as usize;
+        if self.list[victim].disease != Disease::None {
+            return;
+        }
+        const OPTIONS: [Disease; 5] = [
+            Disease::Flu,
+            Disease::Plague,
+            Disease::Infection,
+            Disease::Parasite,
+            Disease::Madness,
+        ];
+        let pick = OPTIONS[self.rng.range(OPTIONS.len() as u32) as usize];
+        self.list[victim].disease = pick;
+        self.list[victim].disease_timer = Plague::from(pick).duration();
+        self.plagues_started += 1;
+        self.events.push(SimEvent::Plague {
+            x: self.list[victim].x,
+            y: self.list[victim].y,
+            color: self.list[victim].team_color,
+        });
+    }
+
     /// Spread the diseases through the colonies.
     ///
     /// A sick animal infects its own kind: the disease moves through the
     /// colony, and a colony that has been trading with its neighbours gets
     /// it from them too.
+    ///
+    /// This runs every few ticks rather than every tick: a disease that
+    /// jumps once per tick would sweep a colony in seconds.
     pub(crate) fn spread_diseases(&mut self, grid: &SpatialGrid) {
+        if self.tick % 3 != 0 {
+            return;
+        }
         // Which creatures are sick, and with what.
         let sick: Vec<(usize, Disease, f32)> = self
             .list
             .iter()
             .enumerate()
             .filter(|(_, c)| c.disease != Disease::None)
-            .map(|(i, c)| (i, c.disease, Plague::from(c.disease).contagiousness()))
+            .map(|(i, c)| {
+                (
+                    i,
+                    c.disease,
+                    Plague::from(c.disease).contagiousness() * 3.0,
+                )
+            })
             .collect();
         if sick.is_empty() {
             return;
@@ -246,7 +345,12 @@ impl CreatureSystem {
                 if d > 14.0 {
                     return;
                 }
-                if self.rng.chance(chance) {
+                // A resistant animal mostly shrugs the disease off.
+                let catch = other.catch_chance(disease);
+                if catch <= 0.0 {
+                    return;
+                }
+                if self.rng.chance(chance * catch) {
                     infected.push((j, disease));
                 }
             });

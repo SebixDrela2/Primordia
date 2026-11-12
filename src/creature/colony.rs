@@ -34,6 +34,7 @@ impl CreatureSystem {
             splits_total: 0,
             migrations_started: 0,
             plagues_started: 0,
+            discoveries: Vec::new(),
         }
     }
 
@@ -59,24 +60,27 @@ impl CreatureSystem {
     /// claimed yet.
     ///
     /// A landmark is worth having, so a colony that can have one takes it.
-    /// The second colony to arrive has to make do with ordinary ground.
-    fn find_landmark_spot(&mut self, world: &World) -> Option<(f32, f32)> {
+    /// The second colony to arrive has to make do with ordinary ground - and
+    /// the two colonies end up fighting over the place.
+    fn find_landmark_spot(&mut self, world: &World, claimer: u32) -> Option<(f32, f32)> {
         if !self.rng.chance(0.6) {
             return None;
         }
         let mut rng = std::mem::replace(&mut self.rng, Rng::new(1));
         let mut found = None;
+        let mut taken: Vec<(u32, f32, f32)> = Vec::new();
         for l in world.landmarks.iter() {
-            if found.is_some() {
-                break;
-            }
-            // Is the landmark already taken?
-            let taken = self.list.iter().any(|c| {
+            // Is the landmark already taken? If it belongs to another species
+            // this is a territorial dispute, not a free spot.
+            let holder = self.list.iter().find(|c| {
                 c.role == Role::Queen
                     && ((c.base_x - l.x).powi(2) + (c.base_y - l.y).powi(2)).sqrt()
                         < l.kind.radius() * 1.6
             });
-            if taken {
+            if let Some(h) = holder {
+                if h.species != claimer {
+                    taken.push((h.species, l.x, l.y));
+                }
                 continue;
             }
             // Find a spot in the landmark that a colony could stand in.
@@ -94,6 +98,16 @@ impl CreatureSystem {
             }
         }
         self.rng = rng;
+        // There was no free landmark left, so this colony has to do with
+        // ordinary ground - and the colony that holds the place is not going
+        // to share it. That is a territorial dispute and it turns into a war.
+        if found.is_none() && !taken.is_empty() && self.rng.chance(0.35) {
+            let i = self.rng.range(taken.len() as u32) as usize;
+            let (holder, _, _) = taken[i];
+            if !self.diplomacy.at_war(holder, claimer) {
+                self.declare_war(holder, claimer, "disputed landmark", self.tick);
+            }
+        }
         found
     }
 
@@ -352,7 +366,7 @@ impl CreatureSystem {
         let (base_x, base_y) = if is_child {
             (parent_base_x, parent_base_y)
         } else if role == Role::Queen {
-            match self.find_landmark_spot(world) {
+            match self.find_landmark_spot(world, species) {
                 Some(sp) => sp,
                 None => (x, y),
             }
@@ -409,6 +423,11 @@ impl CreatureSystem {
         if role == Role::Shaman || role == Role::Priest {
             starting_inv[4] = self.rng.range(3) as u16;   // crystal
         }
+
+        // The resistance this animal has to the diseases, worked out from
+        // its genes. It is inherited, so a lineage that has been through a
+        // plague becomes a plague-proof lineage.
+        let immunity = immunity_from_genes(&genes);
 
         let creature = Creature {
             id: self.next_id,
@@ -484,6 +503,7 @@ impl CreatureSystem {
             mate: None,
             sired: 0,
             migrating: false,
+            bond: None,
             hunger: 50.0,
             thirst: 50.0,
             stamina: 100.0,
@@ -607,6 +627,7 @@ impl Creature {
             mate: None,
             sired: 0,
             migrating: false,
+            bond: None,
             hunger: 50.0,
             thirst: 50.0,
             stamina: 100.0,

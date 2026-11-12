@@ -21,33 +21,47 @@ pub enum Role {
 /// the genes decide which traits a species evolves. Every trait has a real
 /// effect on the simulation.
 ///
-/// The bits are `u16`, so a species can carry up to sixteen of them.
+/// The bits are `u32`, so a species can carry up to thirty-two of them.
 pub mod trait_bits {
-    pub const FEROCIOUS: u16 = 1 << 0;
-    pub const INDUSTRIOUS: u16 = 1 << 1;
-    pub const HARDY: u16 = 1 << 2;
-    pub const FERTILE: u16 = 1 << 3;
-    pub const KEEN_SENSES: u16 = 1 << 4;
-    pub const SCAVENGER: u16 = 1 << 5;
-    pub const PEACEFUL: u16 = 1 << 6;
+    pub const FEROCIOUS: u32 = 1 << 0;
+    pub const INDUSTRIOUS: u32 = 1 << 1;
+    pub const HARDY: u32 = 1 << 2;
+    pub const FERTILE: u32 = 1 << 3;
+    pub const KEEN_SENSES: u32 = 1 << 4;
+    pub const SCAVENGER: u32 = 1 << 5;
+    pub const PEACEFUL: u32 = 1 << 6;
     /// Melee attacks poison whatever they hit.
-    pub const VENOMOUS: u16 = 1 << 7;
+    pub const VENOMOUS: u32 = 1 << 7;
     /// Can swim through water instead of being blocked by it.
-    pub const AMPHIBIOUS: u16 = 1 << 8;
+    pub const AMPHIBIOUS: u32 = 1 << 8;
     /// Hunts at night and rests badly in the day.
-    pub const NOCTURNAL: u16 = 1 << 9;
+    pub const NOCTURNAL: u32 = 1 << 9;
     /// Works better in the company of its own kind.
-    pub const GREGARIOUS: u16 = 1 << 10;
+    pub const GREGARIOUS: u32 = 1 << 10;
     /// Carries far more than its size suggests.
-    pub const HOARDER: u16 = 1 << 11;
+    pub const HOARDER: u32 = 1 << 11;
     /// Immune to the cold, and drawn to heat.
-    pub const THERMOPHILIC: u16 = 1 << 12;
+    pub const THERMOPHILIC: u32 = 1 << 12;
     /// Reads metal in the rock and digs towards it.
-    pub const METALLOPHILIC: u16 = 1 << 13;
+    pub const METALLOPHILIC: u32 = 1 << 13;
     /// Light bones: fast, but frail.
-    pub const HOLLOW_BONED: u16 = 1 << 14;
+    pub const HOLLOW_BONED: u32 = 1 << 14;
     /// The colony shares one mind: the members know what the others know.
-    pub const HIVEMIND: u16 = 1 << 15;
+    pub const HIVEMIND: u32 = 1 << 15;
+    /// A prolific species: many small young, cheap and quick to mature.
+    pub const PROLIFIC: u32 = 1 << 16;
+    /// A prolonged species: few young, heavily invested in, and long-lived.
+    pub const PROLONGED: u32 = 1 << 17;
+    /// The colony keeps the peace within itself: no fighting over food.
+    pub const PACIFIC: u32 = 1 << 18;
+    /// Drawn to the deep: digs deeper than others and finds more.
+    pub const DEEP_DIGGER: u32 = 1 << 19;
+    /// Builds high: finds and uses the ground above the surface.
+    pub const CLIMBER: u32 = 1 << 20;
+    /// Keeps a hoard of tools and shares them with the colony.
+    pub const PROVISIONER: u32 = 1 << 21;
+    /// Sleeps through the day and works at night, whatever the season.
+    pub const CREPUSCULAR: u32 = 1 << 22;
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -68,6 +82,13 @@ pub enum Trait {
     Metallophilic,
     HollowBoned,
     Hivemind,
+    Prolific,
+    Prolonged,
+    Pacific,
+    DeepDigger,
+    Climber,
+    Provisioner,
+    Crepuscular,
 }
 
 impl Trait {
@@ -89,6 +110,13 @@ impl Trait {
             Trait::Metallophilic => "Metallophilic",
             Trait::HollowBoned => "Hollow-Boned",
             Trait::Hivemind => "Hivemind",
+            Trait::Prolific => "Prolific",
+            Trait::Prolonged => "Prolonged",
+            Trait::Pacific => "Pacific",
+            Trait::DeepDigger => "Deep Digger",
+            Trait::Climber => "Climber",
+            Trait::Provisioner => "Provisioner",
+            Trait::Crepuscular => "Crepuscular",
         }
     }
 
@@ -110,6 +138,13 @@ impl Trait {
             Trait::Metallophilic => "senses metal and digs towards it",
             Trait::HollowBoned => "moves faster, but has less health",
             Trait::Hivemind => "the colony shares one mind",
+            Trait::Prolific => "many small young, cheap and quick to mature",
+            Trait::Prolonged => "few young, heavily invested in, and long-lived",
+            Trait::Pacific => "never fights over food with its own kind",
+            Trait::DeepDigger => "digs deeper than the rest and finds more",
+            Trait::Climber => "at home in the high places",
+            Trait::Provisioner => "hoards food and shares it with the colony",
+            Trait::Crepuscular => "works at dusk and dawn, and rests at noon",
         }
     }
 }
@@ -119,8 +154,8 @@ impl Trait {
 /// Every trait has its own gene. A high gene means the trait is expressed,
 /// except for the `Peaceful` trait, which is the mirror image: a *low* gene
 /// means the species has evolved a peaceful nature.
-pub fn decode_traits(genes: &[f32; 32]) -> u16 {
-    let mut bits = 0u16;
+pub fn decode_traits(genes: &[f32; 32]) -> u32 {
+    let mut bits = 0u32;
     if genes[0] > 0.74 {
         bits |= trait_bits::FEROCIOUS;
     }
@@ -169,16 +204,37 @@ pub fn decode_traits(genes: &[f32; 32]) -> u16 {
     if genes[15] > 0.80 {
         bits |= trait_bits::HIVEMIND;
     }
+    if genes[16] > 0.78 {
+        bits |= trait_bits::PROLIFIC;
+    }
+    if genes[17] > 0.78 {
+        bits |= trait_bits::PROLONGED;
+    }
+    if genes[18] > 0.80 {
+        bits |= trait_bits::PACIFIC;
+    }
+    if genes[19] > 0.80 {
+        bits |= trait_bits::DEEP_DIGGER;
+    }
+    if genes[20] > 0.80 {
+        bits |= trait_bits::CLIMBER;
+    }
+    if genes[21] > 0.80 {
+        bits |= trait_bits::PROVISIONER;
+    }
+    if genes[22] > 0.82 {
+        bits |= trait_bits::CREPUSCULAR;
+    }
     bits
 }
 
 /// How many traits a genome expresses. Used to judge how specialised an
 /// animal is.
-pub fn trait_count(bits: u16) -> u32 {
+pub fn trait_count(bits: u32) -> u32 {
     bits.count_ones()
 }
 
-pub fn trait_list(bits: u16) -> Vec<Trait> {
+pub fn trait_list(bits: u32) -> Vec<Trait> {
     let mut v = Vec::new();
     if bits & trait_bits::FEROCIOUS != 0 {
         v.push(Trait::Ferocious);
@@ -227,6 +283,27 @@ pub fn trait_list(bits: u16) -> Vec<Trait> {
     }
     if bits & trait_bits::HIVEMIND != 0 {
         v.push(Trait::Hivemind);
+    }
+    if bits & trait_bits::PROLIFIC != 0 {
+        v.push(Trait::Prolific);
+    }
+    if bits & trait_bits::PROLONGED != 0 {
+        v.push(Trait::Prolonged);
+    }
+    if bits & trait_bits::PACIFIC != 0 {
+        v.push(Trait::Pacific);
+    }
+    if bits & trait_bits::DEEP_DIGGER != 0 {
+        v.push(Trait::DeepDigger);
+    }
+    if bits & trait_bits::CLIMBER != 0 {
+        v.push(Trait::Climber);
+    }
+    if bits & trait_bits::PROVISIONER != 0 {
+        v.push(Trait::Provisioner);
+    }
+    if bits & trait_bits::CREPUSCULAR != 0 {
+        v.push(Trait::Crepuscular);
     }
     v
 }

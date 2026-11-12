@@ -44,11 +44,14 @@ impl Stage {
         }
     }
 
-    /// The stage a creature of this age has reached.
-    pub fn of(age: u32, max_age: u32) -> Stage {
+    /// The stage of a creature of this age.
+    ///
+    /// `maturity` is the fraction of a life that is spent as a juvenile:
+    /// a prolific species grows up quickly, a prolonged one takes its time.
+    pub fn of(age: u32, max_age: u32, maturity: f32) -> Stage {
         let span = max_age.max(1) as f32;
         let t = age as f32 / span;
-        if t < 0.18 {
+        if t < maturity {
             Stage::Juvenile
         } else if t < 0.78 {
             Stage::Adult
@@ -377,6 +380,72 @@ impl CreatureSystem {
 }
 
 impl Creature {
+    /// How long this creature lives.
+    ///
+    /// A prolific species burns its life out quickly and a prolonged one
+    /// hangs on for a long time. This is the r/K axis of evolution, and it
+    /// changes everything about a species: how many young it raises, how big
+    /// they are and how soon they grow up.
+    pub fn lifespan(&self) -> u32 {
+        if self.traits & trait_bits::PROLONGED != 0 {
+            4800
+        } else if self.traits & trait_bits::PROLIFIC != 0 {
+            2100
+        } else {
+            MAX_AGE
+        }
+    }
+
+    /// The fraction of a life spent as a juvenile.
+    pub fn maturity_fraction(&self) -> f32 {
+        if self.traits & trait_bits::PROLONGED != 0 {
+            0.26
+        } else if self.traits & trait_bits::PROLIFIC != 0 {
+            0.10
+        } else {
+            0.18
+        }
+    }
+
+    /// How many young a creature raises at a time.
+    ///
+    /// A prolific species raises several small ones; a prolonged species
+    /// raises one and invests everything in it.
+    pub fn litter_size(&self) -> u32 {
+        if self.traits & trait_bits::PROLIFIC != 0 {
+            3
+        } else if self.traits & trait_bits::PROLONGED != 0 {
+            1
+        } else {
+            2
+        }
+    }
+
+    /// How much a young one costs to raise.
+    pub fn brood_cost(&self) -> f32 {
+        if self.traits & trait_bits::PROLONGED != 0 {
+            190.0
+        } else if self.traits & trait_bits::PROLIFIC != 0 {
+            70.0
+        } else {
+            120.0
+        }
+    }
+
+    /// How much a young one is worth.
+    ///
+    /// A prolonged species puts everything into its single young, so it
+    /// starts out strong; a prolific one spreads itself thin.
+    pub fn brood_value(&self) -> f32 {
+        if self.traits & trait_bits::PROLONGED != 0 {
+            1.5
+        } else if self.traits & trait_bits::PROLIFIC != 0 {
+            0.6
+        } else {
+            1.0
+        }
+    }
+
     /// The most health this creature can have at its current stage.
     ///
     /// A juvenile is a small animal with a lot of growing left to do, so it
@@ -390,6 +459,18 @@ impl Creature {
             1.0
         };
         base * hardy * hollow * self.stage.health_factor()
+    }
+
+    /// How much a salve heals.
+    ///
+    /// A colony that has worked out medicine heals more from the same
+    /// salve.
+    pub fn salve_power(&self, discoveries: u16) -> f32 {
+        if discoveries & discovery_bits::MEDICINE != 0 {
+            1.5
+        } else {
+            1.0
+        }
     }
 
     /// How much this creature can carry.

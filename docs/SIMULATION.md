@@ -912,6 +912,13 @@ The 32 genes decide the **traits**, decoded by `decode_traits`
 | `Metallophilic` | gene 13 > 0.76 | reads metal and digs towards it |
 | `HollowBoned` | gene 14 > 0.78 | moves 35% faster, has 25% less health |
 | `Hivemind` | gene 15 > 0.80 | the colony shares one mind: it sees 60% further |
+| `Prolific` | gene 16 > 0.78 | a life history: many small young, cheap and quick to mature |
+| `Prolonged` | gene 17 > 0.78 | a life history: few young, heavily invested in, and long-lived |
+| `Pacific` | gene 18 > 0.80 | never raises a hand against its own kind |
+| `DeepDigger` | gene 19 > 0.80 | digs further and sometimes breaks into a rich pocket |
+| `Climber` | gene 20 > 0.80 | 25% quicker in the open air than under the rock |
+| `Provisioner` | gene 21 > 0.80 | shares its food with the colony around it |
+| `Crepuscular` | gene 22 > 0.82 | works at dawn and dusk, rests at noon and midnight |
 
 #### The heritage: what the species has become
 
@@ -959,12 +966,68 @@ generation. Five axes, each in `0..1`:
 |---|---|
 | `aggression` | the distance at which it gives in, how hard it hits, how easily it starts a fight |
 | `curiosity` | how far it will range to find what it needs |
-| `sociability` | how strongly it is pulled back to the colony |
+| `sociability` | how strongly it is pulled back to the colony, and whether it bonds at all |
 | `greed` | how much it hoards |
 | `caution` | how quickly it runs, how far it ventures |
 
 Two creatures with identical genes and an identical heritage still play
 very differently, because one is bold and the other is wary.
+
+#### The life history: prolific or prolonged
+
+The r/K axis of evolution, and the deepest difference between two
+species that look alike. It decides how many young a creature raises, what
+they are worth, how long it lives and how soon it grows up.
+
+| | `Prolific` | balanced | `Prolonged` |
+|---|---|---|---|
+| Young per brood | 3 | 2 | 1 |
+| Energy per young | 70 | 120 | 190 |
+| What the young are worth | ×0.6 | ×1.0 | ×1.5 |
+| Lifespan | 2100 ticks | 3200 | 4800 |
+| Grows up at | 10% of life | 18% | 26% |
+
+A prolific species is a cloud of small quick animals that turns over in a
+few generations; a prolonged species is a handful of large slow animals
+that invest everything in each young.
+
+#### Bonds: the pairs that hold a colony together
+
+`creature/bonds.rs`. Two animals of the same kind that meet, and that both
+like the company of their own kind (a sociability above 0.55), become
+partners. The bond is mutual and it changes how they live: a bonded pair
+looks after each other, so they eat less and tire less.
+
+When one of the pair dies the other **grieves**: it loses heart, loses
+weight and is depressed for a long while. The bonds are drawn on the
+screen as a thin line between the two animals.
+
+#### Technology: what a species has worked out for itself
+
+`creature/technology.rs`. A culture is a *practice* — the colony farms, or
+mines, or fights. A **discovery** is a piece of *knowledge*: the colony
+has worked out how to forge a blade properly, or how to make a bow without
+iron, or how to read the stars.
+
+A discovery is the child of a practice. The species has to have been doing
+the thing for a long time, and to have lived through enough generations,
+before it works out the next thing — and then it has to be lucky.
+
+| Discovery | Needs | Generations | What it does |
+|---|---|---|---|
+| `Husbandry` | cultivation | 2 | the crops are grown properly: the colony eats better |
+| `Architecture` | architecture | 2 | the buildings are bigger and cost less |
+| `Smithing` | craft + mining | 3 | the tools are made properly: +30% melee damage |
+| `Ranged Craft` | craft + warfare | 3 | a bow can be made from wood alone, and it flies further |
+| `Medicine` | craft + ritual | 4 | a salve can be made from plants alone, and it heals 50% more |
+| `Astronomy` | ritual | 4 | the colony sees 40% further |
+| `Metallurgy` | craft + mining | 5 | the metal is worked into steel: +20% health |
+| `Sanctuary` | ritual | 6 | mana comes back much faster |
+
+The knowledge belongs to the species, not to the individual that worked it
+out: it is passed on with the young, and it is gone when the species dies.
+In one test run the leading lineage had worked out all eight, while three
+other species had managed only one each.
 
 #### Courtship
 
@@ -1175,6 +1238,8 @@ memory for every single pixel.
 | `creature/mating.rs` | courtship, mate choice and the hybrid young |
 | `creature/speciation.rs` | migration and the birth of a new species |
 | `creature/plague.rs` | the diseases that run through a colony |
+| `creature/bonds.rs` | the pairs that hold a colony together |
+| `creature/technology.rs` | what a species has worked out for itself |
 | `creature/stats.rs` | the population statistics |
 | `render/mod.rs` | the renderer |
 | `render/fx.rs` | the element effect table |
@@ -1210,6 +1275,7 @@ A quick map from "what I want to change" to "the file and method to change".
 | **What a creature has learned** | `creature/heritage.rs` (`culture_bits`, `CreatureSystem::learn_culture`) |
 | **How an individual behaves** | `creature/personality.rs` (`Personality`), `creature/actions.rs` (`act_steer`) |
 | **How a disease spreads** | `creature/plague.rs` (`Plague`, `spread_diseases`) |
+| **What a species has worked out** | `creature/technology.rs` (`Discovery`, `check_discoveries`) |
 | **What a species hunts** | `creature/actions.rs` (`act_steer`, the hunt), `creature/combat.rs` (`resolve_attacks`) |
 | **Where a colony settles** | `creature/colony.rs` (`find_landmark_spot`), `world/landmarks.rs` |
 | **Where a new creature is born** | `creature/colony.rs` (`spawn`, `spawn_near_surface`, `populate`) |

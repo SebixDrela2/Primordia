@@ -38,8 +38,8 @@
                    structures, landmarks, physics, behaviors, reactions,
                    maintain, census, query
   - `src/creature/` brain, enums, names, senses, colony, step, actions,
-                   building, combat, diplomacy, personality, heritage,
-                   mating, speciation, plague, stats
+                   building, bonds, combat, diplomacy, personality,
+                   heritage, mating, speciation, plague, technology, stats
   - `src/ui/`      effects, hud, knowledge, minimap, victory, actors,
                    diplomacy
   - `src/render/`  mod.rs (pixel loop), fx.rs (element effects),
@@ -80,6 +80,11 @@
   elemental affinity and the culture the species has learned) and
   **personality** (the individual's own temperament). A child of two
   parents blends all three.
+- The life history of a species is its r/K strategy: `Prolific` raises
+  three small cheap young and dies young, `Prolonged` raises one
+  well-invested-in young and lives long. It changes the litter size, the
+  cost of a young, its value, the lifespan and the age at which a
+  creature grows up.
 - A species can split: a colony that has outgrown its ground sends some
   of its members away, and if they travel far enough they become a
   species of their own with a new id, a new colour and a fresh
@@ -87,6 +92,10 @@
 - A colony can be destroyed from the inside: diseases spread through it,
   slow the sick, drain them and — in the case of madness — turn them
   against their own kind.
+- A species accumulates **discoveries** as well as practices: a discovery
+  is a piece of knowledge that needs both the right practice and enough
+  generations behind it. The knowledge belongs to the species and is lost
+  with it.
 - The world is not uniform: crystal groves, hot springs, bone fields,
   fertile soil and old ruins are worth settling beside, and a colony that
   can have one takes it. Two colonies that want the same grove fight over

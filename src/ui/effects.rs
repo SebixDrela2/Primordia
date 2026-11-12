@@ -246,5 +246,11 @@ pub fn apply_event(effects: &mut Effects, ev: SimEvent) {
                     effects.burst(x, y, [140, 220, 110], 14, 6.0);
                     effects.text(x, y, [170, 240, 140], "PLAGUE".to_string());
                 }
+                SimEvent::Discovery { x, y, color } => {
+                    // A discovery: a bright golden spark.
+                    effects.ring(x, y, [255, 230, 150], 20.0, 1.0);
+                    effects.burst(x, y, [255, 235, 170], 16, 7.0);
+                    effects.text(x, y, [255, 240, 190], "DISCOVERY".to_string());
+                }
             }
 }

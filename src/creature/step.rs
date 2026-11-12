@@ -152,6 +152,16 @@ impl CreatureSystem {
         let mut proposals: Vec<(usize, usize, DiplomaticAction)> = Vec::new();
         // Which creatures went looking for a mate.
         let mut mate_willing: Vec<bool> = vec![false; self.list.len()];
+        // What each species has worked out for itself, indexed by species
+        // id. It is a snapshot for this tick: a discovery made now takes
+        // effect on the next one.
+        let mut discoveries_by_species: Vec<u16> = vec![0; self.next_species as usize + 8];
+        for (sp, d) in &self.discoveries {
+            if (*sp as usize) < discoveries_by_species.len() {
+                discoveries_by_species[*sp as usize] = *d;
+            }
+        }
+
         // The practices the creatures picked up this tick. They are applied
         // after the loop, because learning touches the whole colony.
         let mut learned: Vec<(usize, Culture)> = Vec::new();
@@ -168,6 +178,10 @@ impl CreatureSystem {
             let mut wants_child = false;
             let mut cast_spell = false;
             let mut traded = false;
+            // How many young this creature raises, and how much it puts into
+            // each of them.
+            let mut child_count: u32 = 1;
+            let mut child_value: f32 = 1.0;
 
             {
                 let c = &mut self.list[index];
@@ -177,8 +191,10 @@ impl CreatureSystem {
                 //
                 // A creature grows up: it starts as a juvenile that cannot
                 // fight or breed, becomes a full adult, and finally turns
-                // into an elder that is slower but wiser.
-                let new_stage = Stage::of(c.age, MAX_AGE);
+                // into an elder that is slower but wiser. How long each
+                // stage lasts depends on the species' life history.
+                let lifespan = c.lifespan();
+                let new_stage = Stage::of(c.age, lifespan, c.maturity_fraction());
                 if new_stage != c.stage {
                     // Growing up costs energy, and the body changes with it.
                     if new_stage == Stage::Adult {
@@ -270,7 +286,15 @@ impl CreatureSystem {
                 if place.food {
                     c.hunger = (c.hunger - 0.035).clamp(0.0, 100.0);
                 }
-                // The rain quenches a thirst that would otherwise build up.
+                // A colony that has learned to grow its crops properly eats
+                // better from the same harvest.
+                let discoveries = discoveries_by_species
+                    .get(c.species as usize)
+                    .copied()
+                    .unwrap_or(0);
+                if discoveries & discovery_bits::HUSBANDRY != 0 {
+                    c.hunger = (c.hunger - 0.02).clamp(0.0, 100.0);
+                }                // The rain quenches a thirst that would otherwise build up.
                 c.thirst = (c.thirst + 0.045 * hardy / world.weather.thirst_factor())
                     .clamp(0.0, 100.0);
                 // A juvenile grows instead of working: it burns less energy
@@ -352,12 +376,44 @@ impl CreatureSystem {
                     // The weather makes every day harder.
                     c.energy -= 0.08 * world.weather.energy_factor();
                 }
+                // A bonded pair looks after each other: a creature with a
+                // living partner is better fed and in better spirits.
+                //
+                // The bond is cleared when the partner dies, so a creature
+                // that still has one knows the other is alive.
+                if c.bond.is_some() {
+                    c.hunger = (c.hunger - 0.02).clamp(0.0, 100.0);
+                    c.energy = (c.energy + 0.01).min(c.max_energy);
+                }
+
                 // A creature heals back towards the limit its body allows.
                 // A juvenile that has just become an adult spends a long
                 // time growing into its frame.
                 let cap = c.max_health();
                 if c.health < cap {
                     c.health = (c.health + 0.05).min(cap);
+                }
+
+                // ---- The rhythm of the day ----
+                //
+                // A crepuscular animal works at dawn and dusk and rests at
+                // noon; a climber is quicker in the open air than under
+                // the ground; a provisioner feeds the colony it belongs to.
+                let crepuscular = c.traits & trait_bits::CREPUSCULAR != 0;
+                let hour = (self.day_night * 24.0) as f32;
+                // How well the creature is doing at this hour: full at dawn
+                // and dusk, half at noon and midnight.
+                let daylight = if crepuscular {
+                    let dawn = (hour - 6.0).abs().min(12.0);
+                    let dusk = (hour - 18.0).abs().min(12.0);
+                    1.0 - (dawn.min(dusk) / 6.0).min(1.0) * 0.6
+                } else {
+                    1.0
+                };
+                // A provisioner shares its food with the colony. The number
+                // of kin nearby is already known, so this costs nothing.
+                if c.traits & trait_bits::PROVISIONER != 0 && kin_near > 0 {
+                    c.hunger = (c.hunger - 0.02).clamp(0.0, 100.0);
                 }
                 // The cold bites. A species that has never felt a winter
                 // suffers for it, and the ember people suffer more. A hot
@@ -376,6 +432,11 @@ impl CreatureSystem {
                 }
                 c.mana = (c.mana + MANA_REGEN * c.affinity.mana_factor() * place.mana)
                     .clamp(0.0, c.max_mana);
+                // A colony that understands the old rites draws on the
+                // world much more strongly.
+                if discoveries & discovery_bits::SANCTUARY != 0 {
+                    c.mana = (c.mana + MANA_REGEN * 0.8).clamp(0.0, c.max_mana);
+                }
 
                 // Cooldowns
                 if c.cooldown > 0 { c.cooldown -= 1; }
@@ -426,6 +487,10 @@ impl CreatureSystem {
                     (pop_now as u32).saturating_sub(own_pop),
                     &ds,
                     near_beacon,
+                    discoveries_by_species
+                        .get(c.species as usize)
+                        .copied()
+                        .unwrap_or(0),
                     &mut input_buf,
                 );
                 c.net.forward_into(&input_buf, &mut net_act, &mut net_next);
@@ -462,6 +527,15 @@ impl CreatureSystem {
                 // slower still, a hollow-boned one faster, and the wind and
                 // the rain slow everybody down.
                 let speed_cap = c.speed_cap() * world.weather.speed_factor() * c.disease_speed_factor();
+                // A climber is quicker in the open air than under the rock.
+                let climbing = if c.traits & trait_bits::CLIMBER != 0
+                    && world.get(c.x.round() as i32, c.y.round() as i32) == Elem::Empty
+                {
+                    1.25
+                } else {
+                    1.0
+                };
+                let speed_cap = speed_cap * climbing * daylight;
                 c.vx = (out[0] * 0.8 + steer_x * 0.8).clamp(-speed_cap, speed_cap);
                 c.vy = (out[1] * 0.8 + steer_y * 0.8 + 0.2).clamp(-speed_cap, speed_cap);
 
@@ -480,7 +554,17 @@ impl CreatureSystem {
                 built_something = built;
                 structures_total += built_count;
 
-                act_craft(c, &out, &mut self.events, near_workshop, place.craft);
+                act_craft(
+                    c,
+                    &out,
+                    &mut self.events,
+                    near_workshop,
+                    place.craft,
+                    discoveries_by_species
+                        .get(c.species as usize)
+                        .copied()
+                        .unwrap_or(0),
+                );
                 // ---- What the colony learns from what it does ----
                 //
                 // Doing a thing again and again teaches the colony how to
@@ -666,11 +750,21 @@ impl CreatureSystem {
                 {
                     // Fertile species raise young more cheaply.
                     let fertile = if c.traits & trait_bits::FERTILE != 0 { 0.6 } else { 1.0 };
-                    c.energy -= 110.0 * fertile;
-                    c.hunger = (c.hunger + 15.0).clamp(0.0, 100.0);
-                    c.cooldown = if c.traits & trait_bits::FERTILE != 0 { 50 } else { 70 };
-                    c.offspring += 1;
-                    wants_child = true;
+                    // The litter size and the cost of each young follow the
+                    // species' life history: a prolific species raises
+                    // several small ones, a prolonged one raises a single
+                    // strong one.
+                    let litter = c.litter_size();
+                    let cost = c.brood_cost() * fertile;
+                    if c.energy > cost {
+                        c.energy -= cost;
+                        c.hunger = (c.hunger + 15.0).clamp(0.0, 100.0);
+                        c.cooldown = if c.traits & trait_bits::FERTILE != 0 { 50 } else { 70 };
+                        c.offspring += litter;
+                        wants_child = true;
+                        child_count = litter;
+                        child_value = c.brood_value();
+                    }
                 }
 
                 // Throw a bomb at the nearest rival.
@@ -824,7 +918,7 @@ impl CreatureSystem {
                 }
 
                 // Fitness: colony success metrics
-                c.fitness = (c.age as f32 / MAX_AGE as f32) * 0.15
+                c.fitness = (c.age as f32 / lifespan as f32) * 0.15
                     + (c.energy / c.max_energy) * 0.12
                     + c.offspring as f32 * 0.18
                     + c.kills as f32 * 0.12
@@ -836,7 +930,10 @@ impl CreatureSystem {
                     - (c.hunger / 100.0) * 0.05
                     - (c.thirst / 100.0) * 0.05;
 
-                if c.energy <= 0.0 || c.health <= 0.0 || c.age > MAX_AGE + c.id.wrapping_mul(2654435761) % 1400 {
+                if c.energy <= 0.0
+                    || c.health <= 0.0
+                    || c.age > lifespan + c.id.wrapping_mul(2654435761) % 1400
+                {
                     died = true;
                 }
 
@@ -844,8 +941,15 @@ impl CreatureSystem {
                 c.last_y = c.y;
 
                 if wants_child {
-                    let child = c.child_blueprint();
-                    births.push((c.base_x, c.base_y, child));
+                    // A litter of several small ones, or a single strong
+                    // one: it depends on the species' life history.
+                    for _ in 0..child_count.max(1) {
+                        let mut child = c.child_blueprint();
+                        child.energy = (child.energy * child_value).max(60.0);
+                        child.max_energy = (child.max_energy * child_value).max(200.0);
+                        child.size = (child.size * (0.85 + child_value * 0.15)).clamp(0.8, 2.4);
+                        births.push((c.base_x, c.base_y, child));
+                    }
                 }
             }
 
@@ -874,60 +978,19 @@ impl CreatureSystem {
         self.resolve_attacks(&grid, &attackers);
 
         // ---- Speciation: a colony too big for its ground splits ----
-        //
-        // A species that has outgrown its patch of world sends a few of its
-        // members away. If they travel far enough they become a species of
-        // their own, which is what keeps a world varied.
-        if self.tick % 120 == 0 {
-            let pressure = world.pressure.scarcity;
-            let species: Vec<u32> = {
-                let mut v: Vec<u32> = self.list.iter().map(|c| c.species).collect();
-                v.sort_unstable();
-                v.dedup();
-                v
-            };
-            for sp in species {
-                if self.rng.chance(0.06) {
-                    self.begin_migration(sp, pressure);
-                }
-            }
-            self.update_migrations(120);
-        }
+        self.maybe_speciate(world.pressure.scarcity);
 
         // ---- The plagues spread through the colonies ----
         self.spread_diseases(&grid);
 
+        // ---- The pairs that hold the colony together ----
+        self.form_bonds(&grid);
+
+        // ---- What the species have worked out for themselves ----
+        self.check_discoveries();
+
         // ---- An outbreak ----
-        //
-        // Diseases do not only come from venom and curses: a crowded
-        // colony breeds them. Every so often one animal falls ill, and
-        // from there the disease does its own work.
-        if self.tick % 400 == 0 && self.list.len() > 20 {
-            let sick = self.list.iter().filter(|c| c.disease != Disease::None).count();
-            // A colony that is already suffering is not ready for another
-            // outbreak.
-            if sick * 6 < self.list.len() && self.rng.chance(0.25) {
-                let victim = self.rng.range(self.list.len() as u32) as usize;
-                if self.list[victim].disease == Disease::None {
-                    let options = [
-                        Disease::Flu,
-                        Disease::Plague,
-                        Disease::Infection,
-                        Disease::Parasite,
-                        Disease::Madness,
-                    ];
-                    let pick = options[self.rng.range(options.len() as u32) as usize];
-                    self.list[victim].disease = pick;
-                    self.plagues_started += 1;
-                    self.list[victim].disease_timer = Plague::from(pick).duration();
-                    self.events.push(SimEvent::Plague {
-                        x: self.list[victim].x,
-                        y: self.list[victim].y,
-                        color: self.list[victim].team_color,
-                    });
-                }
-            }
-        }
+        self.maybe_outbreak();
 
         // ---- What the colony learned ----
         //
@@ -951,40 +1014,7 @@ impl CreatureSystem {
         self.resolve_births(world, births);
 
         // ---- Diplomacy: conclude the talks that were under way ----
-        //
-        // The talks are resolved after the loop, because signing a treaty
-        // changes the relations of two species and that would otherwise
-        // change what the other creatures decide to do in this same tick.
-        for (actor, partner, action) in proposals {
-            let willing = diplo_willing.get(partner).copied().unwrap_or(0.0) > 0.2;
-            let Some((act, accepted)) =
-                self.advance_negotiation(actor, partner, action, willing)
-            else {
-                continue;
-            };
-            if actor >= self.list.len() || partner >= self.list.len() {
-                continue;
-            }
-            let (x, y, color) = {
-                let a = &self.list[actor];
-                let p = &self.list[partner];
-                ((a.x + p.x) * 0.5, (a.y + p.y) * 0.5, a.team_color)
-            };
-            match act {
-                DiplomaticAction::War => {
-                    self.events.push(SimEvent::War { x, y, color });
-                }
-                DiplomaticAction::None => {}
-                other => {
-                    let label = if accepted {
-                        format!("{} SIGNED", other.name())
-                    } else {
-                        format!("{} REFUSED", other.name())
-                    };
-                    self.events.push(SimEvent::Treaty { x, y, color, label });
-                }
-            }
-        }
+        self.conclude_negotiations(&proposals, &diplo_willing);
         self.tick_diplomacy();
 
         // Apply accumulated stats
