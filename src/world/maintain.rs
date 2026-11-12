@@ -165,7 +165,7 @@ impl World {
                             }
                         }
                     }
-                    self.meteor_events.push((x as f32, impact_y as f32));
+                    self.meteor_events.push((x as f32, impact_y as f32, 22));
                 }
             }
             Weather::Clear => {}
@@ -386,6 +386,12 @@ impl World {
                 }
             }
         }
+
+        // The streaks of the meteors that came down fade out.
+        for m in self.meteor_events.iter_mut() {
+            m.2 = m.2.saturating_sub(1);
+        }
+        self.meteor_events.retain(|m| m.2 > 0);
 
         // Trim runaway particle counts (firestorms can fill the sky)
         if frame % 300 == 0 {

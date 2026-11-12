@@ -424,14 +424,25 @@ pub fn draw_actors(
         // ---- Weather overlay ----
         draw_weather(world.weather, now);
 
-        // ---- Meteor flashes ----
-        for (mx, my) in &world.meteor_events {
+        // ---- Meteors ----
+        // A meteor comes down as a bright streak and leaves a flash where it
+        // lands.
+        for (mx, my, life) in &world.meteor_events {
+            let t = *life as f32 / 22.0;
             let sx = (mx - view_x) * vscale_x;
             let sy = (my - view_y) * vscale_y;
-            draw_circle(sx, sy, 26.0, Color::new(1.0, 0.75, 0.35, 0.22));
-            draw_circle(sx, sy, 12.0, Color::new(1.0, 0.9, 0.6, 0.5));
+            let tail = 190.0 * vscale_y * (0.4 + t * 0.6);
+            draw_line(
+                sx - tail * 0.18,
+                sy - tail,
+                sx,
+                sy,
+                2.4,
+                Color::new(1.0, 0.85, 0.55, 0.35 + 0.5 * t),
+            );
+            draw_circle(sx, sy, 16.0 * t + 6.0, Color::new(1.0, 0.7, 0.3, 0.16 * t));
+            draw_circle(sx, sy, 7.0 * t + 2.0, Color::new(1.0, 0.9, 0.65, 0.7 * t));
         }
-        world.meteor_events.clear();
 
         // ---- Interaction animations ----
 }

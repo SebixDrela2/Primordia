@@ -281,7 +281,7 @@ pub struct World {
     pub weather: Weather,
     pub weather_timer: u32,
     /// Recent meteor impacts (x, y) so the renderer can flash explosions.
-    pub meteor_events: Vec<(f32, f32)>,
+    pub meteor_events: Vec<(f32, f32, u32)>,
     pub rng: Rng,
     pub frame: u64,
     /// Per-step budget for destructive resource gathering so creatures

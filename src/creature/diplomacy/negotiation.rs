@@ -601,6 +601,15 @@ impl CreatureSystem {
 
         // Slow drift: trust decays towards zero unless treaties keep it up.
         if self.tick % 60 == 0 {
+            // Where each species has its home. Two colonies that live too
+            // close together resent each other: the ground between them can
+            // only feed one of them.
+            let mut homes: Vec<(u32, f32, f32)> = Vec::new();
+            for c in self.list.iter() {
+                if c.role == Role::Queen && !homes.iter().any(|(id, _, _)| *id == c.species) {
+                    homes.push((c.species, c.base_x, c.base_y));
+                }
+            }
             for r in self.diplomacy.relations.iter_mut() {
                 if r.state == RelationState::War {
                     r.war_weariness = (r.war_weariness + 0.01).min(1.0);
@@ -618,6 +627,18 @@ impl CreatureSystem {
                         0.0
                     };
                     r.trust += (anchor - r.trust) * 0.02;
+                    // Neighbours: the closer two colonies live, the less they
+                    // like each other, unless they have signed a treaty.
+                    if !r.has(Treaty::Alliance) && !r.has(Treaty::NonAggression) {
+                        let home_a = homes.iter().find(|(id, _, _)| *id == r.a);
+                        let home_b = homes.iter().find(|(id, _, _)| *id == r.b);
+                        if let (Some((_, ax, ay)), Some((_, bx, by))) = (home_a, home_b) {
+                            let d = ((ax - bx).powi(2) + (ay - by).powi(2)).sqrt();
+                            if d < 55.0 {
+                                r.trust -= (55.0 - d) * 0.06;
+                            }
+                        }
+                    }
                     r.trust = r.trust.clamp(-100.0, 100.0);
                 }
             }
