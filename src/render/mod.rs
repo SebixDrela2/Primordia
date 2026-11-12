@@ -43,6 +43,8 @@ pub struct Renderer {
     /// the gradient is worked out once per column instead of per pixel.
     sky_base: Vec<[f32; 3]>,
     sky_slope: Vec<[f32; 3]>,
+    /// Per-column shadow cast by the clouds above.
+    cloud_shadow: Vec<f32>,
 }
 
 impl Renderer {
@@ -56,6 +58,7 @@ impl Renderer {
             biome_delta: Vec::new(),
             sky_base: Vec::new(),
             sky_slope: Vec::new(),
+            cloud_shadow: Vec::new(),
         }
     }
 
@@ -203,6 +206,34 @@ impl Renderer {
                 + 90.0);
         }
 
+        // The shadow the clouds cast on the ground. It is sampled from the
+        // same noise grid as the clouds, a little further down, so the shade
+        // drifts with the weather.
+        if self.cloud_shadow.len() != rw as usize {
+            self.cloud_shadow.clear();
+            self.cloud_shadow.resize(rw as usize, 1.0);
+        }
+        const CSX: f32 = 30.0;
+        const CSY: f32 = 13.0;
+        let cgw = (w as f32 / CSX) as usize + 2;
+        let cgh = (h as f32 / CSY) as usize + 2;
+        for i in 0..rw as usize {
+            let x = (x0 + i as i32).clamp(0, w as i32 - 1);
+            let gy = (world.ground[x as usize] as f32 * 0.35) / CSY;
+            let gx = x as f32 / CSX;
+            let gx0 = (gx.floor() as usize).min(cgw - 2);
+            let gy0 = (gy.floor() as usize).min(cgh - 2);
+            let tx = gx - gx0 as f32;
+            let ty = gy - gy0 as f32;
+            let c00 = self.cloud_row[gy0 * cgw + gx0];
+            let c10 = self.cloud_row[gy0 * cgw + gx0 + 1];
+            let c01 = self.cloud_row[(gy0 + 1) * cgw + gx0];
+            let c11 = self.cloud_row[(gy0 + 1) * cgw + gx0 + 1];
+            let cv = (c00 * (1.0 - tx) + c10 * tx) * (1.0 - ty) + (c01 * (1.0 - tx) + c11 * tx) * ty;
+            // A dense cloud darkens the ground a little.
+            self.cloud_shadow[i] = 1.0 - smoothstep(0.58, 0.85, cv) * 0.16;
+        }
+
         // The biome tint delta per column, so the pixel loop only adds it.
         if self.biome_delta.len() != rw as usize {
             self.biome_delta.clear();
@@ -258,6 +289,7 @@ impl Renderer {
             &self.light_rows,
             &self.aurora_col,
             &self.biome_delta,
+            &self.cloud_shadow,
             &self.sky_base,
             &self.sky_slope,
             lw,
@@ -296,6 +328,7 @@ fn paint(
     light_rows: &[[f32; 3]],
     aurora_col: &[f32],
     biome_delta: &[[f32; 3]],
+    cloud_shadow: &[f32],
     sky_base: &[[f32; 3]],
     sky_slope: &[[f32; 3]],
     lw: usize,
@@ -547,7 +580,7 @@ fn paint(
             // fades into shadow.
             let depth = (y as f32 - ground[x as usize] as f32).max(0.0);
             let depth_fade = (1.0 - depth * 0.0032).clamp(0.62, 1.0);
-            let shade = depth_fade * light_f * (0.94 + n * 0.12);
+            let shade = depth_fade * light_f * (0.94 + n * 0.12) * cloud_shadow[rx as usize];
             r *= shade;
             g *= shade;
             b *= shade;

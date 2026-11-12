@@ -77,6 +77,9 @@
   met has one `Relation` with a state, a trust and a set of treaties. Allies
   are never attacked, a war overrides the `Peaceful` trait, and a treaty
   breaks the alliance it was signed with.
+- Allies share what they know: a discovery one species works out is passed
+  to its partner. At war the other side comes and breaks your buildings, so
+  a raid wears a camp down over time rather than deleting it.
 - A creature has three layers of inheritance: **genes** (the species
   traits, decoded by `decode_traits`), **heritage** (the life stage, the
   elemental affinity and the culture the species has learned) and
@@ -109,4 +112,6 @@
 - The ground moves: **earthquakes** shake dust out of cave roofs and bring
   unsupported rock down, so the shape of the caves changes under the
   colonies.
+- The seasons change the world: spring grows plants fast, summer dries the
+  shallow water, autumn is lean and winter freezes the surface.
 

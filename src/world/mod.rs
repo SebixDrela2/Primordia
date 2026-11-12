@@ -275,7 +275,9 @@ pub struct World {
     pub volcano: Option<(i32, i32)>,
     pub volcano_state: Volcano,
     pub volcano_timer: u32,
+    /// The season the world is in, kept by the creature clock.
     /// Current weather and how long it lasts.
+    pub season: u8,
     pub weather: Weather,
     pub weather_timer: u32,
     /// Recent meteor impacts (x, y) so the renderer can flash explosions.

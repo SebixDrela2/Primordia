@@ -17,6 +17,8 @@ impl CreatureSystem {
         // Season progression
         self.season_timer += 1;
         if self.season_timer > 7200 { self.season_timer = 0; self.season = (self.season + 1) % 4; }
+        // The world follows the same clock.
+        world.season = self.season;
 
         // Soldiers that stand together form a squad and fight as one. The
         // anchors are indexed per species so the lookup stays cheap.

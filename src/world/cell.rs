@@ -65,6 +65,7 @@ impl World {
             emissive: Elem::emissive_table(),
             emission: Elem::emission_table(),
             volcano: None,
+            season: 0,
             volcano_state: Volcano::Sleeping,
             volcano_timer: 1200,
             weather: Weather::Clear,

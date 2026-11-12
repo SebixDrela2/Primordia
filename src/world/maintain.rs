@@ -18,6 +18,42 @@ impl World {
             self.tremor(ex, ey, radius);
         }
 
+        // ---- The seasons ----
+        //
+        // Summer dries the world out and winter freezes it over. Both change
+        // what a colony can rely on.
+        if frame % 120 == 0 {
+            match self.season {
+                // Summer: the shallow water at the edge of a lake dries up.
+                1 => {
+                    for _ in 0..6 {
+                        let x = self.rng.range(w as u32) as i32;
+                        let sy = self.surface_y(x);
+                        for y in (sy - 6..sy).rev() {
+                            if self.get(x, y) == Elem::Water {
+                                self.set_xy(x, y, Elem::Empty);
+                                break;
+                            }
+                        }
+                    }
+                }
+                // Winter: the surface freezes over.
+                3 => {
+                    for _ in 0..4 {
+                        let x = self.rng.range(w as u32) as i32;
+                        let sy = self.surface_y(x);
+                        for y in (sy - 4..sy).rev() {
+                            if self.get(x, y) == Elem::Water {
+                                self.set_xy(x, y, Elem::Ice);
+                                break;
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
         // ---- The volcano ----
         // The mountain keeps its own time. The deeper the pressure under it,
         // the sooner it goes off.
@@ -170,8 +206,16 @@ impl World {
             } else {
                 6
             };
+            // The season decides how much grows: spring is the green time,
+            // winter is the lean one.
+            let season_growth = match self.season {
+                0 => 1.8,
+                1 => 1.0,
+                2 => 0.9,
+                _ => 0.3,
+            };
             // Under pressure, fewer seedlings take root.
-            let batches = ((base as f32) * (1.0 - scarcity * 0.75)) as u32;
+            let batches = ((base as f32) * (1.0 - scarcity * 0.75) * season_growth) as u32;
             for _ in 0..batches {
                 let x = self.rng.range((w - 4) as u32) as i32 + 2;
                 let sy = self.surface_y(x);
