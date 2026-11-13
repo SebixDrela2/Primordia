@@ -132,8 +132,19 @@ impl World {
                 }
             }
             Elem::Fire => {
-                // Fire spreads to flammable neighbors
-                if self.rng.chance(0.15) {
+                // Fire needs air. A flame with no oxygen around it does
+                // not spread at all: it is a fire in a sealed cave, and it
+                // burns itself out.
+                let mut air = false;
+                for (dx, dy) in DIRS8 {
+                    if self.get(x + dx, y + dy) == Elem::Oxygen {
+                        air = true;
+                        break;
+                    }
+                }
+                // Fire spreads to flammable neighbors, but only where there
+                // is air to feed it.
+                if air && self.rng.chance(0.15) {
                     for (dx, dy) in DIRS8 {
                         let t = self.get(x + dx, y + dy);
                         if t.flammable() && self.rng.chance(0.2) {
@@ -230,11 +241,23 @@ impl World {
                 }
             }
             Elem::Oxygen => {
-                // Oxygen makes fire burn hotter
-                if self.rng.chance(0.1) {
+                // Oxygen is what a fire eats. It does not make the fire
+                // into plasma: it feeds it, so the flame burns hotter and
+                // lasts longer, and the oxygen itself is used up.
+                if self.rng.chance(0.2) {
                     for (dx, dy) in DIRS4 {
                         if self.get(x + dx, y + dy) == Elem::Fire {
-                            self.set_xy(x + dx, y + dy, Elem::Plasma);
+                            self.set_at(i, Elem::Empty);
+                            return true;
+                        }
+                    }
+                }
+                // Oxygen and methane together are a bang.
+                if self.rng.chance(0.02) {
+                    for (dx, dy) in DIRS4 {
+                        if self.get(x + dx, y + dy) == Elem::Methane {
+                            self.explosion(x + dx, y + dy, 3);
+                            return true;
                         }
                     }
                 }

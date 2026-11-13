@@ -589,24 +589,28 @@ pub(crate) fn act_mine(world: &mut World, c: &mut Creature, out: &[f32], company
                         c.carried = (c.carried + 15.0 * skill).min(c.carry_cap());
                         // Every excavation also yields a little stone.
                         c.inventory[0] = c.inventory[0].saturating_add(1).min(255);
+                        // An iron womb gives up its metal far more freely
+                        // than ordinary rock does.
+                        let rich = world.landmark_bonus(c.x, c.y).metal;
+                        let ore = if rich { 2 } else { 1 };
                         match me {
                             Elem::Stone | Elem::Sand => {
                                 c.inventory[0] = c.inventory[0].saturating_add(3).min(255);
                             }
                             Elem::Metal | Elem::Iron | Elem::Steel | Elem::Wire => {
-                                c.inventory[1] = c.inventory[1].saturating_add(2).min(255);
+                                c.inventory[1] = c.inventory[1].saturating_add(2 * ore).min(255);
                             }
                             Elem::Copper => {
-                                c.inventory[2] = c.inventory[2].saturating_add(2).min(255);
+                                c.inventory[2] = c.inventory[2].saturating_add(2 * ore).min(255);
                             }
                             Elem::Gold => {
-                                c.inventory[3] = c.inventory[3].saturating_add(2).min(255);
+                                c.inventory[3] = c.inventory[3].saturating_add(2 * ore).min(255);
                             }
                             Elem::Crystal => {
-                                c.inventory[4] = c.inventory[4].saturating_add(2).min(255);
+                                c.inventory[4] = c.inventory[4].saturating_add(2 * ore).min(255);
                             }
                             Elem::Gem | Elem::Diamond => {
-                                c.inventory[5] = c.inventory[5].saturating_add(1).min(255);
+                                c.inventory[5] = c.inventory[5].saturating_add(ore).min(255);
                             }
                             Elem::Wood => {
                                 c.inventory[6] = c.inventory[6].saturating_add(3).min(255);

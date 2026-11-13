@@ -7,10 +7,12 @@
 //! - minimap.rs    minimap, weather overlay and vignette
 //! - victory.rs    the victory / extinction screen
 //! - actors.rs     creatures, projectiles and world overlays
+//! - atmosphere.rs the dust, the embers and the spores in the air
 //! - diplomacy.rs  the relations between species and their treaties
 //! - tech.rs       the tech tree window and the tech panel
 
 pub mod actors;
+pub mod atmosphere;
 pub mod diplomacy;
 pub mod effects;
 pub mod hud;
@@ -20,6 +22,7 @@ pub mod tech;
 pub mod victory;
 
 pub use actors::*;
+pub use atmosphere::*;
 pub use diplomacy::*;
 pub use effects::*;
 pub use hud::*;

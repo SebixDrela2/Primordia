@@ -228,8 +228,35 @@ pub fn dominant_lineage(creatures: &CreatureSystem) -> (Option<u32>, Vec<&'stati
     (Some(sp), traits)
 }
 
-pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f32, seed: u64, sim_speed: f32, paused: bool, zoom: f32, revival: u32) {
-    let stats = &creatures.stats;
+/// The mind of a lineage.
+///
+/// How big the brains of a species are, and what they fire with. A player
+/// can watch the tier climb as the colony works out how to think better.
+fn mind_summary(creatures: &CreatureSystem, species: u32) -> String {
+    let mut net: Option<&crate::creature::Net> = None;
+    for c in &creatures.list {
+        if c.species == species {
+            net = Some(&c.net);
+            break;
+        }
+    }
+    match net {
+        Some(n) => {
+            let (h1, h2, h3) = n.shape();
+            format!(
+                "tier {} ({}-{}-{} neurons, {} firing)",
+                n.arch,
+                h1,
+                h2,
+                h3,
+                crate::creature::activation::name(n.activation)
+            )
+        }
+        None => "no mind yet".to_string(),
+    }
+}
+
+pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f32, seed: u64, sim_speed: f32, paused: bool, zoom: f32, revival: u32) {    let stats = &creatures.stats;
     let biome_name = world.biome_at((cam_x as i32).clamp(0, W as i32 - 1)).name();
     let weather_name = world.weather.name();
     // Where the camera is: on the surface, or somewhere in the deep. The
@@ -275,8 +302,18 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         "{} particles   avg energy {:.0}   fitness {:.2}   {}",
         world.census.particles, stats.avg_energy, stats.avg_fitness, deep
     );
+    // The air where the camera is. The deep is a stale place, and the one
+    // thing that changes about it is where the undergroves are.
+    let cam_air = world.fresh_air(cam_col, (cam_y as i32).clamp(0, world.h as i32 - 1), 4);
+    let air_name = if cam_air > 0.55 {
+        "fresh air"
+    } else if cam_air > 0.2 {
+        "stale air"
+    } else {
+        "no air"
+    };
     let line3 = format!(
-        "{}  {}  {}  temp {:.0}C  mana {:.0}  spells {}  trades {}  SIMx{:.1}  zoom {:.1}x",
+        "{}  {}  {}  temp {:.0}C  mana {:.0}  spells {}  trades {}  SIMx{:.1}  zoom {:.1}x  {}",
         place,
         season_name,
         time_of_day,
@@ -285,7 +322,8 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         stats.spells_cast,
         stats.trades,
         sim_speed,
-        zoom
+        zoom,
+        air_name
     );
     let line4 = format!(
         "camera: ({:.0},{:.0})   fps {}   births {}   deaths {}  structs {}  towers {}  shots {}  {}",
@@ -304,13 +342,14 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         stats.avg_hunger, stats.avg_thirst, stats.avg_stamina, stats.diseases
     );    let line6 = match leader {
         Some(sp) => format!(
-            "lineage {} evolved: {}",
+            "lineage {} evolved: {}   mind: {}",
             sp,
             if leader_traits.is_empty() {
                 "no special traits yet".to_string()
             } else {
                 leader_traits.join(", ")
-            }
+            },
+            mind_summary(creatures, sp)
         ),
         None => "lineage: none".to_string(),
     };

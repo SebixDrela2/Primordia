@@ -80,10 +80,15 @@ pub mod discovery_bits {
     pub const DEEPDIVING: u32 = 1 << 28;
     /// The colony closes the deep against itself.
     pub const DOMINION: u32 = 1 << 29;
+    /// The colony works out that a mind can be shaped: every brain grows.
+    pub const COGNITION: u32 = 1 << 30;
+    /// The colony works out how to learn inside its own life: the brains
+    /// grow again, and they remember what worked.
+    pub const GRANDCOGNITION: u32 = 1 << 31;
 }
 
 /// How many discoveries there are in all.
-pub const DISCOVERY_COUNT: usize = 30;
+pub const DISCOVERY_COUNT: usize = 32;
 
 /// How many tiers the tree has.
 pub const TECH_TIERS: u8 = 10;
@@ -121,6 +126,10 @@ pub enum Discovery {
     Alchemy,
     Deepdiving,
     Dominion,
+    /// The mind can be shaped: the colony's brains grow.
+    Cognition,
+    /// The mind can learn: the brains grow again and learn inside a life.
+    GrandCognition,
 }
 
 impl Discovery {
@@ -157,6 +166,8 @@ impl Discovery {
             Discovery::Alchemy,
             Discovery::Deepdiving,
             Discovery::Dominion,
+            Discovery::Cognition,
+            Discovery::GrandCognition,
         ]
     }
 
@@ -193,6 +204,8 @@ impl Discovery {
             Discovery::Alchemy => "Alchemy",
             Discovery::Deepdiving => "Deepdiving",
             Discovery::Dominion => "Dominion",
+            Discovery::Cognition => "Cognition",
+            Discovery::GrandCognition => "Grand Cognition",
         }
     }
 
@@ -232,6 +245,8 @@ impl Discovery {
             Discovery::Alchemy => "wounds mend 30% faster, salves 20% more",
             Discovery::Deepdiving => "the deep does no harm",
             Discovery::Dominion => "the deep is closed: it breeds far more slowly",
+            Discovery::Cognition => "every mind grows: the colony thinks bigger",
+            Discovery::GrandCognition => "the minds grow again, and learn from what works",
         }
     }
 
@@ -261,6 +276,8 @@ impl Discovery {
             | Discovery::Alchemy
             | Discovery::Deepdiving
             | Discovery::Dominion => 10,
+            Discovery::Cognition => 1,
+            Discovery::GrandCognition => 3,
         }
     }
 
@@ -312,6 +329,8 @@ impl Discovery {
             Discovery::Alchemy => discovery_bits::ALCHEMY,
             Discovery::Deepdiving => discovery_bits::DEEPDIVING,
             Discovery::Dominion => discovery_bits::DOMINION,
+            Discovery::Cognition => discovery_bits::COGNITION,
+            Discovery::GrandCognition => discovery_bits::GRANDCOGNITION,
         }
     }
 
@@ -347,6 +366,8 @@ impl Discovery {
             discovery_bits::ALCHEMY => Discovery::Alchemy,
             discovery_bits::DEEPDIVING => Discovery::Deepdiving,
             discovery_bits::DOMINION => Discovery::Dominion,
+            discovery_bits::COGNITION => Discovery::Cognition,
+            discovery_bits::GRANDCOGNITION => Discovery::GrandCognition,
             _ => return None,
         })
     }
@@ -387,6 +408,8 @@ impl Discovery {
             Discovery::Alchemy => &[Culture::Craft, Culture::Ritual],
             Discovery::Deepdiving => &[Culture::Craft, Culture::Ritual],
             Discovery::Dominion => &[Culture::Architecture, Culture::Craft],
+            Discovery::Cognition => &[Culture::Craft],
+            Discovery::GrandCognition => &[Culture::Craft, Culture::Mining],
         }
     }
 
@@ -536,7 +559,15 @@ impl CreatureSystem {
             let da = self.species_discoveries(a);
             let db = self.species_discoveries(b);
             if da & !db != 0 {
-                self.note_discovery(b, da & !db);
+                let shared = da & !db;
+                self.note_discovery(b, shared);
+                // A mind that grows is grown for everybody, including the
+                // species that were handed the knowledge over a treaty.
+                for d in Discovery::all() {
+                    if shared & d.bit() != 0 {
+                        self.grow_brains(b, d);
+                    }
+                }
                 // The last thing that was shared is the last thing found.
                 if let Some(d) = Discovery::all().into_iter().find(|d| da & d.bit() != 0) {
                     self.last_discovery = Some((d, b));
@@ -547,7 +578,13 @@ impl CreatureSystem {
                     self.tick,
                 );
             } else if db & !da != 0 {
-                self.note_discovery(a, db & !da);
+                let shared = db & !da;
+                self.note_discovery(a, shared);
+                for d in Discovery::all() {
+                    if shared & d.bit() != 0 {
+                        self.grow_brains(a, d);
+                    }
+                }
                 self.diplomacy.log_event(
                     format!("species {} shares its knowledge with species {}", b, a),
                     self.species_color(b),
@@ -628,6 +665,10 @@ impl CreatureSystem {
                 if self.rng.chance(chance) {
                     self.note_discovery(sp, d.bit());
                     self.last_discovery = Some((d, sp));
+                    // A discovery about thinking changes the thinking: every
+                    // mind of that species grows a tier, and keeps what it
+                    // already knew.
+                    self.grow_brains(sp, d);
                     let name = c_name(sp);
                     self.diplomacy.log_event(
                         format!("DISCOVERY: the {} work out {}", name, d.name()),
@@ -645,9 +686,28 @@ impl CreatureSystem {
         }
     }
 
+    /// Grow the minds of a species.
+    ///
+    /// A colony that works out how to think better does not think better
+    /// with the same brain: every animal of the species is given a bigger
+    /// one, and the weights it already had are carried over, so nothing
+    /// that was learnt is lost.
+    pub fn grow_brains(&mut self, species: u32, d: Discovery) {
+        let target = match d {
+            Discovery::Cognition => 1,
+            Discovery::GrandCognition => MAX_ARCH,
+            _ => return,
+        };
+        let rng = &mut self.rng;
+        for c in self.list.iter_mut() {
+            if c.species == species && c.net.arch < target {
+                c.net.grow_to(target, rng);
+            }
+        }
+    }
+
     /// Has a species finished a whole tier?
-    pub fn tier_complete(&self, known: u32, tier: u8) -> bool {
-        discovery_tier(tier)
+    pub fn tier_complete(&self, known: u32, tier: u8) -> bool {        discovery_tier(tier)
             .iter()
             .all(|d| known & d.bit() != 0)
     }

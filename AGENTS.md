@@ -20,6 +20,14 @@
 - `cargo run --release --bin zorgcheck -- [seed]` checks the ZORG cave:
   that it exists, that it is deep in the world, that it has a floor and a
   larder, and that every founding ZORG is born inside it.
+- `cargo run --release --bin braincheck -- 12000` checks the minds: that a
+  species which works out Cognition grows its brains, that the shape of a
+  mind drifts down the generations, and that the function a mind fires
+  with is bred rather than fixed.
+- `cargo run --release --bin aircheck -- 3000` checks the air: that the
+  undergroves are deep and have air in them, that the open air is fresher
+  than the deep, that fire in a sealed cave goes out, and that stale air
+  costs a creature something.
 - `cargo run --release --bin prof` prints the per-step cost of the world,
   the creatures and the renderer. The renderer is measured on the region
   that is actually on screen, because that is the number that has to fit
@@ -53,7 +61,7 @@
                    succession, spells, technology, tech, stats, zorg,
                    sanctify
   - `src/ui/`      effects, hud, knowledge, minimap, victory, actors,
-                   diplomacy, tech
+                   atmosphere, diplomacy, tech
   - `src/render/`  mod.rs (pixel loop), fx.rs (element effects),
                    light.rs (dynamic light field)
 
@@ -77,6 +85,17 @@
   the columns are worked out, not applied to every sky pixel.
 - The per-element effects are a fixed-size table (`[FxEntry; 256]`), so
   the pixel loop can index it with the element byte itself.
+- The weights of a brain are stored **input-major**: the weights of one
+  input sit next to each other. The forward pass then walks the inputs
+  and adds each one's contribution to every output, which the compiler
+  can vectorise. The other way round is about three times slower.
+- The layers are worked out in two passes: the dot products first, then
+  the activation. Mixing them puts a branch in the middle of the hot
+  loop and costs a third of the time.
+- The **bloom** is seeded from the emissive cells while the region is
+  scanned for its light sources, blurred at a quarter of the picture's
+  size and laid over the picture in the pixel loop itself. A separate
+  pass over the whole picture would cost twice as much.
 
 ## Simulation rules
 - Never compare raw element bytes against numeric ranges; use the decoded
@@ -109,6 +128,24 @@
   now. The layers are `[senses + memory, 36, 24, 16, decisions]`, and the
   mutation rate is scaled down to match the extra weights, so a young
   animal is still its mother's breed with a little of its own.
+- A brain is **not** a fixed shape. It has three tiers, and a species
+  that works out **Cognition** grows every mind it has to the next tier
+  (bigger hidden layers, the old weights carried over, so nothing that
+  was learnt is lost). **Grand Cognition** grows them again.
+- A brain also has a **function**: the hidden layers can fire with a
+  threshold, a smooth squasher, a leaky gate, a sine, a switch or a
+  smooth gate. The function is chosen at random, inherited, and breeds
+  like anything else, so two species with the same senses think
+  differently.
+- A brain **learns inside a life**. When an animal eats, builds, fights
+  or trades, the decision that worked is strengthened a little in the
+  last layer. The pull is slow, and the weights are settled now and then
+  so a life of reinforcement cannot turn a few weights into everything.
+- The **shape** of a mind is bred as well: a young animal is born now and
+  then with one neuron more or less than its mother had.
+- The creatures **see more than they used to**: the light that reaches
+  them, the heat underfoot and which way is warmer, the nearest place
+  worth living in and what it gives, and how close the ZORGs are.
 - The **tech tree** (`src/creature/tech.rs`) has **ten tiers** and holds
   both kinds of thing: the **tools** a creature carries (the pickaxe, the
   bow, the sunfire) and the **discoveries** a species knows (how to work
@@ -141,22 +178,39 @@
   fertile soil and old ruins are worth settling beside, and a colony that
   can have one takes it. Two colonies that want the same grove fight over
   it.
-- The world has **nine** kinds of landmark, and each one does something
+- The world has **thirteen** kinds of landmark, and each one does something
   different to the colony that settles beside it: mana, warmth, hunting,
   food, craft, and - the newer ones - **sickness** (a fungal warren
   breeds disease), **purity** (a salt flat burns the filth of the ZORGs
   out of the air), **lore** (a drowned temple makes the colony work
-  things out faster) and **stone** (an amber field raises the buildings
-  faster). The kinds are drawn at random for every world, so no two runs
-  have the same map.
-- The world has **seven** climates: tundra, ashland (the ground the
+  things out faster), **stone** (an amber field raises the buildings
+  faster), **mind** (a whispering stone makes the animals learn faster
+  inside their own lives), **metal** (an iron womb gives its metal up
+  twice as freely), **charge** (a stormspire fills the air with
+  lightning, and the colony is quick and strong there) and **air** (an
+  undergrove is the only place in the deep with fresh air in it). The
+  kinds are drawn at random for every world, so no two runs have the
+  same map.
+- The world has **air**. The plants of the surface breathe out oxygen in
+  the daylight, and the oxygen floats up and hangs about, so the open air
+  is fresh. The deep is a stale, breathless place, and a creature in stale
+  air tires faster and recovers its wind more slowly. **Fire needs air
+  too**: a flame in the open burns for a long time, and a flame in a
+  sealed cave eats its own oxygen and goes out. The **undergroves** are
+  the exception: they are chambers of the deep where pale fungus has
+  been breathing without any sun, and they are the only fresh air under
+  the ground. They are worth digging for and worth fighting over.
+- The world has **eight** climates: tundra, ashland (the ground the
   volcano has burned over), forest, bloomwood (a wood in bloom),
-  grassland, swamp and desert. The climate sets the tint, the
+  grassland, swamp, mire (a fungal mire, wet ground and spore air) and
+  desert. The climate sets the tint, the
   temperature and what the ground is made of.
-- The weather has **seven** kinds as well. A fog is the one that matters
+- The weather has **eight** kinds as well. A fog is the one that matters
   most: it cuts the sight of every creature almost in half, so the
   colonies stop noticing what is coming until it is on top of them. A
-  heatwave beats the temperature up and the energy down.
+  heatwave beats the temperature up and the energy down. A sandstorm
+  carries the desert across the world: it closes the view in, drinks the
+  shallow water and leaves dust in the air.
 - The world fights back. There is **one volcano** in the world: it sleeps,
   grumbles and erupts, throwing lava, fire and ash over the map and melting
   the ground around it. Creatures steer away from the crater and an

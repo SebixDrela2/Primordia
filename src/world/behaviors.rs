@@ -77,6 +77,22 @@ impl World {
             return;
         }
 
+        // ---- Fire breathes ----
+        //
+        // A flame takes the oxygen out of the air around it and puts
+        // nothing back. A fire in the open air has a steady supply and
+        // burns for a long time; a fire in a sealed cave eats its own air
+        // and goes out. It is the reason the deep is a cold place.
+        let mut air = false;
+        for (dx, dy) in DIRS8 {
+            if self.get(x + dx, y + dy) == Elem::Oxygen {
+                air = true;
+                if self.rng.chance(0.35) {
+                    self.set_xy(x + dx, y + dy, Elem::Empty);
+                }
+            }
+        }
+
         // Ignite fuel nearby
         for (dx, dy) in DIRS8 {
             let t = self.get(x + dx, y + dy);
@@ -89,8 +105,11 @@ impl World {
             }
         }
 
-        // Fire burns out faster when it has nothing to eat
-        if self.age[i] > 24 && self.rng.chance(0.05) {
+        // Fire burns out faster when it has nothing to eat, and much
+        // faster when it has no air to breathe. A fire with air lasts
+        // three times as long as one without it.
+        let (limit, chance) = if air { (60, 0.04) } else { (10, 0.25) };
+        if self.age[i] > limit && self.rng.chance(chance) {
             self.set_at(i, Elem::Smoke);
             return;
         }
@@ -136,6 +155,23 @@ impl World {
                     self.set_xy(x + dx, y + dy, e);
                     return;
                 }
+            }
+        }
+
+        // ---- A plant breathes ----
+        //
+        // In the daylight a plant puts a little oxygen into the air above
+        // it. That is where the fresh air of the surface comes from, and
+        // it is why the deep is a stale, breathless place: nothing down
+        // there ever makes any.
+        if matches!(e, Elem::Plant | Elem::Moss | Elem::Crop)
+            && self.daylight > 0.3
+            && self.rng.chance(0.012 * self.daylight)
+        {
+            let up = self.get(x, y - 1);
+            if up == Elem::Empty {
+                self.set_xy(x, y - 1, Elem::Oxygen);
+                return;
             }
         }
     }

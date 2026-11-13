@@ -26,6 +26,9 @@ impl CreatureSystem {
         if self.season_timer > 7200 { self.season_timer = 0; self.season = (self.season + 1) % 4; }
         // The world follows the same clock.
         world.season = self.season;
+        // And it follows the sun: the plants of the surface breathe in the
+        // daylight, and the air of a sealed cave never does.
+        world.daylight = 0.5 - 0.5 * (self.day_night * std::f32::consts::TAU).cos();
 
         // Soldiers that stand together form a squad and fight as one. The
         // anchors are indexed per species so the lookup stays cheap.
@@ -113,6 +116,16 @@ impl CreatureSystem {
             .projectiles
             .iter()
             .map(|p| (p.x, p.y, p.species))
+            .collect();
+        // Where the ZORGs are. There are only a handful of them, so the
+        // list is short and every creature can look through it cheaply:
+        // the deep is the one thing a player creature always wants to
+        // know about.
+        let zorg_positions: Vec<(f32, f32)> = self
+            .list
+            .iter()
+            .filter(|c| c.faction == Faction::Zorg)
+            .map(|c| (c.x, c.y))
             .collect();
         // Per-species aggregates, computed once per step.
         let mut species_counts: Vec<(u32, u32)> = Vec::new();
@@ -373,12 +386,40 @@ impl CreatureSystem {
                     c.health = (c.health + 0.04).min(100.0);
                     c.stamina = (c.stamina + 0.01).min(c.max_stamina);
                 }
+                // Fresh air. A creature that is standing in air the plants
+                // have breathed recovers its wind faster, and one in a
+                // sealed cave recovers it more slowly: the deep is a
+                // breathless place, and working in it is hard going.
+                let mut air = world.fresh_air(
+                    c.x.round() as i32,
+                    c.y.round() as i32,
+                    2,
+                );
+                // An undergrove is the one place in the deep with air in
+                // it, so a colony that has found one breathes easier than
+                // one in stale rock.
+                if place.air {
+                    air = 1.0;
+                }
+                // ---- Breathing ----
+                //
+                // Every animal breathes. In fresh air it costs nothing
+                // and the wind comes back quickly; in stale air the
+                // breathing itself is work, and the animal tires for it.
+                // This is the price of living in the deep: a colony that
+                // digs too deep has to breathe for every step.
+                let air_factor = 0.7 + 0.6 * air;
+                // The cost of breathing in bad air, per tick.
+                let breath = 0.05 * (1.0 - air);
                 if c.resting {
-                    c.stamina = (c.stamina + STAMINA_REGEN).clamp(0.0, c.max_stamina);
-                    c.energy = (c.energy + 0.02).min(c.max_energy);
+                    c.stamina =
+                        (c.stamina + STAMINA_REGEN * air_factor).clamp(0.0, c.max_stamina);
+                    c.energy = (c.energy + 0.02 - breath).min(c.max_energy);
                 } else {
-                    // The weather makes every day harder.
-                    c.energy -= 0.08 * world.weather.energy_factor();
+                    // The weather makes every day harder, and stale air
+                    // makes it harder still.
+                    c.energy -=
+                        0.08 * world.weather.energy_factor() * (1.4 - 0.4 * air) + breath;
                 }
                 // A bonded pair looks after each other: a creature with a
                 // living partner is better fed and in better spirits.
@@ -452,6 +493,12 @@ impl CreatureSystem {
                 }
                 c.mana = (c.mana + MANA_REGEN * c.affinity.mana_factor() * place.mana)
                     .clamp(0.0, c.max_mana);
+                // A stormspire is full of charge: the colony draws on it
+                // and rests on it well.
+                if place.energy {
+                    c.mana = (c.mana + MANA_REGEN * 1.2).clamp(0.0, c.max_mana);
+                    c.stamina = (c.stamina + STAMINA_REGEN * 1.5).min(c.max_stamina);
+                }
                 // A colony that understands the old rites draws on the
                 // world much more strongly.
                 if discoveries & discovery_bits::SANCTUARY != 0 {
@@ -526,6 +573,7 @@ impl CreatureSystem {
                         self.season,
                         &scan,
                         &shot_positions,
+                        &zorg_positions,
                         own_towers,
                         total_towers.saturating_sub(own_towers),
                         own_pop,
@@ -813,6 +861,53 @@ impl CreatureSystem {
                     c.resting = true;
                 } else {
                     c.resting = false;
+                }
+
+                // ---- What the mind learned from what it did ----
+                //
+                // A decision that worked is pushed a little further in that
+                // direction, so the same situation is a little more likely
+                // to end the same way next time. Only the last layer moves,
+                // so it costs almost nothing, and it is slow: a brain
+                // changes over a life, not over a tick.
+                if ate_something || built_something || wants_attack || traded || cast_spell {
+                    let disc = discoveries_by_species
+                        .get(c.species as usize)
+                        .copied()
+                        .unwrap_or(0);
+                    // A colony that has worked out how to learn learns
+                    // twice as fast.
+                    let mut learn = if disc & discovery_bits::GRANDCOGNITION != 0 {
+                        0.030
+                    } else {
+                        0.012
+                    };
+                    // A whispering stone makes the animal that stands on it
+                    // think more sharply.
+                    if place.mind {
+                        learn *= 2.0;
+                    }
+                    if ate_something {
+                        c.net.reinforce(2, learn);
+                    }
+                    if built_something {
+                        c.net.reinforce(5, learn);
+                    }
+                    if wants_attack {
+                        c.net.reinforce(4, learn * 0.5);
+                    }
+                    if traded {
+                        c.net.reinforce(9, learn * 0.5);
+                    }
+                    if cast_spell {
+                        c.net.reinforce(7, learn * 0.5);
+                    }
+                    // Now and then the brain settles, so a life of
+                    // reinforcement cannot turn a few weights into
+                    // everything.
+                    if self.tick % 97 == 0 {
+                        c.net.settle(0.004);
+                    }
                 }
 
                 // Dig / mine (output[12] = dig) - break through weak walls

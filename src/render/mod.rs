@@ -3,23 +3,27 @@
 //! Split by responsibility:
 //! - mod.rs    the renderer, sky and terrain shading
 //! - light.rs  the dynamic light field cast by emissive cells
+//! - bloom.rs  the glow of the light sources
 //!
 //! The hot loop lives in `paint`, a free function that takes plain slices.
 //! Keeping it out of a `&mut self` method matters: the compiler cannot
 //! prove that the pixel buffer does not alias the renderer's own fields, so
 //! every pixel would reload them from memory.
 
+pub mod bloom;
 pub mod fx;
 pub mod light;
 
 use crate::creature::CreatureSystem;
 use crate::elements::Elem;
 use crate::world::{Biome, World, Weather, DEPTH_TINT};
+use bloom::Bloom;
 use fx::{fx_table, Fx, FxEntry};
 use light::LightField;
 
 /// Reusable renderer state. All buffers are allocated once and reused, so
 /// rendering never allocates in the hot path.
+
 pub struct Renderer {
     /// The dynamic light field for the visible region.
     light: LightField,
@@ -45,6 +49,16 @@ pub struct Renderer {
     sky_slope: Vec<[f32; 3]>,
     /// Per-column shadow cast by the clouds above.
     cloud_shadow: Vec<f32>,
+    /// Per-column strength of the sun shafts: where the cloud is thin, the
+    /// light comes down in a shaft and lands on the ground.
+    sun_shaft: Vec<f32>,
+    /// Per-column horizontal distance from the middle of the view, squared.
+    /// It is used for the vignette, so it is worked out once per frame.
+    vig_col: Vec<f32>,
+    /// The bloom: the glow of the light sources, blurred and added back on
+    /// top, so that fire, lava and crystals bleed into the dark around
+    /// them.
+    bloom: Bloom,
 }
 
 impl Renderer {
@@ -59,6 +73,9 @@ impl Renderer {
             sky_base: Vec::new(),
             sky_slope: Vec::new(),
             cloud_shadow: Vec::new(),
+            sun_shaft: Vec::new(),
+            vig_col: Vec::new(),
+            bloom: Bloom::new(),
         }
     }
 
@@ -138,6 +155,9 @@ impl Renderer {
         let lh = (gy1 - gy0 + 1) as usize;
         self.light.resize(lw, lh);
         self.light.clear();
+        // The glow buffer is sized to the region, with a margin of one cell
+        // on each side so the blur has room to spread.
+        self.bloom.resize(rw as usize, rh as usize);
         // Seed the field from the emissive cells. Whole light cells are
         // scanned, so a cell gathers exactly the same light no matter where
         // the camera is looking.
@@ -153,6 +173,16 @@ impl Renderer {
                 if world.emissive[k as usize] {
                     let lx = (x.div_euclid(SCALE) - gx0) as usize;
                     self.light.add(lx, ly, world.emission[k as usize]);
+                    // The same light is the seed of the glow: it is what
+                    // bleeds into the dark around it.
+                    let e = world.emission[k as usize];
+                    self.bloom.add(
+                        (x - x0) as usize,
+                        (y - y0) as usize,
+                        e[0],
+                        e[1],
+                        e[2],
+                    );
                 }
             }
         }
@@ -232,6 +262,19 @@ impl Renderer {
             self.cloud_shadow[i] = 1.0 - smoothstep(0.58, 0.85, cv) * 0.16;
         }
 
+        // ---- The vignette ----
+        //
+        // The edges of the view are a little darker than the middle, which
+        // pulls the eye towards whatever is happening in the centre.
+        if self.vig_col.len() != rw as usize {
+            self.vig_col.clear();
+            self.vig_col.resize(rw as usize, 0.0);
+        }
+        for i in 0..rw as usize {
+            let nx = (i as f32 / rw.max(1) as f32 - 0.5) * 2.0;
+            self.vig_col[i] = nx * nx;
+        }
+
         // The biome tint delta per column, so the pixel loop only adds it.
         if self.biome_delta.len() != rw as usize {
             self.biome_delta.clear();
@@ -263,6 +306,7 @@ impl Renderer {
             Weather::Meteor => [0.88, 0.80, 0.86],
             Weather::Fog => [0.86, 0.88, 0.90],
             Weather::Heatwave => [1.10, 1.02, 0.86],
+            Weather::Sandstorm => [1.02, 0.92, 0.72],
         };
         for i in 0..rw as usize {
             let x = (x0 + i as i32).clamp(0, w as i32 - 1) as usize;
@@ -283,6 +327,7 @@ impl Renderer {
                 Weather::Snow => (0.35, 235.0, 240.0, 250.0),
                 Weather::Fog => (0.42, 198.0, 203.0, 208.0),
                 Weather::Heatwave => (0.22, 255.0, 238.0, 196.0),
+                Weather::Sandstorm => (0.40, 226.0, 198.0, 138.0),
                 _ => (0.0, 0.0, 0.0, 0.0),
             };
             if veil > 0.0 {
@@ -298,8 +343,62 @@ impl Renderer {
             }
         }
 
+        // ---- Sun shafts ----
+        //
+        // Where the cloud is thin the light comes down in a shaft and lands
+        // on the ground. The shaft is sampled from the same cloud grid as
+        // the shadow, but from the side the sun is on, so the light and the
+        // shade agree with each other.
+        if self.sun_shaft.len() != rw as usize {
+            self.sun_shaft.clear();
+            self.sun_shaft.resize(rw as usize, 0.0);
+        }
+        // The sun is only high enough to throw a shaft in the middle of the
+        // day, and a storm hides it completely.
+        let weather_dim: f32 = match weather {
+            Weather::Clear => 0.0,
+            Weather::Rain => 0.14,
+            Weather::Storm => 0.30,
+            Weather::Snow => 0.06,
+            Weather::Meteor => 0.10,
+            Weather::Fog => 0.18,
+            Weather::Heatwave => 0.04,
+            Weather::Sandstorm => 0.22,
+        };
+        let shaft_light = day * (1.0 - weather_dim * 1.4).max(0.0);
+        const SSX: f32 = 30.0;
+        const SSY: f32 = 13.0;
+        for i in 0..rw as usize {
+            let x = (x0 + i as i32).clamp(0, w as i32 - 1);
+            // The shaft comes from the sun's side of the sky, so the cloud
+            // is sampled a little to the left of the column.
+            let gx = x as f32 / SSX + 0.55;
+            let gy = (world.ground[x as usize] as f32 * 0.35) / SSY;
+            let gx0 = (gx.floor() as usize).min(cgw - 2);
+            let gy0 = (gy.floor() as usize).min(cgh - 2);
+            let tx = gx - gx0 as f32;
+            let ty = gy - gy0 as f32;
+            let c00 = self.cloud_row[gy0 * cgw + gx0];
+            let c10 = self.cloud_row[gy0 * cgw + gx0 + 1];
+            let c01 = self.cloud_row[(gy0 + 1) * cgw + gx0];
+            let c11 = self.cloud_row[(gy0 + 1) * cgw + gx0 + 1];
+            let cv = (c00 * (1.0 - tx) + c10 * tx) * (1.0 - ty) + (c01 * (1.0 - tx) + c11 * tx) * ty;
+            // Thin cloud lets the shaft through; thick cloud stops it.
+            self.sun_shaft[i] = smoothstep(0.30, 0.56, cv) * shaft_light;
+        }
+
         // The hot loop takes plain slices, so nothing has to be reloaded from
         // the renderer state for every pixel.
+        // ---- Bloom ----
+        //
+        // The glow of the light sources, blurred and laid over the picture:
+        // fire, lava, crystals and wards bleed into the dark around them.
+        // It is worked out at a quarter of the picture's size, because a
+        // glow does not need any detail. It is softened before the picture
+        // is painted, because the pixel loop lays it over every pixel as
+        // it goes.
+        self.bloom.blur();
+
         paint(
             world,
             buf,
@@ -309,6 +408,9 @@ impl Renderer {
             &self.aurora_col,
             &self.biome_delta,
             &self.cloud_shadow,
+            &self.sun_shaft,
+            &self.vig_col,
+            &self.bloom,
             &self.sky_base,
             &self.sky_slope,
             lw,
@@ -339,6 +441,9 @@ fn paint(
     aurora_col: &[f32],
     biome_delta: &[[f32; 3]],
     cloud_shadow: &[f32],
+    sun_shaft: &[f32],
+    vig_col: &[f32],
+    bloom: &Bloom,
     sky_base: &[[f32; 3]],
     sky_slope: &[[f32; 3]],
     lw: usize,
@@ -374,8 +479,25 @@ fn paint(
         Weather::Fog => (0.18, [0.86, 0.88, 0.90], 0.55),
         // A heatwave burns the colour out of everything.
         Weather::Heatwave => (0.04, [1.10, 1.02, 0.86], 0.16),
+        // A sandstorm is dust in the air: the world goes brown and soft.
+        Weather::Sandstorm => (0.22, [1.02, 0.92, 0.72], 0.42),
     };
     light_level = (light_level * (1.0 - weather_dim)).clamp(0.08, 1.0);
+
+    // Lightning: a storm flashes, and for a moment the whole world is lit
+    // by something that is not the sun. The flash is short and sharp.
+    let flash = if weather == Weather::Storm {
+        let p = (time * 0.83).fract();
+        if p < 0.035 {
+            1.0 - p / 0.035
+        } else {
+            0.0
+        }
+    } else {
+        0.0
+    };
+    // A heatwave makes the air itself move, so the ground shimmers.
+    let shimmer = weather == Weather::Heatwave;
 
     // Seasonal atmosphere tint (subtle, so materials keep their identity).
     let (sr, sg, sb) = match season {
@@ -407,6 +529,7 @@ fn paint(
         Weather::Snow => [235.0, 240.0, 250.0],
         Weather::Storm => [150.0, 158.0, 172.0],
         Weather::Rain => [168.0, 176.0, 190.0],
+        Weather::Sandstorm => [214.0, 186.0, 132.0],
         _ => [200.0, 200.0, 200.0],
     };
 
@@ -440,6 +563,14 @@ fn paint(
         }
         let mut cv_row = 0.0f32;
         let row_base = y as usize * w;
+        // The vertical part of the vignette: it is the same for every
+        // pixel of the row, so it is worked out once per row.
+        let ny = (ry as f32 / rh.max(1) as f32 - 0.5) * 2.0;
+        let ny2 = ny * ny;
+        // The row of the glow that this row of the region reads. The glow
+        // is one cell for every four pixels, so it is read a quarter as
+        // often as the picture is written.
+        let glow_row = (ry as usize / bloom::STEP).min(bloom.h.saturating_sub(1));
         // The world arrays are sliced row by row. The compiler can then see
         // that the column index is inside the row, so the inner loop runs
         // without a bounds check on every pixel.
@@ -586,6 +717,27 @@ fn paint(
                     // sky columns when they were worked out, so there is
                     // nothing to do for it here.
 
+                    // The glow of the light sources below bleeds into the
+                    // sky as well.
+                    {
+                        let gcol = (rx as usize / bloom::STEP + 1).min(bloom.w - 1);
+                        let gl = bloom.at(glow_row, gcol);
+                        r += gl[0] * bloom::STRENGTH;
+                        g += gl[1] * bloom::STRENGTH;
+                        b += gl[2] * bloom::STRENGTH;
+                    }
+                    // A lightning flash lights the sky from below.
+                    if flash > 0.0 {
+                        r += flash * 80.0;
+                        g += flash * 86.0;
+                        b += flash * 104.0;
+                    }
+                    // The vignette darkens the edges of the view.
+                    let vig = 1.0 - 0.30 * (vig_col[rx as usize] * 0.8 + ny2 * 0.5);
+                    r *= vig;
+                    g *= vig;
+                    b *= vig;
+
                     buf[o] = clamp_u8(r);
                     buf[o + 1] = clamp_u8(g);
                     buf[o + 2] = clamp_u8(b);
@@ -674,6 +826,16 @@ fn paint(
                     r += sky[0] * 0.02;
                     g += sky[1] * 0.02;
                     b += sky[2] * 0.03;
+                    // Caustics: the light that comes through the surface
+                    // breaks into moving bands, and they show on the water
+                    // and on the ground under it.
+                    let c1 = ((x as f32 * 0.21 + time * 1.7).sin()
+                        + (y as f32 * 0.27 - time * 1.1).sin())
+                        * 0.5;
+                    let caustic = (c1 * c1 * 2.0).max(0.0) * 24.0;
+                    r += caustic * 0.7;
+                    g += caustic * 0.92;
+                    b += caustic;
                     // Foam where the water meets the land. The shore is
                     // checked against the four neighbours, which is cheap
                     // because only the water pixels pay for it.
@@ -799,6 +961,46 @@ fn paint(
                 b += lf[2];
             }
 
+            // The sun shafts land on the ground near the surface, where
+            // the cloud above is thin enough to let them through.
+            if depth < 26.0 {
+                let shaft = sun_shaft[rx as usize] * (1.0 - depth * (1.0 / 26.0));
+                r += shaft * 30.0;
+                g += shaft * 27.0;
+                b += shaft * 17.0;
+            }
+
+            // A heatwave makes the air move: the ground shimmers.
+            if shimmer && depth < 9.0 {
+                let sh = ((time * 3.2 + x as f32 * 0.21 + y as f32 * 0.13).sin()) * 6.0
+                    * (1.0 - depth * (1.0 / 9.0));
+                r += sh;
+                g += sh * 0.8;
+                b += sh * 0.35;
+            }
+
+            // A lightning flash lights the ground as well as the sky.
+            if flash > 0.0 {
+                r += flash * 110.0;
+                g += flash * 116.0;
+                b += flash * 132.0;
+            }
+
+            // The glow of the light sources bleeds over everything.
+            {
+                let gcol = (rx as usize / bloom::STEP + 1).min(bloom.w - 1);
+                let gl = bloom.at(glow_row, gcol);
+                r += gl[0] * bloom::STRENGTH;
+                g += gl[1] * bloom::STRENGTH;
+                b += gl[2] * bloom::STRENGTH;
+            }
+
+            // The vignette darkens the edges of the view.
+            let vig = 1.0 - 0.30 * (vig_col[rx as usize] * 0.8 + ny2 * 0.5);
+            r *= vig;
+            g *= vig;
+            b *= vig;
+
             buf[o] = clamp_u8(r);
             buf[o + 1] = clamp_u8(g);
             buf[o + 2] = clamp_u8(b);
@@ -807,8 +1009,8 @@ fn paint(
     }
 }
 
+
 /// Is this water cell touching the shore?
-///
 /// The foam of a breaking wave only shows on the cells that touch the
 /// land, so the four neighbours are looked at. Only the water pixels pay
 /// for the check.
@@ -890,3 +1092,4 @@ fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
 fn clamp_u8(v: f32) -> u8 {
     v.clamp(0.0, 255.0) as u8
 }
+

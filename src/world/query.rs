@@ -1,6 +1,24 @@
 use super::*;
 
 impl World {
+    /// How much fresh air there is around a point.
+    ///
+    /// The plants of the surface breathe out oxygen in the daylight, and
+    /// the oxygen floats up and hangs about. A creature standing in fresh
+    /// air tires more slowly, and a creature in a sealed cave tires
+    /// faster: the deep is a stale, breathless place.
+    pub fn fresh_air(&self, x: i32, y: i32, radius: i32) -> f32 {
+        let mut n = 0;
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                if self.get(x + dx, y + dy) == Elem::Oxygen {
+                    n += 1;
+                }
+            }
+        }
+        (n as f32 / ((radius * 2 + 1) * (radius * 2 + 1)) as f32 * 14.0).min(1.0)
+    }
+
     pub fn is_blocked(&self, x: i32, y: i32) -> bool {
         !self.get(x, y).is_passable()
     }

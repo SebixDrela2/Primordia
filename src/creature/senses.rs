@@ -251,6 +251,7 @@ impl CreatureSystem {
         season: u8,
         scan: &LocalScan,
         shots: &[(f32, f32, u32)],
+        zorgs: &[(f32, f32)],
         own_turrets: u32,
         enemy_turrets: u32,
         species_population: u32,
@@ -669,6 +670,100 @@ impl CreatureSystem {
         input[261] = if world.weather == crate::world::Weather::Snow { 1.0 } else { 0.0 };
         input[262] = if world.weather == crate::world::Weather::Fog { 1.0 } else { 0.0 };
         input[263] = if world.weather == crate::world::Weather::Heatwave { 1.0 } else { 0.0 };
+        input[280] = if world.weather == crate::world::Weather::Sandstorm { 1.0 } else { 0.0 };
+        // The air itself: how fresh it is where the creature stands. The
+        // plants of the surface breathe out oxygen, so the open air is
+        // fresh and a sealed cave is stale.
+        input[281] = world.fresh_air(cx, cy, 3);
+
+        // ---- The world in detail (264-279) --------------------------------
+        // The light that reaches this place, the heat underfoot, the
+        // places that are worth living in and the things that come up out
+        // of the deep. These are the senses that make the world worth
+        // reading: a creature that can feel the light and smell a grove
+        // can find its way home in the dark.
+        let daylight = 0.5 - 0.5 * (day_night * std::f32::consts::TAU).cos();
+        let deep = (cy - surface_y).max(0) as f32;
+        // The light does not reach into the rock.
+        let light = daylight * (1.0 - (deep / 50.0).min(0.92));
+        input[264] = light;
+        // The heat of the ground underfoot, and which way is warmer: a
+        // creature that feels the heat knows whether to go up or down.
+        let cell_index = (cy.max(0) as usize).min(world.h.saturating_sub(1)) * world.w
+            + (cx.max(0) as usize).min(world.w.saturating_sub(1));
+        let h_now = world.heat.get(cell_index).copied().unwrap_or(0) as f32 / 255.0;
+        let h_up = if cy > 0 {
+            world.heat.get(cell_index - world.w).copied().unwrap_or(0) as f32 / 255.0
+        } else {
+            h_now
+        };
+        let h_down = world.heat.get(cell_index + world.w).copied().unwrap_or(0) as f32 / 255.0;
+        input[265] = h_now;
+        input[266] = (h_up - h_down).clamp(-1.0, 1.0);
+        // The nearest place worth living in: how far, and which way.
+        let mut best_l = f32::MAX;
+        let mut ldx = 0.0f32;
+        let mut ldy = 0.0f32;
+        for l in world.landmarks.iter() {
+            let dx = l.x - c.x;
+            let dy = l.y - c.y;
+            let d2 = dx * dx + dy * dy;
+            if d2 < best_l {
+                best_l = d2;
+                ldx = dx;
+                ldy = dy;
+            }
+        }
+        if best_l < f32::MAX {
+            let d = best_l.sqrt();
+            input[267] = (1.0 - d / 220.0).max(0.0);
+            if d > 0.001 {
+                input[268] = (ldx / d).clamp(-1.0, 1.0);
+                input[269] = (ldy / d).clamp(-1.0, 1.0);
+            }
+        }
+        // What the ground under the creature gives it.
+        let bonus = world.landmark_bonus(c.x, c.y);
+        input[270] = if bonus.food { 1.0 } else { 0.0 };
+        input[271] = if bonus.warmth { 1.0 } else { 0.0 };
+        input[272] = if bonus.mana > 0.0 { 1.0 } else { 0.0 };
+        input[273] = if bonus.purity { 1.0 } else { 0.0 };
+        input[274] = if bonus.plague { 1.0 } else { 0.0 };
+        // And the two new ones: a mind that has somewhere to think, and
+        // somewhere to breathe.
+        input[282] = if bonus.mind { 1.0 } else { 0.0 };
+        input[283] = if bonus.air { 1.0 } else { 0.0 };
+        // The deep. A ZORG is the one thing that is never a neighbour and
+        // always a threat, so the creature can smell how close it is.
+        let mut zorg_d = f32::MAX;
+        let mut zdx = 0.0f32;
+        let mut zdy = 0.0f32;
+        for &(zx, zy) in zorgs.iter() {
+            let dx = zx - c.x;
+            let dy = zy - c.y;
+            let d2 = dx * dx + dy * dy;
+            if d2 < zorg_d {
+                zorg_d = d2;
+                zdx = dx;
+                zdy = dy;
+            }
+        }
+        if zorg_d < f32::MAX {
+            let d = zorg_d.sqrt();
+            input[275] = (1.0 - d / 60.0).max(0.0);
+            if d > 0.001 {
+                input[276] = (zdx / d).clamp(-1.0, 1.0);
+                input[277] = (zdy / d).clamp(-1.0, 1.0);
+            }
+        }
+        // Air and water: what the creature is standing in.
+        let above = if cy > 0 {
+            world.get(cx, cy - 1)
+        } else {
+            Elem::Empty
+        };
+        input[278] = if above == Elem::Empty && cy <= surface_y { 1.0 } else { 0.0 };
+        input[279] = if world.get(cx, cy) == Elem::Water { 1.0 } else { 0.0 };
     }
 
 }

@@ -56,6 +56,25 @@ pub fn draw_weather(weather: world::Weather, time: f32) {
                 draw_circle(x, y, s, Color::new(0.95, 0.97, 1.0, 0.5));
             }
         }
+        world::Weather::Sandstorm => {
+            // The wind carries grains of sand across the screen in long,
+            // fast streaks.
+            for i in 0..140 {
+                let fi = i as f32;
+                let ii = i as u32;
+                let x = ((fi * 91.7 + time * 620.0) % w as f32).max(0.0);
+                let y = ((fi * 37.1 + time * (180.0 + (ii % 5) as f32 * 30.0)) % h as f32).max(0.0);
+                let a = 0.10 + (ii % 4) as f32 * 0.04;
+                draw_line(
+                    x,
+                    y,
+                    x - 26.0,
+                    y + 5.0,
+                    1.0,
+                    Color::new(0.86, 0.74, 0.48, a),
+                );
+            }
+        }
         _ => {}
     }
 }
@@ -145,6 +164,10 @@ pub fn draw_minimap(
             crate::world::Landmark::SaltFlat => Color::new(0.95, 0.95, 1.0, 0.9),
             crate::world::Landmark::SunkenTemple => Color::new(0.35, 0.8, 0.85, 0.9),
             crate::world::Landmark::AmberField => Color::new(0.95, 0.7, 0.25, 0.9),
+            crate::world::Landmark::WhisperingStone => Color::new(0.75, 0.85, 1.0, 0.9),
+            crate::world::Landmark::IronWomb => Color::new(0.75, 0.6, 0.5, 0.9),
+            crate::world::Landmark::Stormspire => Color::new(0.7, 0.95, 1.0, 0.9),
+            crate::world::Landmark::Undergrove => Color::new(0.45, 0.9, 0.65, 0.9),
         };
         draw_circle(px, py, 3.0, col);
         draw_circle_lines(px, py, 4.5, 1.0, col);

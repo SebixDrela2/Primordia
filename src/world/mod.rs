@@ -55,6 +55,8 @@ pub enum Biome {
     Bloomwood,
     Grassland,
     Swamp,
+    /// A fungal mire: wet ground, spore air and a great deal of fungus.
+    Mire,
     Desert,
 }
 
@@ -67,6 +69,7 @@ impl Biome {
             Biome::Bloomwood => "Bloomwood",
             Biome::Grassland => "Grassland",
             Biome::Swamp => "Swamp",
+            Biome::Mire => "Mire",
             Biome::Desert => "Desert",
         }
     }
@@ -80,6 +83,7 @@ impl Biome {
             Biome::Bloomwood => -1.0,
             Biome::Grassland => 2.0,
             Biome::Swamp => 4.0,
+            Biome::Mire => 6.0,
             Biome::Desert => 12.0,
         }
     }
@@ -93,6 +97,7 @@ impl Biome {
             Biome::Bloomwood => [1.02, 0.98, 1.06],
             Biome::Grassland => [1.02, 1.04, 0.90],
             Biome::Swamp => [0.84, 0.98, 0.80],
+            Biome::Mire => [0.80, 0.92, 0.72],
             Biome::Desert => [1.16, 1.0, 0.76],
         }
     }
@@ -110,6 +115,8 @@ pub enum Weather {
     Fog,
     /// A heatwave: the sun beats down and everything burns a little.
     Heatwave,
+    /// A sandstorm: the wind carries the desert itself across the world.
+    Sandstorm,
 }
 
 impl Weather {
@@ -122,6 +129,7 @@ impl Weather {
             Weather::Meteor => "Meteor Shower",
             Weather::Fog => "Fog",
             Weather::Heatwave => "Heatwave",
+            Weather::Sandstorm => "Sandstorm",
         }
     }
 
@@ -138,6 +146,7 @@ impl Weather {
             Weather::Meteor => 0.9,
             Weather::Fog => 0.88,
             Weather::Heatwave => 0.95,
+            Weather::Sandstorm => 0.78,
         }
     }
 
@@ -154,6 +163,7 @@ impl Weather {
             Weather::Meteor => 1.2,
             Weather::Fog => 1.1,
             Weather::Heatwave => 1.6,
+            Weather::Sandstorm => 1.5,
         }
     }
 
@@ -169,6 +179,7 @@ impl Weather {
             Weather::Meteor => 22.0,
             Weather::Fog => 3.0,
             Weather::Heatwave => 5.0,
+            Weather::Sandstorm => 6.0,
         }
     }
 
@@ -188,6 +199,7 @@ impl Weather {
             Weather::Rain => 1.8,
             Weather::Storm => 2.2,
             Weather::Heatwave => 2.6,
+            Weather::Sandstorm => 0.7,
             _ => 1.0,
         }
     }
@@ -202,6 +214,9 @@ impl Weather {
             Weather::Snow => 0.85,
             Weather::Storm => 0.8,
             Weather::Meteor => 0.9,
+            // A sandstorm closes the world in just as a fog does, and it
+            // is harder on the eyes because it moves.
+            Weather::Sandstorm => 0.5,
             _ => 1.0,
         }
     }
@@ -213,6 +228,7 @@ impl Weather {
             Weather::Storm => -4.0,
             Weather::Fog => -2.0,
             Weather::Heatwave => 11.0,
+            Weather::Sandstorm => 4.0,
             _ => 0.0,
         }
     }
@@ -341,6 +357,9 @@ pub struct World {
     /// The season the world is in, kept by the creature clock.
     /// Current weather and how long it lasts.
     pub season: u8,
+    /// How much daylight there is, from 0.0 at midnight to 1.0 at noon.
+    /// The plants use it to breathe, and the fire uses what they leave.
+    pub daylight: f32,
     pub weather: Weather,
     pub weather_timer: u32,
     /// Recent meteor impacts (x, y) so the renderer can flash explosions.

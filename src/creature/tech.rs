@@ -234,6 +234,13 @@ pub fn tech_tree() -> Vec<TechEntry> {
             effect: "wounds mend 40% faster",
             cost: "ritual and crafting",
         },
+        TechEntry {
+            kind: TechKind::Discovery(Discovery::Cognition),
+            tier: 1,
+            name: "Cognition",
+            effect: "every mind grows: bigger brains, more to think with",
+            cost: "crafting",
+        },
         // ---- Tier 6: the mine ----
         TechEntry {
             kind: TechKind::Tool(Tool::Drill),
@@ -427,6 +434,13 @@ pub fn tech_tree() -> Vec<TechEntry> {
             name: "Dominion",
             effect: "the deep is closed: it breeds far more slowly",
             cost: "sanctification and building",
+        },
+        TechEntry {
+            kind: TechKind::Discovery(Discovery::GrandCognition),
+            tier: 3,
+            name: "Grand Cognition",
+            effect: "the minds grow again, and learn from what works",
+            cost: "cognition and mining",
         },
     ]
 }

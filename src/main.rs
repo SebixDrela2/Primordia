@@ -696,6 +696,8 @@ async fn main() {
 
         // Atmospheric vignette.
         draw_vignette();
+        // The things that float in the air: dust, embers, spores, bubbles.
+        draw_atmosphere(&world, view_x, view_y, view_w, view_h, now, creatures.day_night);
         draw_actors(&creatures, &mut world, &ui.hover, view_x, view_y, view_w, view_h, zoom, now);
         effects.draw(view_x, view_y, screen_width() / view_w, screen_height() / view_h);
 

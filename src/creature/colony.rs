@@ -441,6 +441,13 @@ impl CreatureSystem {
                 // change in a generation about the same: a young animal
                 // should be its mother's breed with a little of its own.
                 net.mutate(&mut rng, 0.085, 0.15);
+                // The shape of the mind is bred as well. Now and then a
+                // young animal is born with one neuron more or less than
+                // its mother had, and the shape that turns out to work is
+                // the one that gets bred.
+                if rng.chance(0.12) {
+                    net.mutate_shape(&mut rng);
+                }
                 let color = [
                     (parent.color[0] as i32 + rng.range_i(-18, 19)).clamp(30, 255) as u8,
                     (parent.color[1] as i32 + rng.range_i(-18, 19)).clamp(30, 255) as u8,

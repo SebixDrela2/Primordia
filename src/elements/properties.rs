@@ -368,7 +368,10 @@ impl Elem {
             Elem::Plasma => 120,
             Elem::Chlorine => 300,
             Elem::Methane => 200,
-            Elem::Oxygen => 150,
+            // Oxygen lives a long time: it hangs in the air rather than
+            // being made and unmade every step, which keeps the world
+            // cheap without making the air any less real.
+            Elem::Oxygen => 400,
             Elem::Mana => 1000,
             Elem::Soul => 500,
             Elem::Ember => 900,

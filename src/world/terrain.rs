@@ -7,7 +7,12 @@ impl World {
         let wobble = (x * 0.045).sin() * 5.0
             + (x * 0.013 + 1.7).sin() * 9.0
             + (x * 0.11 + 0.4).sin() * 2.0;
-        (h * 0.66 + wobble).clamp(24.0, h - 26.0) as i32
+        // The surface is never above the top of the world and never below
+        // the bedrock. The bounds are ordered so that a very small world
+        // (a test world, say) still gets a sane answer instead of a panic.
+        let lo = 24.0f32.min(h - 4.0);
+        let hi = (h - 26.0).max(lo);
+        (h * 0.66 + wobble).clamp(lo, hi) as i32
     }
 
     // Queue a cell for processing if it can still change.
@@ -113,18 +118,20 @@ fn biome_of_column(x: i32, w: i32) -> Biome {
     let f = x as f32 / w as f32;
     // A few wide, wavy bands so the map reads as a journey.
     let v = ((f * 5.0 + (f * 2.3).sin() * 0.7).sin() * 0.5 + 0.5) as f32;
-    if v < 0.14 {
+    if v < 0.13 {
         Biome::Tundra
-    } else if v < 0.28 {
+    } else if v < 0.25 {
         Biome::Ashland
-    } else if v < 0.42 {
+    } else if v < 0.37 {
         Biome::Forest
-    } else if v < 0.56 {
+    } else if v < 0.50 {
         Biome::Bloomwood
-    } else if v < 0.72 {
+    } else if v < 0.63 {
         Biome::Grassland
-    } else if v < 0.87 {
+    } else if v < 0.77 {
         Biome::Swamp
+    } else if v < 0.90 {
+        Biome::Mire
     } else {
         Biome::Desert
     }
@@ -135,7 +142,7 @@ fn biome_tint_of_column(x: i32, w: i32) -> [f32; 3] {
     let f = x as f32 / w as f32;
     let v = ((f * 5.0 + (f * 2.3).sin() * 0.7).sin() * 0.5 + 0.5) as f32;
     // Representative positions of each band, in the same v space.
-    const POS: [f32; 7] = [0.08, 0.21, 0.35, 0.49, 0.64, 0.80, 0.93];
+    const POS: [f32; 8] = [0.07, 0.19, 0.31, 0.44, 0.57, 0.70, 0.84, 0.95];
     let tints = [
         Biome::Tundra.tint(),
         Biome::Ashland.tint(),
@@ -143,12 +150,13 @@ fn biome_tint_of_column(x: i32, w: i32) -> [f32; 3] {
         Biome::Bloomwood.tint(),
         Biome::Grassland.tint(),
         Biome::Swamp.tint(),
+        Biome::Mire.tint(),
         Biome::Desert.tint(),
     ];
     if v <= POS[0] {
         return tints[0];
     }
-    for i in 0..6 {
+    for i in 0..7 {
         if v <= POS[i + 1] {
             let t = (v - POS[i]) / (POS[i + 1] - POS[i]);
             let a = tints[i];

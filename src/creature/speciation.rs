@@ -86,6 +86,12 @@ impl CreatureSystem {
     ///
     /// Returns the migration if one was started.
     pub(crate) fn begin_migration(&mut self, species: u32, pressure: f32) -> Option<Migration> {
+        // The deep does not split. The ZORGs are the ecology of the deep
+        // and not a people: there is only ever one kind of them, and they
+        // do not send out parties of their own.
+        if species == ZORG_SPECIES {
+            return None;
+        }
         // The world may not fragment without limit.
         if self.splits_total >= MAX_SPLITS {
             return None;

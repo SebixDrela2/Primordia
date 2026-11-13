@@ -29,6 +29,15 @@ pub enum Landmark {
     SunkenTemple,
     /// A field of amber: the stone of the deep, hardened into resin.
     AmberField,
+    /// A stone that whispers: the colony thinks more sharply beside it.
+    WhisperingStone,
+    /// A hollow in the rock full of metal: the ground gives it up easily.
+    IronWomb,
+    /// A spire the lightning keeps striking: the air is full of charge.
+    Stormspire,
+    /// A grove that grew in the dark: the deep has air here, and a colony
+    /// that settles beside it breathes easier than one in stale rock.
+    Undergrove,
 }
 
 impl Landmark {
@@ -43,6 +52,10 @@ impl Landmark {
             Landmark::SaltFlat => "Salt Flat",
             Landmark::SunkenTemple => "Sunken Temple",
             Landmark::AmberField => "Amber Field",
+            Landmark::WhisperingStone => "Whispering Stone",
+            Landmark::IronWomb => "Iron Womb",
+            Landmark::Stormspire => "Stormspire",
+            Landmark::Undergrove => "Undergrove",
         }
     }
 
@@ -57,6 +70,10 @@ impl Landmark {
             Landmark::SaltFlat => "the deep's filth cannot take hold",
             Landmark::SunkenTemple => "the old learning lies here",
             Landmark::AmberField => "the stone of the deep, hardened",
+            Landmark::WhisperingStone => "the mind is sharper here",
+            Landmark::IronWomb => "the rock gives up its metal",
+            Landmark::Stormspire => "the sky comes down here",
+            Landmark::Undergrove => "the deep has air here",
         }
     }
 
@@ -72,11 +89,15 @@ impl Landmark {
             Landmark::SaltFlat => 32.0,
             Landmark::SunkenTemple => 24.0,
             Landmark::AmberField => 27.0,
+            Landmark::WhisperingStone => 24.0,
+            Landmark::IronWomb => 28.0,
+            Landmark::Stormspire => 25.0,
+            Landmark::Undergrove => 22.0,
         }
     }
 
     /// Every kind of landmark.
-    pub fn all() -> [Landmark; 9] {
+    pub fn all() -> [Landmark; 13] {
         [
             Landmark::CrystalGrove,
             Landmark::HotSpring,
@@ -87,6 +108,10 @@ impl Landmark {
             Landmark::SaltFlat,
             Landmark::SunkenTemple,
             Landmark::AmberField,
+            Landmark::WhisperingStone,
+            Landmark::IronWomb,
+            Landmark::Stormspire,
+            Landmark::Undergrove,
         ]
     }
 }
@@ -124,8 +149,15 @@ impl World {
         let mut placed: Vec<(f32, f32)> = Vec::new();
         for _ in 0..count {
             // The kinds are drawn at random, so every world has its own
-            // mixture of places to settle beside.
-            let kind = kinds[self.rng.range(kinds.len() as u32) as usize];
+            // mixture of places to settle beside. The undergrove is not one
+            // of them: it grows in the deep, and it is placed on its own
+            // below.
+            let kind = loop {
+                let k = kinds[self.rng.range(kinds.len() as u32) as usize];
+                if k != Landmark::Undergrove {
+                    break k;
+                }
+            };
             // Find a spot on the surface that is far enough from the others.
             let mut spot: Option<(i32, i32)> = None;
             for _ in 0..60 {
@@ -153,6 +185,89 @@ impl World {
                 y: y as f32,
             });
             self.paint_landmark(kind, x, y);
+        }
+        // The undergrove is the one landmark that lives in the deep: a
+        // pocket of cave where something has been growing without any sun
+        // at all, and where the air is good enough to breathe.
+        self.generate_undergroves(w);
+    }
+
+    /// Grow the undergroves in the deep.
+    ///
+    /// An undergrove is a chamber of the caves filled with pale, glowing
+    /// fungus. The fungus breathes out oxygen in the dark, so a colony
+    /// that digs down to one has found the only fresh air under the
+    /// ground: it is a place worth settling, and worth fighting over.
+    pub(crate) fn generate_undergroves(&mut self, w: i32) {
+        let count = 2 + self.rng.range(3);
+        for _ in 0..count {
+            // Find an open pocket of cave well below the surface.
+            let mut spot: Option<(i32, i32)> = None;
+            for _ in 0..400 {
+                let x = self.rng.range(w as u32) as i32;
+                let surface = self.surface_y(x);
+                let y = surface + 25 + self.rng.range((self.h as i32 / 3) as u32) as i32;
+                if y >= self.h as i32 - 12 {
+                    continue;
+                }
+                // The pocket has to be open, with a floor under it.
+                if self.get(x, y) != Elem::Empty {
+                    continue;
+                }
+                let mut open = 0;
+                for (dx, dy) in DIRS8 {
+                    if self.get(x + dx, y + dy) == Elem::Empty {
+                        open += 1;
+                    }
+                }
+                if open < 5 {
+                    continue;
+                }
+                if self.get(x, y + 1) == Elem::Empty {
+                    continue;
+                }
+                spot = Some((x, y));
+                break;
+            }
+            let Some((x, y)) = spot else {
+                continue;
+            };
+            let radius = Landmark::Undergrove.radius() as i32;
+            // A dome of pale fungus, with the plants hanging from the roof
+            // and the oxygen collecting in the middle of the chamber.
+            for dy in -radius..=radius {
+                for dx in -radius..=radius {
+                    let d2 = dx * dx + dy * dy;
+                    if d2 > radius * radius {
+                        continue;
+                    }
+                    let px = x + dx;
+                    let py = y + dy;
+                    if px < 1 || px >= w - 1 || py < 1 || py >= self.h as i32 - 2 {
+                        continue;
+                    }
+                    let e = self.get(px, py);
+                    if e != Elem::Empty && e != Elem::Stone {
+                        continue;
+                    }
+                    let roll = self.rng.f32();
+                    if d2 < radius * radius / 3 {
+                        // The air of the grove: it collects in the middle.
+                        if e == Elem::Empty && roll < 0.5 {
+                            self.set_xy(px, py, Elem::Oxygen);
+                        }
+                    } else if roll < 0.3 {
+                        self.set_xy(px, py, Elem::Fungus);
+                    } else if roll < 0.38 && e == Elem::Empty {
+                        self.set_xy(px, py, Elem::Spore);
+                    }
+                }
+            }
+            self.landmarks.push(LandmarkSite {
+                kind: Landmark::Undergrove,
+                x: x as f32,
+                y: y as f32,
+            });
         }
     }
 
@@ -325,6 +440,10 @@ impl World {
                     self.set_xy(x, sx, Elem::Totem);
                 }
             }
+            Landmark::Undergrove => {
+                // The undergrove is painted by its own generator, down in
+                // the caves, so there is nothing to do here.
+            }
             Landmark::AmberField => {
                 // A field of amber: the stone of the deep, hardened into
                 // glassy gold and dug out of the ground.
@@ -336,6 +455,70 @@ impl World {
                             0 => Elem::Gold,
                             1 => Elem::Obsidian,
                             2 => Elem::Crystal,
+                            _ => Elem::Stone,
+                        };
+                        self.paint_ground(px, py, e);
+                    }
+                }
+            }
+            Landmark::WhisperingStone => {
+                // A standing stone with runes cut into it, and a ring of
+                // quiet ground around it. The colony that settles here
+                // thinks more sharply.
+                for dy in -4..=1 {
+                    for dx in -4..=4 {
+                        let px = x + dx;
+                        let py = y + dy;
+                        if self.get(px, py) == Elem::Empty && self.rng.chance(0.3) {
+                            self.paint_ground(px, py, Elem::Rune);
+                        }
+                    }
+                }
+                let sx = self.surface_y(x);
+                for dy in 0..4 {
+                    if self.get(x, sx - dy) == Elem::Empty || self.get(x, sx - dy).is_solid() {
+                        self.set_xy(x, sx - dy, Elem::Crystal);
+                    }
+                }
+            }
+            Landmark::IronWomb => {
+                // A hollow in the rock packed with metal: iron, copper and
+                // the odd piece of steel, waiting to be dug out.
+                for dy in -3..=3 {
+                    for dx in -9..=9 {
+                        let px = x + dx;
+                        let py = y + dy;
+                        if self.get(px, py) == Elem::Empty && self.rng.chance(0.5) {
+                            let e = match self.rng.range(6) {
+                                0 => Elem::Iron,
+                                1 => Elem::Copper,
+                                2 => Elem::Steel,
+                                3 => Elem::Gold,
+                                _ => Elem::Stone,
+                            };
+                            self.paint_ground(px, py, e);
+                        }
+                    }
+                }
+            }
+            Landmark::Stormspire => {
+                // A spire of glassy rock that the lightning keeps striking.
+                // The ground around it is burnt and full of charge.
+                for dy in -6..=1 {
+                    let px = x;
+                    let py = y + dy;
+                    if self.get(px, py) == Elem::Empty || self.get(px, py).is_solid() {
+                        self.set_xy(px, py, if dy % 2 == 0 { Elem::Glass } else { Elem::Obsidian });
+                    }
+                }
+                for _ in 0..34 {
+                    let px = x + self.rng.range_i(-r, r + 1);
+                    let py = y + self.rng.range_i(-1, 4);
+                    if self.get(px, py) == Elem::Empty {
+                        let e = match self.rng.range(5) {
+                            0 => Elem::Energy,
+                            1 => Elem::Ash,
+                            2 => Elem::Obsidian,
                             _ => Elem::Stone,
                         };
                         self.paint_ground(px, py, e);
@@ -372,6 +555,10 @@ impl World {
                 Landmark::SaltFlat => bonus.purity = true,
                 Landmark::SunkenTemple => bonus.lore = true,
                 Landmark::AmberField => bonus.stone = true,
+                Landmark::WhisperingStone => bonus.mind = true,
+                Landmark::IronWomb => bonus.metal = true,
+                Landmark::Stormspire => bonus.energy = true,
+                Landmark::Undergrove => bonus.air = true,
             }
         }
         bonus
@@ -399,4 +586,13 @@ pub struct LandmarkBonus {
     pub lore: bool,
     /// Building stone lies here: the colony raises its buildings faster.
     pub stone: bool,
+    /// The mind is sharper here: the animals learn faster inside their
+    /// own lives.
+    pub mind: bool,
+    /// The rock is rich with metal: what is dug out of it is worth more.
+    pub metal: bool,
+    /// The air is charged: the colony is quick and strong here.
+    pub energy: bool,
+    /// The air is fresh: the colony breathes easier here.
+    pub air: bool,
 }

@@ -85,6 +85,7 @@ impl World {
             zorg_cave_floor: 0,
             volcano: None,
             season: 0,
+            daylight: 0.5,
             volcano_state: Volcano::Sleeping,
             volcano_timer: 1200,
             weather: Weather::Clear,

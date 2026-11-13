@@ -87,6 +87,17 @@ impl World {
                             Elem::Stone
                         }
                     }
+                    Biome::Mire => {
+                        // A mire: wet, dark ground with fungus in it, and
+                        // the odd pocket of spores.
+                        if depth < 4 {
+                            Elem::Mud
+                        } else if depth < 8 && self.rng.chance(0.45) {
+                            Elem::Fungus
+                        } else {
+                            Elem::Stone
+                        }
+                    }
                 };
 
                 if depth > 6 {
@@ -216,6 +227,30 @@ impl World {
                         let y = surface - 1;
                         if self.get(x, y) == Elem::Empty {
                             self.set_xy(x, y, Elem::Fungus);
+                        }
+                    }
+                }
+                Biome::Mire => {
+                    // A mire: fungal shelves and drifting spores, and
+                    // standing water that never quite dries.
+                    if self.rng.chance(0.45) {
+                        let y = surface - 1;
+                        if self.get(x, y) == Elem::Empty {
+                            self.set_xy(x, y, Elem::Fungus);
+                        }
+                    }
+                    if self.rng.chance(0.3) {
+                        let y = surface - 1;
+                        if self.get(x, y) == Elem::Empty {
+                            self.set_xy(x, y, Elem::Spore);
+                        }
+                    }
+                    if self.rng.chance(0.12) {
+                        // A pool carved into the mire floor, so the water
+                        // sits in the ground instead of floating over it.
+                        for dx in 0..3 {
+                            let y = surface + self.rng.range(2) as i32;
+                            self.set_xy(x + dx, y, Elem::Water);
                         }
                     }
                 }

@@ -101,6 +101,14 @@ impl World {
                 } else {
                     Weather::Fog
                 }
+            } else if roll < 96.0 {
+                // The desert keeps its own weather: a sandstorm comes out
+                // of the dry ground, and it comes more often in the heat.
+                if summer {
+                    Weather::Sandstorm
+                } else {
+                    Weather::Fog
+                }
             } else {
                 Weather::Meteor
             };
@@ -212,6 +220,31 @@ impl World {
                         }
                     }
                     self.meteor_events.push((x as f32, impact_y as f32, 22));
+                }
+            }
+            Weather::Sandstorm => {
+                // The wind carries the desert itself across the world: dust
+                // streams over the ground and the shallow water is drunk
+                // by the air.
+                if frame % 24 == 0 {
+                    for _ in 0..4 {
+                        let x = self.rng.range(w as u32) as i32;
+                        let surf = self.surface_y(x);
+                        let y = surf - 1 - self.rng.range(5) as i32;
+                        if y > 0 && self.get(x, y) == Elem::Empty {
+                            self.set_xy(x, y, Elem::Dust);
+                        }
+                    }
+                }
+                if frame % 45 == 0 {
+                    for _ in 0..2 {
+                        let x = self.rng.range(w as u32) as i32;
+                        let surf = self.surface_y(x);
+                        let y = surf - 1 - self.rng.range(2) as i32;
+                        if y > 1 && self.get(x, y) == Elem::Water {
+                            self.set_xy(x, y, Elem::Steam);
+                        }
+                    }
                 }
             }
             Weather::Clear => {}

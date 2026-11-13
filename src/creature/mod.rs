@@ -44,7 +44,14 @@ use crate::elements::Elem;
 use crate::rng::Rng;
 use crate::world::{World, DIRS4, DIRS8};
 
-pub const INPUTS: usize = 264;
+/// How many things a creature can perceive.
+///
+/// The senses are the eyes of the network: every channel is one thing the
+/// animal can notice about the world, and the network decides what to do
+/// about it. The block at the end (the last sixteen) is the *detailed*
+/// senses: the light, the heat, the places worth living in and the
+/// things that come up out of the deep.
+pub const INPUTS: usize = 284;
 pub const OUTPUTS: usize = 25;
 
 /// The network outputs, in order.
