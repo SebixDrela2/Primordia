@@ -14,9 +14,17 @@ pub(crate) fn act_build(
     structures: &mut Vec<Structure>,
     events: &mut Vec<SimEvent>,
     company: f32,
+    sanctified: bool,
 ) -> (bool, u32) {
     let mut built_something = false;
     let mut structures_total = 0u32;
+    // A ZORG does not build. It has a cave, not a settlement: it digs, it
+    // hunts and it chews its way up through the rock. A farm in the deep
+    // would be nonsense, and a horde of them would eat the world's
+    // building budget for nothing.
+    if c.faction == Faction::Zorg {
+        return (built_something, structures_total);
+    }
     // The world can only hold so many buildings.
     if structures.len() >= MAX_STRUCTURES {
         return (built_something, structures_total);
@@ -90,6 +98,18 @@ pub(crate) fn act_build(
                     let want_beacon = c.tech_level >= 3
                         && c.inventory[0] >= 10
                         && c.inventory[4] >= 3;
+                    // A ward: a pillar of sanctified fire. Only a colony
+                    // that has worked out sanctification can raise one, and
+                    // it is the only thing that can close the ZORG cave.
+                    let wards_built = structures
+                        .iter()
+                        .filter(|s| s.species == c.species && s.kind == structure_kind::WARD)
+                        .count();
+                    let want_ward = sanctified
+                        && c.tech_level >= 2
+                        && c.inventory[4] >= 2
+                        && c.inventory[0] >= 6
+                        && wards_built < 3;
 
                     // A hungry colony prefers a farm to a wall: a farm is
                     // the only thing that makes food grow back. A colony
@@ -102,6 +122,7 @@ pub(crate) fn act_build(
                     let chosen = if want_farm && (starving || farming) { Buildable::Farm }
                         else if want_tower { Buildable::Tower }
                         else if want_temple { Buildable::Temple }
+                        else if want_ward { Buildable::Ward }
                         else if want_market && settled { Buildable::Market }
                         else if want_workshop && settled { Buildable::Workshop }
                         else if want_granary && farming { Buildable::Granary }
@@ -128,6 +149,7 @@ pub(crate) fn act_build(
                         Buildable::Workshop => Elem::Workshop,
                         Buildable::Granary => Elem::Granary,
                         Buildable::Beacon => Elem::Beacon,
+                        Buildable::Ward => Elem::Ward,
                     };
 
                     // A farm has its own placement rule: it must stand on the
@@ -217,6 +239,11 @@ pub(crate) fn act_build(
                     }
 
                     if placed {
+                        // Building stone lies in the amber fields: a colony
+                        // beside one raises its buildings faster.
+                        if world.landmark_bonus(gx as f32, gy as f32).stone && c.build_cooldown > 3 {
+                            c.build_cooldown = 3;
+                        }
                         if chosen == Buildable::Farm {
                             // A farm costs 4 wood to build.
                             c.inventory[6] = c.inventory[6].saturating_sub(4);
@@ -282,6 +309,12 @@ pub(crate) fn act_build(
                                 }
                                 Buildable::Beacon => {
                                     (structure_kind::BEACON, 0, 0, 10, 3, 200.0)
+                                }
+                                // A ward: a pillar of sanctified fire. It
+                                // costs crystal and stone, and it is the
+                                // only thing that can close the deep.
+                                Buildable::Ward => {
+                                    (structure_kind::WARD, 0, 0, 6, 2, 260.0)
                                 }
                                 _ => (structure_kind::PLAIN, 0, 0, 0, 0, 100.0),
                             };

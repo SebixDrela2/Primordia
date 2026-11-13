@@ -375,6 +375,15 @@ impl CreatureSystem {
                     if self.species_discoveries(a_species) & discovery_bits::SMITHING != 0 {
                         dmg *= 1.3;
                     }
+                    // A Sunfire is made for the deep, not for a rival. It
+                    // scours a ZORG where it stands, but against ordinary
+                    // flesh it is barely better than a torch - a colony that
+                    // leans on it against its rivals will find itself at a
+                    // disadvantage.
+                    if attacker.tool == Tool::Sunfire {
+                        let target_is_zorg = self.list[j].faction == Faction::Zorg;
+                        dmg *= sanctify::sunfire_multiplier(target_is_zorg);
+                    }
                     if attacker.active_spell == Spell::Fireball && attacker.spell_cd[1] == 0 { dmg += 20.0; }
                     // The victim's own build decides how much of it lands.
                     let dmg = self.list[j].damage_taken(dmg);
@@ -397,6 +406,22 @@ impl CreatureSystem {
                     {
                         self.list[j].disease = Disease::Poison;
                         self.list[j].disease_timer = 260;
+                    }
+                    // A ZORG does not merely bite: it infects. Everything it
+                    // wounds catches the sickness it carries out of the
+                    // deep, and from there it walks into the colony and
+                    // takes it apart from the inside.
+                    if self.list[a].faction == Faction::Zorg
+                        && self.list[j].disease == Disease::None
+                        && self.list[a].disease != Disease::None
+                    {
+                        let carried = self.list[a].disease;
+                        let catch = self.list[j].catch_chance(carried);
+                        if catch > 0.0 && self.rng.chance(0.6 * catch) {
+                            self.list[j].disease = carried;
+                            self.list[j].disease_timer = Plague::from(carried).duration();
+                            self.plagues_started += 1;
+                        }
                     }
                     if self.list[j].health <= 0.0 {
                         self.list[a].kills += 1;

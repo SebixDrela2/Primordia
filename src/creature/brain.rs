@@ -14,13 +14,40 @@ pub(crate) fn segment_distance(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: 
 }
 
 // ---------------------------------------------------------------------------
-// Tiny feed-forward network
+// The brain: a small network with a memory
 // ---------------------------------------------------------------------------
+
+/// How many units the recurrent memory holds.
+///
+/// The memory is what the creature was thinking last time it thought. It is
+/// fed back into the first layer, so a brain can act on what it saw a
+/// while ago instead of only on what is in front of it right now: it can
+/// keep going somewhere, remember a threat, or learn that a place is
+/// worth coming back to.
+pub const MEMORY: usize = 12;
+
+/// How much of the old memory survives a thought.
+///
+/// Most of it carries over, so the memory is a slow trail rather than a
+/// flicker.
+const MEMORY_DECAY: f32 = 0.68;
+
+/// The shape of a creature's brain.
+///
+/// The first layer takes the senses and the memory together; the layers
+/// after it are hidden layers of decreasing size, so the creature can work
+/// out things that need several steps of reasoning; the last layer is the
+/// decision.
+pub fn brain_sizes() -> [usize; 5] {
+    [super::INPUTS + MEMORY, 36, 24, 16, super::OUTPUTS]
+}
 
 pub struct Net {
     sizes: Vec<usize>,
     w: Vec<Vec<f32>>,
     b: Vec<Vec<f32>>,
+    /// The recurrent memory: what the creature was thinking last time.
+    memory: Vec<f32>,
 }
 
 impl Net {
@@ -46,6 +73,7 @@ impl Net {
             sizes: sizes.to_vec(),
             w,
             b,
+            memory: vec![0.0; MEMORY],
         }
     }
 
@@ -54,20 +82,27 @@ impl Net {
             sizes: self.sizes.clone(),
             w: self.w.iter().map(|r| r.clone()).collect(),
             b: self.b.iter().map(|r| r.clone()).collect(),
+            // A young one starts with the state of mind its mother had.
+            memory: self.memory.clone(),
         }
     }
 
-    pub fn forward(&self, input: &[f32]) -> Vec<f32> {
-        let mut act = Vec::with_capacity(input.len());
+    pub fn forward(&mut self, input: &[f32]) -> Vec<f32> {
+        let mut act = Vec::with_capacity(input.len() + MEMORY);
         let mut next = Vec::with_capacity(self.sizes[self.sizes.len() - 1]);
         self.forward_into(input, &mut act, &mut next);
         act
     }
 
     /// Allocation-free forward pass: the caller reuses the scratch buffers.
-    pub fn forward_into(&self, input: &[f32], act: &mut Vec<f32>, next: &mut Vec<f32>) {
+    ///
+    /// The memory is appended to the senses and updated from the last
+    /// hidden layer, so the network is recurrent: what it decides now
+    /// depends on what it was doing a moment ago.
+    pub fn forward_into(&mut self, input: &[f32], act: &mut Vec<f32>, next: &mut Vec<f32>) {
         act.clear();
         act.extend_from_slice(input);
+        act.extend_from_slice(&self.memory);
         let last = self.w.len() - 1;
         for layer in 0..self.w.len() {
             let out_n = self.sizes[layer + 1];
@@ -110,6 +145,26 @@ impl Net {
             }
             std::mem::swap(act, next);
         }
+        // ---- The memory ----
+        //
+        // After the last swap `next` holds the last hidden layer, which is
+        // what the memory is built from. The memory is bounded, so it can
+        // never run away with the network.
+        let hidden: &[f32] = if next.is_empty() { &[] } else { &next };
+        for i in 0..MEMORY {
+            let src = if hidden.is_empty() {
+                0.0
+            } else {
+                hidden[i % hidden.len()]
+            };
+            let v = (src * 0.3).tanh();
+            self.memory[i] = self.memory[i] * MEMORY_DECAY + v * (1.0 - MEMORY_DECAY);
+        }
+    }
+
+    /// The memory of the brain, for the tooltip.
+    pub fn memory(&self) -> &[f32] {
+        &self.memory
     }
 
     pub fn mutate(&mut self, rng: &mut Rng, rate: f32, strength: f32) {

@@ -353,6 +353,20 @@ pub fn draw_actors(
                 }
             }
 
+            // A sick animal wears its illness: a ring of the sickness
+            // pulsing round it. The plague that the ZORGs carry is
+            // visible in the colony long before it kills anything.
+            if c.disease != crate::creature::Disease::None {
+                let beat = 0.5 + 0.5 * ((now * 3.4 + c.id as f32 * 0.7).sin());
+                draw_circle_lines(
+                    sx,
+                    sy,
+                    r * 1.55,
+                    1.2,
+                    Color::new(0.45, 0.95, 0.35, 0.35 + 0.5 * beat),
+                );
+            }
+
             // A creature that has left its colony is marked with a pale
             // outline: it does not belong to the colony any more.
             if c.migrating {

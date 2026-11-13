@@ -43,15 +43,49 @@ pub(crate) fn generate_name(rng: &mut Rng, role: Role, species: u32) -> [u8; 10]
     name_bytes
 }
 
-pub(crate) fn species_team_color(rng: &mut Rng, species: u32) -> [u8; 3] {
+/// The colour of a species.
+///
+/// The player species are coloured from a palette that spreads around the
+/// colour wheel but leaves **purple out**: purple belongs to the ZORGs,
+/// so a ZORG is never mistaken for a player colony. The colour of a
+/// species never changes, so the lineage that was the colour of an amber
+/// on the first day is still that amber when it has become an empire.
+pub(crate) fn species_team_color(_rng: &mut Rng, species: u32) -> [u8; 3] {
+    if species == ZORG_SPECIES {
+        return ZORG_COLOR;
+    }
     let mut seed = species.wrapping_mul(0x9E3779B9);
     seed ^= seed >> 13;
     seed ^= seed << 17;
     seed ^= seed >> 5;
-    let r = ((seed >> 16) & 0xFF) as u8;
-    let g = ((seed >> 8) & 0xFF) as u8;
-    let b = (seed & 0xFF) as u8;
-    [r.max(80), g.max(80), b.max(80)]
+    // The hue is picked from the palette, so no player is ever purple.
+    let hue = PLAYER_HUES[(seed % PLAYER_HUES.len() as u32) as usize];
+    // The saturation and the value vary a little, so two species with the
+    // same hue still read as different colonies.
+    let sat = 0.55 + ((seed >> 8) & 0x3F) as f32 / 255.0 * 0.4;
+    let val = 0.72 + ((seed >> 16) & 0x3F) as f32 / 255.0 * 0.28;
+    hue_to_rgb(hue, sat, val)
+}
+
+/// Turn a hue, a saturation and a value into a colour.
+fn hue_to_rgb(h: f32, s: f32, v: f32) -> [u8; 3] {
+    let c = v * s;
+    let hp = (h / 60.0).fract();
+    let x = c * (1.0 - ((hp * 2.0 - 1.0).abs()));
+    let m = v - c;
+    let (r, g, b) = match hp as u32 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    [
+        ((r + m) * 255.0).clamp(0.0, 255.0) as u8,
+        ((g + m) * 255.0).clamp(0.0, 255.0) as u8,
+        ((b + m) * 255.0).clamp(0.0, 255.0) as u8,
+    ]
 }
 
 /// The name of a species.

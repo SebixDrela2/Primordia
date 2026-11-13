@@ -277,11 +277,21 @@ impl Diplomacy {
 
     /// Are the two species formally allied?
     pub fn are_allied(&self, a: u32, b: u32) -> bool {
+        // A ZORG never allies with anything. There is no treaty with the
+        // deep.
+        if a == ZORG_SPECIES || b == ZORG_SPECIES {
+            return false;
+        }
         self.get(a, b).map_or(false, |r| r.has(Treaty::Alliance))
     }
 
     /// Are the two species at war?
     pub fn at_war(&self, a: u32, b: u32) -> bool {
+        // A ZORG is at war with everything. It is the deep's own hostile
+        // faction: there is no peace to be had with it.
+        if a == ZORG_SPECIES || b == ZORG_SPECIES {
+            return a != b;
+        }
         self.get(a, b).map_or(false, |r| r.state == RelationState::War)
     }
 

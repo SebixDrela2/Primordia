@@ -18,7 +18,9 @@ impl CreatureSystem {
         let base_temp = match self.season { 0 => 18.0, 1 => 26.0, 2 => 16.0, _ => 6.0 };
         let swing = 6.0 + world.pressure.extremes * 16.0;
         let day_variance = (self.day_night * std::f32::consts::PI * 2.0).sin() * swing;
-        self.temperature = base_temp + day_variance;
+        // The weather has a say in the temperature too: a heatwave adds to
+        // it and a snowfall takes off it.
+        self.temperature = base_temp + day_variance + world.weather.temperature_offset();
         // Season progression
         self.season_timer += 1;
         if self.season_timer > 7200 { self.season_timer = 0; self.season = (self.season + 1) % 4; }
@@ -129,6 +131,15 @@ impl CreatureSystem {
         }
         let total_towers = self.structures.len() as u32;
         let pop_now = self.list.len();
+        // How many ZORGs there are. They are a faction of their own, and
+        // they are kept in check: they are a threat the players have to
+        // deal with, not a swarm that swallows the world. The count is
+        // kept live, so a single tick cannot push them over the cap.
+        let mut zorg_pop = self
+            .list
+            .iter()
+            .filter(|c| c.faction == Faction::Zorg)
+            .count() as u32;
 
         // ---- Diplomacy setup ----
         // The centroid of every species: where that colony lives. Envoys use
@@ -261,6 +272,15 @@ impl CreatureSystem {
                 if place.food {
                     c.hunger = (c.hunger - 0.035).clamp(0.0, 100.0);
                 }
+                // The salt of the deep burns the filth out of the air. A
+                // colony that settles on a salt flat is much harder for the
+                // ZORGs to poison.
+                if place.purity {
+                    c.immunity[Disease::Plague as usize] =
+                        c.immunity[Disease::Plague as usize].max(1);
+                    c.immunity[Disease::Infection as usize] =
+                        c.immunity[Disease::Infection as usize].max(1);
+                }
                 // A colony that has learned to grow its crops properly eats
                 // better from the same harvest.
                 let discoveries = discoveries_by_species
@@ -272,6 +292,12 @@ impl CreatureSystem {
                 }                // The rain quenches a thirst that would otherwise build up.
                 c.thirst = (c.thirst + 0.045 * hardy / world.weather.thirst_factor())
                     .clamp(0.0, 100.0);
+                // A ZORG lives in the wet deep and drinks the poison it
+                // eats. It never needs water from a lake, so it does not
+                // waste its time looking for any.
+                if c.faction == Faction::Zorg {
+                    c.thirst = 0.0;
+                }
                 // A juvenile grows instead of working: it burns less energy
                 // and tires less, but it also needs feeding.
                 if c.stage == Stage::Juvenile {
@@ -368,6 +394,14 @@ impl CreatureSystem {
                 if c.health < cap {
                     c.health = (c.health + 0.05).min(cap);
                 }
+                // A ZORG in its own cave is at home: the poison of the deep
+                // restores it faster than the open air ever could.
+                if c.faction == Faction::Zorg
+                    && world.in_zorg_cave(c.x.round() as i32, c.y.round() as i32)
+                {
+                    c.health = (c.health + 0.08).min(cap);
+                    c.stamina = (c.stamina + 0.05).min(c.max_stamina);
+                }
 
                 // ---- The rhythm of the day ----
                 //
@@ -423,6 +457,14 @@ impl CreatureSystem {
                 for cd in &mut c.spell_cd { if *cd > 0 { *cd -= 1; } }
                 if c.disease_timer > 0 { c.disease_timer -= 1; }
                 else { c.disease = Disease::None; }
+                // The sickness a ZORG carries never burns out: it is part
+                // of the beast, and the deep keeps it in them.
+                if c.faction == Faction::Zorg {
+                    if c.disease == Disease::None {
+                        c.disease = zorg_carried_disease(self.rng.range(5));
+                    }
+                    c.disease_timer = Plague::from(c.disease).duration();
+                }
 
                 // Mood drift
                 if c.mood_timer == 0 {
@@ -497,6 +539,8 @@ impl CreatureSystem {
                     || c.role == Role::Envoy
                     || (c.role == Role::Merchant && out[9] > 0.25)
                     || (c.role == Role::Priest && out[7] > 0.4);
+                // A ZORG never talks. It only fights.
+                let wants_talks = wants_talks && c.faction != Faction::Zorg;
                 diplo_willing[index] = if wants_talks { 1.0 } else { 0.0 };
                 if wants_talks && c.diplo_cooldown == 0 {
                     if let Some(partner_idx) =
@@ -560,6 +604,22 @@ impl CreatureSystem {
 
                 act_move(world, c, speed_mult_extra);
 
+                // ---- The filth of the deep ----
+                //
+                // A ZORG does not walk over the world cleanly: it leaves
+                // its poison and its microbes behind it. The ground it
+                // crosses is corrupted, the plants in it rot, and the
+                // corruption follows it up through the rock into the
+                // surface colonies.
+                if c.faction == Faction::Zorg && self.rng.chance(0.05) {
+                    let fx = c.last_x.round() as i32;
+                    let fy = c.last_y.round() as i32;
+                    if world.get(fx, fy) == Elem::Empty {
+                        let filth = zorg_filth(self.rng.range(8));
+                        world.set_xy(fx, fy, filth);
+                    }
+                }
+
                 // These results belong to the outer variables: a `let` here
                 // would shadow them, and the melee attackers, the eat and
                 // build counters and the structure total would never be
@@ -576,6 +636,12 @@ impl CreatureSystem {
                     &mut self.structures,
                     &mut self.events,
                     company,
+                    discoveries_by_species
+                        .get(c.species as usize)
+                        .copied()
+                        .unwrap_or(0)
+                        & discovery_bits::SANCTIFY
+                        != 0,
                 );
                 if built && crisis > 0.0 {
                     // The building goes up, but it takes twice as long to
@@ -776,22 +842,31 @@ impl CreatureSystem {
                     Role::Shaman => c.energy > 440.0 && c.hunger < 60.0 && (c.age * 17 + c.id * 19) % 220 < 2,
                     Role::Envoy => c.energy > 420.0 && c.hunger < 60.0 && (c.age * 11 + c.id * 29) % 220 < 2,
                 };
+                // The litter size and the cost of each young follow the
+                // species' life history: a prolific species raises several
+                // small ones, a prolonged one raises a single strong one.
+                let litter = c.litter_size();
+                // The ZORGs are capped. The deep has only so much room, and
+                // the point of them is to be a threat that has to be met,
+                // not a flood that ends every run on its own. The litter is
+                // counted before the young are born, so the cap is a real
+                // cap and not a mark they sail straight past.
+                let zorg_room = zorg_pop + litter as u32 <= ZORG_POP_CAP;
                 if can_reproduce
                     && (nn_wants_reproduce || exploratory_reproduce)
                     && c.energy > 340.0
                     && c.cooldown == 0
                     && pop_now < REPRO_SOFT_CAP
+                    && (c.faction != Faction::Zorg || zorg_room)
                     && c.stage.can_breed()
                 {
                     // Fertile species raise young more cheaply.
                     let fertile = if c.traits & trait_bits::FERTILE != 0 { 0.6 } else { 1.0 };
-                    // The litter size and the cost of each young follow the
-                    // species' life history: a prolific species raises
-                    // several small ones, a prolonged one raises a single
-                    // strong one.
-                    let litter = c.litter_size();
                     let cost = c.brood_cost() * fertile;
                     if c.energy > cost {
+                        if c.faction == Faction::Zorg {
+                            zorg_pop += litter as u32;
+                        }
                         c.energy -= cost;
                         c.hunger = (c.hunger + 15.0).clamp(0.0, 100.0);
                         c.cooldown = if c.traits & trait_bits::FERTILE != 0 { 50 } else { 70 };
@@ -971,16 +1046,35 @@ impl CreatureSystem {
         // ---- The plagues spread through the colonies ----
         self.spread_diseases(&grid);
 
+        // ---- And the ZORGs carry theirs ----
+        //
+        // The deep does not need a war to bring a colony down: it only
+        // has to get close to one.
+        self.spread_zorg_plague(&grid);
+
+        // ---- The deep is never empty ----
+        //
+        // As long as the cave is there, the ZORGs breed back up out of it.
+        // A player can thin them out, but the deep cannot be emptied for
+        // good - unless a ward of sanctified fire is raised inside the
+        // cave and seals it.
+        self.reseed_the_deep(world);
+
+        // ---- The wards burn the corruption and the ZORGs ----
+        //
+        // The only way a colony can finish the deep off.
+        self.run_wards(world, &grid);
+
         // ---- The pairs that hold the colony together ----
         self.form_bonds(&grid);
 
         // ---- What the species have worked out for themselves ----
-        self.check_discoveries();
+        self.check_discoveries(world);
         self.share_discoveries();
         self.raid_structures(world);
 
         // ---- An outbreak ----
-        self.maybe_outbreak();
+        self.maybe_outbreak(world);
 
         // ---- What the colony learned ----
         //

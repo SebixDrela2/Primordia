@@ -56,6 +56,27 @@ impl World {
                             Elem::Stone
                         }
                     }
+                    Biome::Ashland => {
+                        // The ground the volcano has already burned over:
+                        // ash and burnt stone, and nothing grows in it.
+                        if depth < 2 {
+                            Elem::Ash
+                        } else if depth < 6 && self.rng.chance(0.45) {
+                            Elem::Ash
+                        } else {
+                            Elem::Stone
+                        }
+                    }
+                    Biome::Bloomwood => {
+                        // Rich, dark soil under the flowers.
+                        if depth < 4 {
+                            Elem::Mud
+                        } else if depth < 8 && self.rng.chance(0.3) {
+                            Elem::Mud
+                        } else {
+                            Elem::Stone
+                        }
+                    }
                     Biome::Forest | Biome::Grassland => {
                         if depth < 3 {
                             // Soil: solid ground, so grazing never digs holes.
@@ -78,6 +99,16 @@ impl World {
                         e = Elem::Glass;
                     } else if r < 0.037 {
                         e = Elem::Ice;
+                    } else if depth > 26 {
+                        // Below the caves the rock changes, and so does what
+                        // is in it: the deep is a journey of zones.
+                        let zone = DepthZone::of(depth);
+                        e = zone.rock(&mut self.rng);
+                        if self.rng.chance(zone.treasure_chance()) {
+                            if let Some(t) = zone.treasure(&mut self.rng) {
+                                e = t;
+                            }
+                        }
                     }
                 }
                 self.set_xy(x, y, e);
@@ -141,6 +172,50 @@ impl World {
                         let y = surface - 1;
                         if self.get(x, y) == Elem::Empty {
                             self.set_xy(x, y, Elem::Plant);
+                        }
+                    }
+                }
+                Biome::Ashland => {
+                    // Burnt stumps and the odd ember still smouldering in
+                    // the ash.
+                    if self.rng.chance(0.3) {
+                        let y = surface - 1;
+                        if self.get(x, y) == Elem::Empty {
+                            self.set_xy(x, y, Elem::Charcoal);
+                        }
+                    }
+                    if self.rng.chance(0.04) {
+                        let y = surface - 1;
+                        if self.get(x, y) == Elem::Empty {
+                            self.set_xy(x, y, Elem::Ember);
+                        }
+                    }
+                }
+                Biome::Bloomwood => {
+                    // A wood in bloom: the trees are taller and the ground
+                    // under them is thick with flowers.
+                    if self.rng.chance(0.45) {
+                        let h = 4 + self.rng.range(7) as i32;
+                        for k in 1..h {
+                            let y = surface - k;
+                            if self.get(x, y) == Elem::Empty {
+                                self.set_xy(x, y, Elem::Wood);
+                            }
+                        }
+                        let top = surface - h;
+                        for dx in -2..=2 {
+                            for dy in 0..3 {
+                                let (cx, cy) = (x + dx, top + dy);
+                                if self.get(cx, cy) == Elem::Empty {
+                                    self.set_xy(cx, cy, Elem::Plant);
+                                }
+                            }
+                        }
+                    }
+                    if self.rng.chance(0.45) {
+                        let y = surface - 1;
+                        if self.get(x, y) == Elem::Empty {
+                            self.set_xy(x, y, Elem::Fungus);
                         }
                     }
                 }
@@ -296,6 +371,12 @@ impl World {
         self.generate_crystal_caves(w, h);
         self.generate_underground_structures(w, h);
         self.bury_floating_resources(w, h);
+
+        // The ZORG cave is carved last, so nothing that was scattered
+        // through the rock afterwards lands in it. It is the one place in
+        // the world that belongs to the deep, and the founding ZORGs are
+        // born inside it.
+        self.carve_zorg_cave(w, h);
 
         // The places worth living in. They go on the surface, so they are
         // painted before the ground level is cached.

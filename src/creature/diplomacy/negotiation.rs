@@ -85,6 +85,10 @@ impl CreatureSystem {
     /// already in force does nothing, so a pair cannot keep "renewing" the
     /// same pact forever.
     pub(crate) fn sign_treaty(&mut self, a: u32, b: u32, treaty: Treaty, tick: u64) -> bool {
+        // A ZORG signs nothing. There is no treaty with the deep.
+        if a == ZORG_SPECIES || b == ZORG_SPECIES {
+            return false;
+        }
         let color_a = self.species_color(a);
         // The power comparison decides who ends up above whom in a tribute
         // treaty. It has to be computed before the relation is borrowed.
@@ -232,6 +236,11 @@ pub fn desired_action(
     own_species: u32,
     partner_species: u32,
 ) -> DiplomaticAction {
+    // A ZORG has no diplomacy. It is always at war with everything and it
+    // never proposes anything.
+    if own_species == ZORG_SPECIES || partner_species == ZORG_SPECIES {
+        return DiplomaticAction::War;
+    }
     let at_war = diplomacy.at_war(own_species, partner_species);
     let allied = diplomacy.are_allied(own_species, partner_species);
     let trust = diplomacy.trust(own_species, partner_species);

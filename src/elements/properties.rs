@@ -136,6 +136,14 @@ impl Elem {
             Elem::Hearth => [1.00, 0.45, 0.12],
             Elem::Totem => [0.50, 0.26, 0.72],
             Elem::Void => [0.0, 0.0, 0.0],
+            // The corruption of the deep glows, faintly. It is what the
+            // ZORGs leave behind them, and the deep should look alive with
+            // it.
+            Elem::Poison => [0.11, 0.19, 0.07],
+            Elem::Acid => [0.15, 0.21, 0.05],
+            Elem::Virus => [0.24, 0.05, 0.08],
+            Elem::Bacteria => [0.16, 0.13, 0.03],
+            Elem::Chlorine => [0.08, 0.16, 0.10],
             _ => [0.0, 0.0, 0.0],
         }
     }

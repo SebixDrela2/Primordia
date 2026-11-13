@@ -10,6 +10,10 @@ pub struct VictoryScreen {
     pub     revival: u32,
     pub     timer: f32,
     pub     extinction: bool,
+    /// The run was lost: the ZORGs are the only thing left standing.
+    pub     lost: bool,
+    /// How many ZORGs were still alive when the run ended.
+    pub     zorgs: u32,
     /// How the winner got there: alliances it held, wars it fought and the
     /// treaties it signed.
     pub     alliances: u32,
@@ -21,6 +25,11 @@ pub struct VictoryScreen {
     pub     traits: Vec<&'static str>,
     /// What the winning species worked out for itself.
     pub     discoveries: Vec<&'static str>,
+    /// Was the cave of the ZORGs sealed before the run ended?
+    ///
+    /// This is how a run ends against the deep: the ZORGs cannot be
+    /// out-fought, but their cave can be closed.
+    pub     deep_sealed: bool,
 }
 
 pub fn draw_victory(v: &VictoryScreen) {
@@ -35,9 +44,28 @@ pub fn draw_victory(v: &VictoryScreen) {
     let x = (sw - w) / 2.0;
     let y = (sh - h) / 2.0;
     draw_rectangle(x, y, w, h, Color::new(0.03, 0.05, 0.09, 0.94));
-    draw_rectangle_lines(x, y, w, h, 2.0, Color::new(0.13, 0.83, 0.93, 0.9));
+    let frame = if v.lost {
+        Color::new(
+            crate::creature::ZORG_COLOR[0] as f32 / 255.0,
+            crate::creature::ZORG_COLOR[1] as f32 / 255.0,
+            crate::creature::ZORG_COLOR[2] as f32 / 255.0,
+            0.9,
+        )
+    } else {
+        Color::new(0.13, 0.83, 0.93, 0.9)
+    };
+    draw_rectangle_lines(x, y, w, h, 2.0, frame);
 
-    let (title, title_color) = if v.extinction {
+    let (title, title_color) = if v.lost {
+        // The ZORGs took the world. The frame is purple, the colour of
+        // the deep.
+        ("LOST", Color::new(
+            crate::creature::ZORG_COLOR[0] as f32 / 255.0,
+            crate::creature::ZORG_COLOR[1] as f32 / 255.0,
+            crate::creature::ZORG_COLOR[2] as f32 / 255.0,
+            1.0,
+        ))
+    } else if v.extinction {
         ("EXTINCTION", Color::new(0.92, 0.36, 0.3, 1.0))
     } else {
         ("VICTORY", Color::new(0.13, 0.83, 0.93, 1.0))
@@ -45,8 +73,12 @@ pub fn draw_victory(v: &VictoryScreen) {
     let td = measure_text(title, None, 48, 1.0);
     draw_text(title, (sw - td.width) / 2.0, y + 74.0, 48.0, title_color);
 
-    let subtitle = if v.extinction {
+    let subtitle = if v.lost {
+        "the ZORGs have taken the world"
+    } else if v.extinction {
         "the last lineage has died out"
+    } else if v.deep_sealed {
+        "one species stands alone, and the deep is sealed"
     } else {
         "one species stands alone"
     };
@@ -76,8 +108,18 @@ pub fn draw_victory(v: &VictoryScreen) {
     draw_circle(name_x - 20.0, y + 148.0 - 9.0, 8.0, color);
     draw_text(&name, name_x, y + 148.0, 30.0, color);
 
-    let stats = if v.extinction {
+    let stats = if v.lost {
+        format!(
+            "{} ZORGs still standing   generation {}",
+            v.zorgs, v.generation
+        )
+    } else if v.extinction {
         format!("generation {}", v.generation)
+    } else if v.deep_sealed {
+        format!(
+            "{} survivors   {} ZORGs left in a closed cave   generation {}",
+            v.survivors, v.zorgs, v.generation
+        )
     } else {
         format!("{} survivors   generation {}", v.survivors, v.generation)
     };

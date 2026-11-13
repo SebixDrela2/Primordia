@@ -113,13 +113,17 @@ fn biome_of_column(x: i32, w: i32) -> Biome {
     let f = x as f32 / w as f32;
     // A few wide, wavy bands so the map reads as a journey.
     let v = ((f * 5.0 + (f * 2.3).sin() * 0.7).sin() * 0.5 + 0.5) as f32;
-    if v < 0.20 {
+    if v < 0.14 {
         Biome::Tundra
+    } else if v < 0.28 {
+        Biome::Ashland
     } else if v < 0.42 {
         Biome::Forest
-    } else if v < 0.64 {
+    } else if v < 0.56 {
+        Biome::Bloomwood
+    } else if v < 0.72 {
         Biome::Grassland
-    } else if v < 0.82 {
+    } else if v < 0.87 {
         Biome::Swamp
     } else {
         Biome::Desert
@@ -131,10 +135,12 @@ fn biome_tint_of_column(x: i32, w: i32) -> [f32; 3] {
     let f = x as f32 / w as f32;
     let v = ((f * 5.0 + (f * 2.3).sin() * 0.7).sin() * 0.5 + 0.5) as f32;
     // Representative positions of each band, in the same v space.
-    const POS: [f32; 5] = [0.10, 0.31, 0.53, 0.73, 0.91];
+    const POS: [f32; 7] = [0.08, 0.21, 0.35, 0.49, 0.64, 0.80, 0.93];
     let tints = [
         Biome::Tundra.tint(),
+        Biome::Ashland.tint(),
         Biome::Forest.tint(),
+        Biome::Bloomwood.tint(),
         Biome::Grassland.tint(),
         Biome::Swamp.tint(),
         Biome::Desert.tint(),
@@ -142,7 +148,7 @@ fn biome_tint_of_column(x: i32, w: i32) -> [f32; 3] {
     if v <= POS[0] {
         return tints[0];
     }
-    for i in 0..4 {
+    for i in 0..6 {
         if v <= POS[i + 1] {
             let t = (v - POS[i]) / (POS[i + 1] - POS[i]);
             let a = tints[i];

@@ -160,6 +160,12 @@ impl Creature {
         if self.disease == Disease::None {
             return 0.0;
         }
+        // A ZORG wears its sickness like a coat: it was born in the poison
+        // of the deep and the filth does not touch it. It is the source of
+        // the sickness, not its victim.
+        if self.faction == Faction::Zorg {
+            return 0.0;
+        }
         let plague = Plague::from(self.disease);
         let harm = plague.lethality();
         self.health -= harm;
@@ -170,6 +176,9 @@ impl Creature {
     /// How fast this creature moves while it is sick.
     pub fn disease_speed_factor(&self) -> f32 {
         if self.disease == Disease::None {
+            return 1.0;
+        }
+        if self.faction == Faction::Zorg {
             return 1.0;
         }
         Plague::from(self.disease).slowness()
@@ -252,7 +261,10 @@ impl CreatureSystem {
     /// Diseases do not only come from venom and curses: a colony that has
     /// grown too crowded breeds them. Every so often one animal falls ill,
     /// and from there the disease does its own work.
-    pub(crate) fn maybe_outbreak(&mut self) {
+    ///
+    /// A colony that has settled beside a fungal warren breeds them faster:
+    /// the sickness has somewhere to live.
+    pub(crate) fn maybe_outbreak(&mut self, world: &World) {
         if self.tick % 400 != 0 || self.list.len() <= 20 {
             return;
         }
@@ -261,12 +273,38 @@ impl CreatureSystem {
             .iter()
             .filter(|c| c.disease != Disease::None)
             .count();
+        // The warren: sickness breeds faster beside one.
+        let mut warren = 0.0f32;
+        for c in self.list.iter() {
+            if world.landmark_bonus(c.x, c.y).plague {
+                warren += 1.0;
+            }
+        }
+        let breed = 0.25 + warren / (self.list.len() as f32).max(1.0) * 1.5;
         // A colony that is already suffering is not ready for another
         // outbreak.
-        if sick * 6 >= self.list.len() || !self.rng.chance(0.25) {
+        if sick * 6 >= self.list.len() || !self.rng.chance(breed) {
             return;
         }
-        let victim = self.rng.range(self.list.len() as u32) as usize;
+        // The outbreak starts where the sickness lives: in the warren.
+        let victim = if warren > 0.0 && self.rng.chance(0.6) {
+            let mut best: Option<usize> = None;
+            for (i, c) in self.list.iter().enumerate() {
+                if c.disease != Disease::None {
+                    continue;
+                }
+                if world.landmark_bonus(c.x, c.y).plague {
+                    best = Some(i);
+                    break;
+                }
+            }
+            match best {
+                Some(i) => i,
+                None => self.rng.range(self.list.len() as u32) as usize,
+            }
+        } else {
+            self.rng.range(self.list.len() as u32) as usize
+        };
         if self.list[victim].disease != Disease::None {
             return;
         }
@@ -358,6 +396,71 @@ impl CreatureSystem {
         for (j, disease) in infected {
             self.list[j].disease = disease;
             self.list[j].disease_timer = Plague::from(disease).duration();
+        }
+    }
+
+    /// The ZORGs are carriers of sickness.
+    ///
+    /// They live in the poison of the deep and they wear the disease they
+    /// were born with. Anything that stands close to one of them can catch
+    /// what it is carrying, and from there the disease walks into the
+    /// colony it has caught.
+    ///
+    /// This is the ZORGs' real weapon: they do not have to kill a colony,
+    /// they only have to get close to it.
+    pub(crate) fn spread_zorg_plague(&mut self, grid: &SpatialGrid) {
+        if self.tick % 10 != 0 {
+            return;
+        }
+        // The carriers and what they carry.
+        let carriers: Vec<(f32, f32, Disease)> = self
+            .list
+            .iter()
+            .filter(|c| c.faction == Faction::Zorg && c.disease != Disease::None)
+            .map(|c| (c.x, c.y, c.disease))
+            .collect();
+        if carriers.is_empty() {
+            return;
+        }
+        let mut infected: Vec<(usize, Disease)> = Vec::new();
+        // One buffer for all the carriers: the neighbours of a carrier are
+        // collected first so the world can be borrowed while they are
+        // looked at.
+        let mut near: Vec<usize> = Vec::new();
+        for (sx, sy, disease) in carriers {
+            near.clear();
+            grid.near(sx, sy, 9, |idx| near.push(idx as usize));
+            for &j in near.iter() {
+                if j >= self.list.len() {
+                    continue;
+                }
+                let other = &self.list[j];
+                // A ZORG cannot infect another ZORG: the filth is already
+                // theirs.
+                if other.faction == Faction::Zorg
+                    || other.disease != Disease::None
+                    || other.health <= 0.0
+                {
+                    continue;
+                }
+                let d = ((other.x - sx).powi(2) + (other.y - sy).powi(2)).sqrt();
+                if d > 9.0 {
+                    continue;
+                }
+                // A resistant animal mostly shrugs the disease off.
+                let catch = other.catch_chance(disease);
+                if catch <= 0.0 {
+                    continue;
+                }
+                if self.rng.chance(0.05 * catch) {
+                    infected.push((j, disease));
+                }
+            }
+        }
+        for (j, disease) in infected {
+            self.list[j].disease = disease;
+            self.list[j].disease_timer = Plague::from(disease).duration();
+            self.plagues_started += 1;
         }
     }
 }

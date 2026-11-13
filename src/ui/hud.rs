@@ -232,6 +232,17 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
     let stats = &creatures.stats;
     let biome_name = world.biome_at((cam_x as i32).clamp(0, W as i32 - 1)).name();
     let weather_name = world.weather.name();
+    // Where the camera is: on the surface, or somewhere in the deep. The
+    // deep has its own zones, and the player needs to know which one they
+    // are digging through.
+    let cam_col = (cam_x as i32).clamp(0, W as i32 - 1);
+    let cam_depth = (cam_y as i32) - world.surface_y(cam_col);
+    let place = if cam_depth > 14 {
+        let zone = crate::world::DepthZone::of(cam_depth);
+        format!("{} ({})", zone.name(), zone.blurb())
+    } else {
+        biome_name.to_string()
+    };
     // The dominant lineage and the traits it evolved.
     let (leader, leader_traits) = dominant_lineage(creatures);
 
@@ -251,13 +262,22 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         "seed {}   REVIVAL {}   {} organisms   {} species   gen {}",
         seed, revival, stats.population, stats.species, stats.max_generation
     );
+    // The deep: how many ZORGs are left, and whether their cave is open.
+    // This is the one thing the player has to do something about, so it
+    // belongs on the first line of the screen.
+    let zorgs = creatures.zorg_count();
+    let deep = if world.zorg_cave_sealed {
+        format!("{} ZORGs, THE DEEP IS SEALED", zorgs)
+    } else {
+        format!("{} ZORGs, the deep is open", zorgs)
+    };
     let line2 = format!(
-        "{} particles   avg energy {:.0}   fitness {:.2}",
-        world.census.particles, stats.avg_energy, stats.avg_fitness
+        "{} particles   avg energy {:.0}   fitness {:.2}   {}",
+        world.census.particles, stats.avg_energy, stats.avg_fitness, deep
     );
     let line3 = format!(
         "{}  {}  {}  temp {:.0}C  mana {:.0}  spells {}  trades {}  SIMx{:.1}  zoom {:.1}x",
-        biome_name,
+        place,
         season_name,
         time_of_day,
         creatures.temperature,

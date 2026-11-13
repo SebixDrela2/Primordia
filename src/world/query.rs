@@ -144,6 +144,78 @@ impl World {
         best.map(|b| (b.0, b.1))
     }
 
+    /// The best thing a ZORG can eat around (x,y) within `radius`.
+    ///
+    /// A ZORG eats the rock and the poison of the deep, so it looks for a
+    /// completely different set of cells than a player does. The stone it
+    /// chews is the stone it digs its tunnels with.
+    ///
+    /// It goes for the richest bite rather than the nearest one: a pool of
+    /// acid is a feast and a wall of stone is only bread.
+    ///
+    /// It can only eat what it touches, though: the rock right beside it,
+    /// or a pool of poison it is standing in. A ZORG that could eat the
+    /// walls of its own cave from across it would hollow the cave out and
+    /// then starve in the hole it had made.
+    pub fn find_zorg_food(&self, x: i32, y: i32, radius: i32) -> Option<(i32, i32)> {
+        let mut best: Option<(i32, i32, f32, i32)> = None;
+        let r2 = radius * radius;
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                let d2 = dx * dx + dy * dy;
+                if d2 > r2 {
+                    continue;
+                }
+                let sx = x + dx;
+                let sy = y + dy;
+                if sx < 0 || sy < 0 || sx >= self.w as i32 || sy >= self.h as i32 {
+                    continue;
+                }
+                let k = self.kind[sy as usize * self.w + sx as usize];
+                if k == Elem::Empty as u8 || !self.zorg_food_table[k as usize] {
+                    continue;
+                }
+                // What it can reach: the rock beside it, or a pool of poison
+                // it can wade into. It does not eat the floor it is
+                // standing on: a ZORG that ate its own floor would swallow
+                // the larder whole and then starve in the hole.
+                let touching = dx.abs() <= 1 && dy.abs() <= 1 && dy <= 0;
+                if !touching && !Elem::from_u8(k).is_passable() {
+                    continue;
+                }
+                let nutrition = self.zorg_nutrition_table[k as usize];
+                // The richest bite wins; the closest one breaks the tie.
+                let better = match best {
+                    None => true,
+                    Some((_, _, n, d)) => nutrition > n || (nutrition == n && d2 < d),
+                };
+                if better {
+                    best = Some((sx, sy, nutrition, d2));
+                }
+            }
+        }
+        best.map(|b| (b.0, b.1))
+    }
+
+    /// A ZORG eats a cell.
+    ///
+    /// The nutrition comes from the ZORG table, and nothing it eats is ever
+    /// poison to it: the acid and the tar of the deep are its meat.
+    pub fn eat_zorg(&mut self, x: i32, y: i32) -> Option<(f32, f32)> {
+        let i = self.idx_xy(x, y)?;
+        let e = Elem::from_u8(self.kind[i]);
+        if e == Elem::Empty || e == Elem::Void {
+            return None;
+        }
+        let n = self.zorg_nutrition_table[e as usize];
+        if n <= 0.0 {
+            return None;
+        }
+        self.set_at(i, Elem::Empty);
+        // Nothing in the deep is poison to a ZORG.
+        Some((n, crate::creature::zorg_toxicity(e)))
+    }
+
     // Nearest water cell within `radius`, used when a creature is thirsty.
     pub fn find_water(&self, x: i32, y: i32, radius: i32) -> Option<(i32, i32)> {
         let mut best: Option<(i32, i32, i32)> = None;

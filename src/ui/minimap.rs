@@ -73,6 +73,25 @@ pub fn dominant_species(creatures: &CreatureSystem) -> Option<u32> {
     counts.first().map(|(id, _)| *id)
 }
 
+/// The player species with the most living members.
+///
+/// The ZORGs are not a player: they are the deep's own hostile faction,
+/// so they never carry a genome into the next revival and they never win.
+pub fn dominant_player_species(creatures: &CreatureSystem) -> Option<u32> {
+    let mut counts: Vec<(u32, u32)> = Vec::new();
+    for c in &creatures.list {
+        if creatures.is_zorg_creature(c) {
+            continue;
+        }
+        match counts.iter_mut().find(|(id, _)| *id == c.species) {
+            Some(e) => e.1 += 1,
+            None => counts.push((c.species, 1)),
+        }
+    }
+    counts.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    counts.first().map(|(id, _)| *id)
+}
+
 /// Bottom-left minimap: terrain, species dots and the current camera viewport.
 pub fn draw_minimap(
     creatures: &CreatureSystem,
@@ -122,6 +141,10 @@ pub fn draw_minimap(
             crate::world::Landmark::BoneField => Color::new(0.85, 0.85, 0.75, 0.9),
             crate::world::Landmark::FertileSoil => Color::new(0.45, 0.9, 0.45, 0.9),
             crate::world::Landmark::OldRuin => Color::new(0.8, 0.5, 0.95, 0.9),
+            crate::world::Landmark::FungalWarren => Color::new(0.55, 0.85, 0.35, 0.9),
+            crate::world::Landmark::SaltFlat => Color::new(0.95, 0.95, 1.0, 0.9),
+            crate::world::Landmark::SunkenTemple => Color::new(0.35, 0.8, 0.85, 0.9),
+            crate::world::Landmark::AmberField => Color::new(0.95, 0.7, 0.25, 0.9),
         };
         draw_circle(px, py, 3.0, col);
         draw_circle_lines(px, py, 4.5, 1.0, col);

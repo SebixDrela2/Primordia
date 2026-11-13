@@ -33,6 +33,10 @@ pub enum Fx {
     Grain,
     /// Tar: a slow glossy sheen.
     Sheen,
+    /// The corruption of the deep: a sick, pulsing rot.
+    Rot,
+    /// The poison of the deep: a slow, oily shimmer.
+    Foul,
     /// Rock: horizontal bands of colour, the way a cliff is layered.
     Strata,
     /// Ore: a metallic glint, brighter the deeper it lies.
@@ -51,6 +55,11 @@ pub struct FxEntry {
     pub gain: f32,
 }
 
+/// The table has an entry for every possible element byte, so the pixel
+/// loop can index it with the byte itself and never has to check the
+/// bounds.
+pub const FX_TABLE_LEN: usize = 256;
+
 const NONE: FxEntry = FxEntry {
     kind: Fx::None,
     color: [0.0; 3],
@@ -59,8 +68,8 @@ const NONE: FxEntry = FxEntry {
 };
 
 /// Build the lookup table. It is created once and then only read.
-pub fn fx_table() -> Vec<FxEntry> {
-    let mut t = vec![NONE; Elem::TABLE_LEN];
+pub fn fx_table() -> [FxEntry; FX_TABLE_LEN] {
+    let mut t = [NONE; FX_TABLE_LEN];
     let mut set = |e: Elem, kind: Fx, color: [f32; 3], speed: f32, gain: f32| {
         t[e as usize] = FxEntry {
             kind,
@@ -94,6 +103,14 @@ pub fn fx_table() -> Vec<FxEntry> {
     set(Elem::Snow, Fx::Glint, [4.8, 6.4, 8.0], 0.9, 1.0);
     set(Elem::Charcoal, Fx::Grain, [6.0, 3.0, 0.0], 0.0, 1.0);
     set(Elem::Tar, Fx::Sheen, [5.0, 4.0, 3.5], 0.5, 1.0);
+
+    // The corruption of the deep. It is not pretty: it pulses, it rots,
+    // and it shimmers the way a pool of oil does.
+    set(Elem::Virus, Fx::Rot, [26.0, 4.0, 10.0], 2.4, 1.0);
+    set(Elem::Bacteria, Fx::Rot, [22.0, 16.0, 2.0], 1.6, 1.0);
+    set(Elem::Poison, Fx::Foul, [10.0, 30.0, 10.0], 0.8, 1.0);
+    set(Elem::Acid, Fx::Foul, [24.0, 34.0, 4.0], 1.2, 1.0);
+    set(Elem::Chlorine, Fx::Foul, [8.0, 24.0, 14.0], 0.6, 1.0);
 
     // The rock of the deep world is layered, the way a cliff is layered.
     // The bands are what makes the underground read as stone rather than

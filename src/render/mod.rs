@@ -14,7 +14,7 @@ pub mod light;
 
 use crate::creature::CreatureSystem;
 use crate::elements::Elem;
-use crate::world::{Biome, World, Weather};
+use crate::world::{Biome, World, Weather, DEPTH_TINT};
 use fx::{fx_table, Fx, FxEntry};
 use light::LightField;
 
@@ -31,7 +31,7 @@ pub struct Renderer {
     light_rows: Vec<[f32; 3]>,
     /// Per-element visual effects, so the pixel loop never matches on the
     /// element enum.
-    fx: Vec<FxEntry>,
+    fx: [FxEntry; fx::FX_TABLE_LEN],
     /// Per-column aurora band height. The band only depends on the column, so
     /// it is worked out once per frame instead of twice per pixel.
     aurora_col: Vec<f32>,
@@ -159,10 +159,8 @@ impl Renderer {
         // Spread the light outwards with a decaying falloff. This keeps the
         // brightness of the source instead of averaging it away, so a lava
         // chamber really lights the cave around it.
-        let __t1 = std::time::Instant::now();
         self.light.blur(2);
         self.light.finalize();
-        let __t2 = __t1.elapsed().as_secs_f64()*1000.0;
 
         // ---- Sky ---------------------------------------------------------
         // Cloud layer: domain-warped fractal noise sampled from a coarse grid.
@@ -263,6 +261,8 @@ impl Renderer {
             Weather::Storm => [0.62, 0.66, 0.76],
             Weather::Snow => [0.92, 0.95, 1.02],
             Weather::Meteor => [0.88, 0.80, 0.86],
+            Weather::Fog => [0.86, 0.88, 0.90],
+            Weather::Heatwave => [1.10, 1.02, 0.86],
         };
         for i in 0..rw as usize {
             let x = (x0 + i as i32).clamp(0, w as i32 - 1) as usize;
@@ -276,9 +276,28 @@ impl Renderer {
             ];
             self.sky_base[i] = [11.0 * k[0], 18.0 * k[1], 32.0 * k[2]];
             self.sky_slope[i] = [30.0 * k[0], 44.0 * k[1], 58.0 * k[2]];
+            // The weather's veil over the sky is the same everywhere, so it
+            // is folded into the column here instead of being applied to
+            // every sky pixel.
+            let (veil, vr, vg, vb) = match weather {
+                Weather::Snow => (0.35, 235.0, 240.0, 250.0),
+                Weather::Fog => (0.42, 198.0, 203.0, 208.0),
+                Weather::Heatwave => (0.22, 255.0, 238.0, 196.0),
+                _ => (0.0, 0.0, 0.0, 0.0),
+            };
+            if veil > 0.0 {
+                let keep = 1.0 - veil;
+                let sb = self.sky_base[i];
+                let ss = self.sky_slope[i];
+                self.sky_base[i] = [
+                    sb[0] * keep + vr * veil,
+                    sb[1] * keep + vg * veil,
+                    sb[2] * keep + vb * veil,
+                ];
+                self.sky_slope[i] = [ss[0] * keep, ss[1] * keep, ss[2] * keep];
+            }
         }
 
-        let __t3 = std::time::Instant::now();
         // The hot loop takes plain slices, so nothing has to be reloaded from
         // the renderer state for every pixel.
         paint(
@@ -305,15 +324,6 @@ impl Renderer {
             gx0,
             gy0,
         );
-        // The per-frame timing print is only useful while profiling, and
-        // printing every frame costs more than the render itself.
-        if std::env::var_os("PRIMORDIA_RENDER_TIMING").is_some() {
-            eprintln!(
-                "blur {:.3}  paint {:.3}",
-                __t2,
-                __t3.elapsed().as_secs_f64() * 1000.0
-            );
-        }
     }
 }
 
@@ -324,7 +334,7 @@ fn paint(
     world: &World,
     buf: &mut [u8],
     cloud_row: &[f32],
-    fx: &[FxEntry],
+    fx: &[FxEntry; fx::FX_TABLE_LEN],
     light_rows: &[[f32; 3]],
     aurora_col: &[f32],
     biome_delta: &[[f32; 3]],
@@ -353,12 +363,17 @@ fn paint(
     let mut light_level = 0.34 + 0.66 * day;
 
     // Weather dims the world and mutes the sun.
-    let (weather_dim, weather_sky, weather_snow) = match weather {
+    // The third figure is the haze: how much of the distance is washed out.
+    let (weather_dim, weather_sky, weather_haze) = match weather {
         Weather::Clear => (0.0, [1.0, 1.0, 1.0], 0.0),
-        Weather::Rain => (0.14, [0.78, 0.82, 0.90], 0.0),
-        Weather::Storm => (0.30, [0.62, 0.66, 0.76], 0.0),
+        Weather::Rain => (0.14, [0.78, 0.82, 0.90], 0.18),
+        Weather::Storm => (0.30, [0.62, 0.66, 0.76], 0.26),
         Weather::Snow => (0.06, [0.92, 0.95, 1.02], 0.35),
-        Weather::Meteor => (0.10, [0.88, 0.80, 0.86], 0.0),
+        Weather::Meteor => (0.10, [0.88, 0.80, 0.86], 0.12),
+        // A fog is all haze: the world goes soft and grey.
+        Weather::Fog => (0.18, [0.86, 0.88, 0.90], 0.55),
+        // A heatwave burns the colour out of everything.
+        Weather::Heatwave => (0.04, [1.10, 1.02, 0.86], 0.16),
     };
     light_level = (light_level * (1.0 - weather_dim)).clamp(0.08, 1.0);
 
@@ -382,6 +397,18 @@ fn paint(
     let season_g = 0.96 + 0.04 * sg;
     let season_b = 0.96 + 0.04 * sb;
     let light_f = 0.62 + 0.38 * light_level;
+
+    // The haze: fog and rain wash the distance out. It is a soft veil over
+    // everything, strongest on the ground and thinning with the height, so
+    // the sky stays clear while the land fades away.
+    let haze = weather_haze;
+    let haze_col = match weather {
+        Weather::Fog => [196.0f32, 202.0, 205.0],
+        Weather::Snow => [235.0, 240.0, 250.0],
+        Weather::Storm => [150.0, 158.0, 172.0],
+        Weather::Rain => [168.0, 176.0, 190.0],
+        _ => [200.0, 200.0, 200.0],
+    };
 
     // The aurora only shows on cold, clear nights, so the check is hoisted
     // out of the pixel loop.
@@ -413,6 +440,12 @@ fn paint(
         }
         let mut cv_row = 0.0f32;
         let row_base = y as usize * w;
+        // The world arrays are sliced row by row. The compiler can then see
+        // that the column index is inside the row, so the inner loop runs
+        // without a bounds check on every pixel.
+        let kind_row = &kind[row_base..row_base + w as usize];
+        let col_row = &col[row_base..row_base + w as usize];
+        let heat_row = &heat[row_base..row_base + w as usize];
         // The rock strata of this row. The layers of stone run across the
         // world, so the band of a row is worked out once for the whole
         // row and the per-pixel noise breaks it up.
@@ -450,28 +483,30 @@ fn paint(
                     c as usize
                 }
             };
-            let cell = row_base + x as usize;
+            let xr = x as usize;
             let o = (ry as usize * rw as usize + rx as usize) * 4;
-            let e = kind[cell];
+            let e = kind_row[xr];
             // The biome tint is a per-column value; the delta is what is
             // actually needed, so it is looked up directly.
             let bt = biome_delta[rx as usize];
 
             if e == empty {
-                let surf = ground[x as usize] as f32;
+                let surf = ground[xr] as f32;
                 if (y as f32) < surf {
                     // ---- Sky ----
                     // The gradient was worked out per column, so a pixel only
                     // needs one multiply and one add per channel.
-                    let t = (y as f32 * ground_inv[x as usize]).clamp(0.0, 1.0);
+                    let t = (y as f32 * ground_inv[xr]).clamp(0.0, 1.0);
                     let base = sky_base[rx as usize];
                     let slope = sky_slope[rx as usize];
                     let mut r = base[0] + t * slope[0];
                     let mut g = base[1] + t * slope[1];
                     let mut b = base[2] + t * slope[2];
 
-                    // A sparse field of stars appears as night falls.
-                    if day < 0.38 {
+                    // A sparse field of stars appears as night falls. Only
+                    // the upper sky is checked: the stars are too faint to
+                    // see near the horizon, and the hash is not cheap.
+                    if day < 0.38 && (y as f32) < surf * 0.7 {
                         let sn = noise(x, y);
                         if sn > 0.9968 {
                             let star = 90.0 + 110.0 * sn;
@@ -547,14 +582,9 @@ fn paint(
                         }
                     }
 
-                    // A thin haze of snow settles over the whole sky in a
-                    // blizzard, which reads as reduced visibility.
-                    if weather_snow > 0.0 {
-                        let a = weather_snow * 0.35;
-                        r += (235.0 - r) * a;
-                        g += (240.0 - g) * a;
-                        b += (250.0 - b) * a;
-                    }
+                    // The weather's veil over the sky was folded into the
+                    // sky columns when they were worked out, so there is
+                    // nothing to do for it here.
 
                     buf[o] = clamp_u8(r);
                     buf[o + 1] = clamp_u8(g);
@@ -572,9 +602,9 @@ fn paint(
                 continue;
             }
 
-            let c = col[cell];
+            let c = col_row[xr];
             let n = noise(x, y);
-            let heat_v = heat[cell] as f32;
+            let heat_v = heat_row[xr] as f32;
 
             let mut r = c[0] as f32;
             let mut g = c[1] as f32;
@@ -582,12 +612,22 @@ fn paint(
 
             // Depth falloff: rock near the surface reads brighter, deep stone
             // fades into shadow.
-            let depth = (y as f32 - ground[x as usize] as f32).max(0.0);
+            let depth = (y as f32 - ground[xr] as f32).max(0.0);
             let depth_fade = (1.0 - depth * 0.0032).clamp(0.62, 1.0);
             let shade = depth_fade * light_f * (0.94 + n * 0.12) * cloud_shadow[rx as usize];
             r *= shade;
             g *= shade;
             b *= shade;
+
+            // The deep has its own colour. Each zone of it lends the rock
+            // its own tint, so the underground reads as a journey of places
+            // rather than one long grey tunnel.
+            if depth > 26.0 {
+                let zt = &DEPTH_TINT[(depth as usize / 8).min(31)];
+                r *= zt[0];
+                g *= zt[1];
+                b *= zt[2];
+            }
 
             // Seasonal tint.
             r *= season_r;
@@ -608,6 +648,15 @@ fn paint(
             r += bt[0] * fade;
             g += bt[1] * fade;
             b += bt[2] * fade;
+
+            // The haze of the weather: fog and rain veil the land, and the
+            // veil is thickest low down, where the water lies.
+            if haze > 0.0 {
+                let veiling = haze * (1.0 - depth * (1.0 / 90.0)).clamp(0.25, 1.0);
+                r += (haze_col[0] - r) * veiling;
+                g += (haze_col[1] - g) * veiling;
+                b += (haze_col[2] - b) * veiling;
+            }
 
             // ---- Element-specific life and light ----
             // The effect is described by a table entry, so the pixel loop
@@ -690,6 +739,29 @@ fn paint(
                     r += sheen * fx.color[0];
                     g += sheen * fx.color[1];
                     b += sheen * fx.color[2];
+                }
+                Fx::Rot => {
+                    // The corruption of the deep pulses like a wound: a
+                    // slow, sick beat that never settles.
+                    let beat = ((time * fx.speed + n * 7.0).sin() * 0.5 + 0.5);
+                    let rot = 0.35 + beat * 0.65;
+                    r += fx.color[0] * rot;
+                    g += fx.color[1] * rot;
+                    b += fx.color[2] * rot;
+                    // And it darkens what it has eaten.
+                    r *= 0.86;
+                    g *= 0.9;
+                    b *= 0.88;
+                }
+                Fx::Foul => {
+                    // The poison of the deep shimmers like oil on water.
+                    let shimmer = ((time * fx.speed + x as f32 * 0.19 - y as f32 * 0.11).sin()
+                        * 0.5
+                        + 0.5)
+                        * fx.gain;
+                    r += fx.color[0] * shimmer;
+                    g += fx.color[1] * shimmer;
+                    b += fx.color[2] * shimmer;
                 }
                 Fx::Strata => {
                     // The rock is layered: a band of colour across the

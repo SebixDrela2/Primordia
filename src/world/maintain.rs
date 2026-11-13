@@ -75,14 +75,32 @@ impl World {
         if self.weather_timer == 0 {
             let harsh = self.pressure.harshness;
             let roll = self.rng.range(100) as f32;
-            self.weather = if roll < 40.0 - harsh * 18.0 {
+            // The season has a say in the weather: a fog belongs to the
+            // wet months and a heatwave to the dry ones.
+            let summer = self.season == 1;
+            let winter = self.season == 3;
+            self.weather = if roll < 34.0 - harsh * 16.0 {
                 Weather::Clear
-            } else if roll < 70.0 - harsh * 6.0 {
+            } else if roll < 58.0 - harsh * 6.0 {
                 Weather::Rain
-            } else if roll < 82.0 + harsh * 10.0 {
+            } else if roll < 68.0 + harsh * 10.0 {
                 Weather::Storm
-            } else if roll < 92.0 + harsh * 4.0 {
+            } else if roll < 76.0 + harsh * 4.0 {
                 Weather::Snow
+            } else if roll < 84.0 {
+                if winter {
+                    Weather::Snow
+                } else if summer {
+                    Weather::Heatwave
+                } else {
+                    Weather::Fog
+                }
+            } else if roll < 92.0 {
+                if summer {
+                    Weather::Heatwave
+                } else {
+                    Weather::Fog
+                }
             } else {
                 Weather::Meteor
             };
@@ -139,6 +157,34 @@ impl World {
                         if y > 0 && self.get(x, y) == Elem::Empty {
                             self.set_xy(x, y, Elem::Ice);
                             added += 1;
+                        }
+                    }
+                }
+            }
+            Weather::Fog => {
+                // A fog settles on the low ground: the hollows fill with
+                // it first, and the water underneath goes bad.
+                if frame % 90 == 0 {
+                    for _ in 0..3 {
+                        let x = self.rng.range(w as u32) as i32;
+                        let surf = self.surface_y(x);
+                        let y = surf + self.rng.range(3) as i32;
+                        if y > 1 && y < self.h as i32 - 6 && self.get(x, y) == Elem::Empty {
+                            self.set_xy(x, y, Elem::Smoke);
+                        }
+                    }
+                }
+            }
+            Weather::Heatwave => {
+                // The sun beats down on the surface and the shallow water
+                // boils off. The deep is untouched.
+                if frame % 70 == 0 {
+                    for _ in 0..2 {
+                        let x = self.rng.range(w as u32) as i32;
+                        let surf = self.surface_y(x);
+                        let y = surf - 1 - self.rng.range(3) as i32;
+                        if y > 1 && self.get(x, y) == Elem::Water {
+                            self.set_xy(x, y, Elem::Steam);
                         }
                     }
                 }
@@ -330,6 +376,16 @@ impl World {
                     self.set_xy(x, y, Elem::Stone);
                 }
             }
+        }
+
+        // ---- The deep seeps ----
+        //
+        // The ZORG cave is the larder of the deep, and a larder has to be
+        // restocked: the poison on its floor seeps back out of the rock.
+        // Without this the ZORGs would eat the cave bare and then starve
+        // in the hole they had made.
+        if frame % 10 == 0 {
+            self.regrow_zorg_larder();
         }
 
         // Slow ore genesis. The world's metal is finite: every vein that forms

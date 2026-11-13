@@ -25,6 +25,39 @@ pub(crate) fn act_steer(
                 let mut steer_y = 0.0f32;
                 let mut speed_mult_extra = 1.0f32;
 
+                // ---- The ZORGs ----
+                //
+                // A ZORG belongs to the deep, but it is a predator of the
+                // surface, so it pushes upward: out of the caves and into
+                // the world. It also does not care about its own kind and it
+                // is never afraid of anything.
+                //
+                // The cave in the deep is its home and its larder, though.
+                // A hungry ZORG goes down to it and feeds on the poison
+                // pooled on its floor; a fed one goes up through the rock
+                // after the colonies that live in the light.
+                if c.faction == Faction::Zorg {
+                    let hx = c.base_x - c.x;
+                    let hy = c.base_y - c.y;
+                    let hd = (hx * hx + hy * hy).sqrt().max(0.1);
+                    // It needs to feed when it is hungry, and it needs to
+                    // feed when it is tired: the rock of the deep is its
+                    // bread as well as its feast.
+                    let needs_food = c.hunger >= 45.0 || c.energy < c.max_energy * 0.45;
+                    if needs_food {
+                        // It goes home, to the larder on the floor of the
+                        // cave.
+                        steer_x += hx / hd * 1.8;
+                        steer_y += hy / hd * 1.8;
+                        speed_mult_extra = speed_mult_extra.max(1.1);
+                    } else {
+                        // It has eaten: it pushes up through the rock
+                        // towards the world.
+                        steer_y -= 0.55;
+                        speed_mult_extra = speed_mult_extra.max(1.1);
+                    }
+                }
+
                 // ---- The volcano ----
                 //
                 // Nothing wants to live under a mountain that can erupt, so
@@ -308,6 +341,11 @@ pub(crate) fn act_move(world: &mut World, c: &mut Creature, behaviour_speed: f32
                     // colony of pickaxe carriers hollows out the entire world.
                     World::is_loose(e)
                 };
+                // A ZORG is the exception: it chews through the rock of the
+                // deep on its way up, because the rock is its food and its
+                // way out. It pays for the digging in stamina, so it is slow
+                // and it tires, but nothing stops it.
+                let zorg_chew = c.faction == Faction::Zorg;
 
                 let tx = nx.round() as i32;
                 let ty = ny.round() as i32;
@@ -325,6 +363,31 @@ pub(crate) fn act_move(world: &mut World, c: &mut Creature, behaviour_speed: f32
                     c.stamina = (c.stamina - 0.35).max(0.0);
                     c.energy = (c.energy - energy_cost::SHOVE).max(0.0);
                     ok = true;
+                }
+                // A ZORG chews its way through solid rock. It is slow and it
+                // tires, but the way up is open to it.
+                if !ok && zorg_chew {
+                    let here = world.get(tx, ty);
+                    if here.is_solid() {
+                        world.set_xy(tx, ty, Elem::Empty);
+                        c.stamina = (c.stamina - 1.2).max(0.0);
+                        c.energy = (c.energy - energy_cost::CHEW).max(0.0);
+                        // The rock it chews is its food as well as its way
+                        // out: the tunnel it digs upwards feeds it. It
+                        // does not eat its way down through the floor of
+                        // its own cave, though - that would swallow the
+                        // larder whole.
+                        let digging_up = c.vy < 0.0;
+                        let n = world.zorg_nutrition_table[here as usize];
+                        if digging_up
+                            && n > 0.0
+                            && (c.hunger > 20.0 || c.energy < c.max_energy * 0.5)
+                        {
+                            c.energy = (c.energy + n * 4.0).min(c.max_energy);
+                            c.hunger = (c.hunger - n * 4.0).max(0.0);
+                        }
+                        ok = true;
+                    }
                 }
                 if ok {
                     c.x = nx.clamp(1.0, world.w as f32 - 2.0);
@@ -394,7 +457,45 @@ pub(crate) fn act_eat(world: &mut World, c: &mut Creature, out: &[f32]) -> bool 
                     } else {
                         2
                     };
-                    if let Some((fx, fy)) = world.find_food(gx, gy, radius) {
+                    if c.faction == Faction::Zorg {
+                        // A ZORG has its own ecology: it eats the rock and
+                        // the poison of the deep, and nothing it eats is
+                        // ever bad for it. It chews its way to the food,
+                        // so it can reach a long way.
+                        //
+                        // It only eats when it needs to, though. A ZORG
+                        // that eats every step would strip the cave bare
+                        // in a few ticks and then starve in the hole it
+                        // made.
+                        //
+                        // It feeds on hunger *and* on tiredness: the rock
+                        // of the deep is its bread as well as its feast,
+                        // and a ZORG that has spent the night chewing its
+                        // way up through the rock needs the bread.
+                        if c.hunger < 15.0 && c.energy > c.max_energy * 0.55 {
+                            return false;
+                        }
+                        // It eats what it can reach. A ZORG that could eat
+                        // the walls of its own cave from across it would
+                        // hollow the cave out and then starve in the hole.
+                        let zradius = if hungry { 3 } else { 2 };
+                        if let Some((fx, fy)) = world.find_zorg_food(gx, gy, zradius) {
+                            if let Some((nutrition, toxicity)) = world.eat_zorg(fx, fy) {
+                                c.energy = (c.energy + nutrition * 4.0).min(c.max_energy);
+                                c.hunger = (c.hunger - nutrition * 4.0).max(0.0);
+                                // The acid of the deep is a feast to a ZORG:
+                                // it heals it as well as feeding it.
+                                let e = world.get(fx, fy);
+                                if crate::creature::zorg_nutrition(e) >= 40.0 {
+                                    c.health = (c.health + 6.0).min(100.0);
+                                }
+                                if toxicity > 0.0 {
+                                    c.health -= toxicity * 0.25;
+                                }
+                                ate_something = true;
+                            }
+                        }
+                    } else if let Some((fx, fy)) = world.find_food(gx, gy, radius) {
                         let eaten_elem = world.get(fx, fy);
                         if let Some((nutrition, toxicity)) = world.eat(fx, fy) {
                             // Modest returns: food is a real resource, so a
@@ -484,6 +585,11 @@ pub(crate) fn act_eat(world: &mut World, c: &mut Creature, out: &[f32]) -> bool 
 
 /// Mine ore out of the rock (never food).
 pub(crate) fn act_mine(world: &mut World, c: &mut Creature, out: &[f32], company: f32) {
+                // A ZORG does not mine. It eats the rock it wants, rather
+                // than carrying it away to build something with.
+                if c.faction == Faction::Zorg {
+                    return;
+                }
                 // Mining / gathering (output[12]). Takes solid resources out of
                 // the world for building but is explicitly *not* food.
                 //
@@ -569,9 +675,15 @@ pub(crate) fn act_craft(
     events: &mut Vec<SimEvent>,
     workshop: bool,
     ruins: bool,
-    discoveries: u16,
+    discoveries: u32,
 ) -> bool {
     let mut crafted = false;
+    // A ZORG does not craft. It has no workshop and no need of one: it
+    // digs with its own jaws and it fights with its own claws. Crafting
+    // would cost it the energy it needs to live on the rock.
+    if c.faction == Faction::Zorg {
+        return crafted;
+    }
                 // Tool crafting (output[6] = craft)
                 //
                 // A colony that has crafted for generations makes better
@@ -586,6 +698,7 @@ pub(crate) fn act_craft(
                 // without the awkward materials.
                 let knows_ranged = discoveries & discovery_bits::RANGED != 0;
                 let knows_medicine = discoveries & discovery_bits::MEDICINE != 0;
+                let knows_sanctify = discoveries & discovery_bits::SANCTIFY != 0;
                 let nn_wants_craft = out[6] > 0.25;
                 let exploratory_craft = c.tool == Tool::None && c.craft_cooldown == 0
                     && (c.age * 13 + c.id * 17) % 25 < 1;
@@ -599,8 +712,33 @@ pub(crate) fn act_craft(
                 let bombs_before = c.bombs;
                 let salves_before = c.salves;
                 if wants_craft {
+                    // Sunfire: 1 crystal + 1 wood (tech 1).
+                    //
+                    // A colony that has worked out sanctification makes the
+                    // light of the surface into a weapon before anything
+                    // else. It scours the ZORGs and their corruption, but
+                    // it is a poor weapon against ordinary flesh - which is
+                    // exactly the point: this is a tool for the deep, not
+                    // for a rival.
+                    //
+                    // Taking up the fire means giving up whatever the
+                    // creature was carrying: a pickaxe, a sword, a bow.
+                    // The colony trades its ordinary strength for the
+                    // light that scours the deep, and it can only afford
+                    // to do so as fast as it can find crystal.
+                    if knows_sanctify
+                        && c.tech_level >= 1
+                        && c.inventory[4] >= 1
+                        && c.inventory[6] >= 1
+                    {
+                        c.inventory[4] = c.inventory[4].saturating_sub(1);
+                        c.inventory[6] = c.inventory[6].saturating_sub(1);
+                        c.tool = Tool::Sunfire;
+                        c.tool_durability = 900;
+                        c.craft_cooldown = 50;
+                    }
                     // Pickaxe: 5 stone + 2 wood (tech 0)
-                    if c.tool == Tool::None && c.inventory[0] >= 5 && c.inventory[6] >= 2 {
+                    else if c.tool == Tool::None && c.inventory[0] >= 5 && c.inventory[6] >= 2 {
                         c.inventory[0] = c.inventory[0].saturating_sub(5);
                         c.inventory[6] = c.inventory[6].saturating_sub(2);
                         c.tool = Tool::Pickaxe;

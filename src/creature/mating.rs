@@ -49,6 +49,13 @@ impl CreatureSystem {
         if pop_now >= REPRO_SOFT_CAP {
             return children;
         }
+        // The ZORGs are capped here as well: a pair of them makes a young
+        // too, and the deep has only so much room.
+        let mut zorg_pop = self
+            .list
+            .iter()
+            .filter(|c| c.faction == Faction::Zorg)
+            .count() as u32;
         // Creatures that have already paired up this tick.
         let mut paired: Vec<u32> = Vec::new();
 
@@ -123,6 +130,11 @@ impl CreatureSystem {
             {
                 continue;
             }
+            // The deep is full: no more ZORGs are born this tick.
+            if self.list[index].faction == Faction::Zorg && zorg_pop + 1 > ZORG_POP_CAP {
+                continue;
+            }
+            zorg_pop += 1;
             self.list[index].energy -= cost * fertile;
             self.list[mate_idx].energy -= cost * fertile;
             self.list[index].hunger = (self.list[index].hunger + 12.0).clamp(0.0, 100.0);

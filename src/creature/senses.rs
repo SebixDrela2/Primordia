@@ -257,7 +257,7 @@ impl CreatureSystem {
         rival_population: u32,
         ds: &DiplomaticSense,
         near_beacon: bool,
-        discoveries: u16,
+        discoveries: u32,
         input: &mut [f32],
     ) {
         input.fill(0.0);
@@ -350,6 +350,8 @@ impl CreatureSystem {
             vision *= 1.4;
         }
         vision *= c.vision_factor(day_night);
+        // A fog closes the world in: nothing sees far.
+        vision *= world.weather.vision_factor();
         grid.near(c.x, c.y, vision as usize, |idx| {
             let a = &agents[idx as usize];
             let (id, ox, oy, ospecies, orole, ohp) =
@@ -640,6 +642,29 @@ impl CreatureSystem {
         // What the species is adapted to, and what it has learned.
         input[250] = (c.affinity as u8 as f32) / 6.0;
         input[251] = (c.culture.count_ones() as f32) / 8.0;
+
+        // ---- The place and the sky (252-263) ------------------------------
+        // Which zone of the deep the creature is standing in, and what the
+        // weather is doing. These are the things a colony can evolve a
+        // taste for: a line that prefers the crystal depths, or one that
+        // keeps out of the fog.
+        let depth = cy - surface_y;
+        let zone = crate::world::DepthZone::of(depth);
+        input[252] = if zone == crate::world::DepthZone::Shallows { 1.0 } else { 0.0 };
+        input[253] = if zone == crate::world::DepthZone::CrystalDepths { 1.0 } else { 0.0 };
+        input[254] = if zone == crate::world::DepthZone::SulphurWorks { 1.0 } else { 0.0 };
+        input[255] = if zone == crate::world::DepthZone::BoneGalleries { 1.0 } else { 0.0 };
+        input[256] = if zone == crate::world::DepthZone::MagmaLayer { 1.0 } else { 0.0 };
+        // How far down it is, over the whole range of the deep.
+        input[257] = (depth as f32 / 240.0).clamp(0.0, 1.0);
+        // The weather, one-hot: the fog and the heat are the two that
+        // change what a creature should be doing.
+        input[258] = if world.weather == crate::world::Weather::Clear { 1.0 } else { 0.0 };
+        input[259] = if world.weather == crate::world::Weather::Rain { 1.0 } else { 0.0 };
+        input[260] = if world.weather == crate::world::Weather::Storm { 1.0 } else { 0.0 };
+        input[261] = if world.weather == crate::world::Weather::Snow { 1.0 } else { 0.0 };
+        input[262] = if world.weather == crate::world::Weather::Fog { 1.0 } else { 0.0 };
+        input[263] = if world.weather == crate::world::Weather::Heatwave { 1.0 } else { 0.0 };
     }
 
 }

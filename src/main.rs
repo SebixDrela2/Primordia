@@ -111,6 +111,22 @@ async fn main() {
     let mut cam_y: f32 = 0.0;
     let cam_speed = 300.0;
 
+    // PRIMORDIA_CAM=x,y starts the camera at a point in the world. It is
+    // handy for looking at a particular part of the map - the ZORG cave in
+    // the deep, for instance - without having to pan there by hand.
+    let cam_env = std::env::var("PRIMORDIA_CAM").ok();
+    if let Some(v) = cam_env.as_deref() {
+        if !v.eq_ignore_ascii_case("zorg") {
+            let mut parts = v.split(',');
+            if let (Some(x), Some(y)) = (parts.next(), parts.next()) {
+                if let (Ok(x), Ok(y)) = (x.trim().parse::<f32>(), y.trim().parse::<f32>()) {
+                    cam_x = x;
+                    cam_y = y;
+                }
+            }
+        }
+    }
+
     static mut ACCUM: f64 = 0.0;
 
     let mut ui = UiState::new();
@@ -153,6 +169,18 @@ async fn main() {
         .and_then(|v| v.parse::<f32>().ok())
         .unwrap_or(MIN_ZOOM)
         .clamp(MIN_ZOOM, MAX_ZOOM);
+    // The ZORG cave is the one part of the world that belongs to the deep.
+    // PRIMORDIA_CAM=zorg opens the run looking at it, in the middle of the
+    // screen.
+    if cam_env
+        .as_deref()
+        .map_or(false, |c| c.eq_ignore_ascii_case("zorg"))
+    {
+        if let Some((cx, cy)) = world.zorg_cave_center() {
+            cam_x = cx as f32 - (VIEW_W as f32 / zoom) * 0.5;
+            cam_y = cy as f32 - (VIEW_H as f32 / zoom) * 0.5;
+        }
+    }
     // Endless "revival" lineage: run 1 is the original population, then each
     // victory seeds a new world from the winning species' genome.
     let mut revival: u32 = 1;
@@ -169,9 +197,10 @@ async fn main() {
     let mut effects = Effects::new();
     let mut force_render = true;
     // Smoothed camera position (the input drives `cam_x`/`cam_y`, the view
-    // eases towards it).
-    let mut view_x: f32 = 0.0;
-    let mut view_y: f32 = 0.0;
+    // eases towards it). It starts where the camera starts, so a run that
+    // opens on a given part of the world opens there.
+    let mut view_x: f32 = cam_x;
+    let mut view_y: f32 = cam_y;
 
     // Minimap terrain texture (downsampled world).
     const MINI_W: usize = 160;
@@ -347,14 +376,28 @@ async fn main() {
 
         // ---- Species domination / extinction -> victory screen ----
         if victory.is_none() {
-            // Keep a running snapshot of the dominant lineage so a total
-            // extinction can still revive the last species to stand.
-            if let Some(sp) = dominant_species(&creatures) {
+            // Keep a running snapshot of the dominant *player* lineage so a
+            // total extinction can still revive the last species to stand.
+            // The ZORGs are never a player: they cannot win, and they never
+            // carry a genome into the next revival.
+            if let Some(sp) = dominant_player_species(&creatures) {
                 if last_species != Some(sp) || fallback_champion.is_none() {
                     last_species = Some(sp);
                     fallback_champion = creatures.champion_from(sp);
                 }
             }
+
+            // The species that are left, split into the players and the
+            // ZORGs.
+            let mut players: Vec<u32> = creatures
+                .list
+                .iter()
+                .filter(|c| c.faction == crate::creature::Faction::Player)
+                .map(|c| c.species)
+                .collect();
+            players.sort_unstable();
+            players.dedup();
+            let zorgs = creatures.zorg_count();
 
             if creatures.list.is_empty() {
                 // Total extinction: the last species to hold on still carries
@@ -367,20 +410,50 @@ async fn main() {
                     revival,
                     timer: 1.0,
                     extinction: true,
+                    lost: false,
+                    zorgs: 0,
                     alliances: 0,
                     wars: 0,
                     treaties: 0,
                     truces: 0,
                     traits: Vec::new(),
                     discoveries: Vec::new(),
+                    deep_sealed: world.zorg_cave_sealed,
                 });
                 paused = true;
-            } else {
-                let mut species: Vec<u32> = creatures.list.iter().map(|c| c.species).collect();
-                species.sort_unstable();
-                species.dedup();
-                if species.len() == 1 {
-                    let winner = species[0];
+            } else if players.is_empty() {
+                // Only the ZORGs are left. They are not a player team, so
+                // this is not a win: the run is lost. The genome carried
+                // into the next revival is the last player species, not the
+                // ZORGs.
+                victory = Some(VictoryScreen {
+                    winner: "LOST".to_string(),
+                    color: crate::creature::ZORG_COLOR,
+                    survivors: 0,
+                    generation: creatures.stats.max_generation,
+                    revival,
+                    timer: 1.0,
+                    extinction: true,
+                    lost: true,
+                    zorgs,
+                    alliances: 0,
+                    wars: 0,
+                    treaties: 0,
+                    truces: 0,
+                    traits: Vec::new(),
+                    discoveries: Vec::new(),
+                    deep_sealed: world.zorg_cave_sealed,
+                });
+                paused = true;
+            } else if players.len() == 1 && (zorgs == 0 || world.zorg_cave_sealed) {
+                // One player species is left and the deep is closed: the
+                // world belongs to that lineage.
+                //
+                // The ZORGs cannot be out-fought - the cave breeds more of
+                // them for as long as it stands. The only way to finish
+                // them off is to seal their cave with a ward of sanctified
+                // fire, or to kill every last one of them.
+                let winner = players[0];
                     champion = creatures.champion_from(winner);
                     let rep = creatures
                         .list
@@ -427,23 +500,28 @@ async fn main() {
                         revival,
                         timer: 1.0,
                         extinction: false,
+                        lost: false,
+                        zorgs,
                         alliances,
                         wars,
                         treaties,
                         truces: creatures.diplomacy.stats.truces,
                         traits,
                         discoveries,
+                        deep_sealed: world.zorg_cave_sealed,
                     });
                     paused = true;
                 }
-            }
         }
 
         // Count down, then restart the world from the winning genome.
         if let Some(v) = victory.as_mut() {
             v.timer -= dt;
             if v.timer <= 0.0 {
-                let won = !v.extinction;
+                // A run that was lost to the ZORGs is not a win, but the
+                // next revival still starts: the last player lineage gets
+                // another go at the deep.
+                let won = !v.extinction && !v.lost;
                 let next_seed = get_random_seed();
                 world = World::new(W, H, next_seed);
                 world.seed();

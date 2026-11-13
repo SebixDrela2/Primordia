@@ -465,7 +465,7 @@ impl Creature {
     ///
     /// A colony that has worked out medicine heals more from the same
     /// salve.
-    pub fn salve_power(&self, discoveries: u16) -> f32 {
+    pub fn salve_power(&self, discoveries: u32) -> f32 {
         if discoveries & discovery_bits::MEDICINE != 0 {
             1.5
         } else {

@@ -107,6 +107,7 @@ pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx
                 creature::Tool::Cart => "cart".to_string(),
                 creature::Tool::Boat => "boat".to_string(),
                 creature::Tool::Glider => "glider".to_string(),
+                creature::Tool::Sunfire => "sunfire".to_string(),
             };
 
             let mut end = 10;
@@ -167,13 +168,18 @@ pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx
                     if alive { "alive" } else { "lost" }
                 ));
             }
-            // What the species has learned to do.
+            // What the species has learned to do. One practice per line: a
+            // colony that knows everything would otherwise make a line
+            // wider than the screen.
             let culture: Vec<String> = culture_list(c.culture)
                 .iter()
                 .map(|cu| format!("{} ({})", cu.name(), cu.blurb()))
                 .collect();
             if !culture.is_empty() {
-                lines.push(format!("colony knows: {}", culture.join(", ")));
+                lines.push(format!("colony knows {}:", culture.len()));
+                for cu in culture {
+                    lines.push(format!("  {}", cu));
+                }
             }
             if c.disease != creature::Disease::None {
                 let plague = creature::Plague::from(c.disease);
@@ -262,7 +268,11 @@ pub fn draw_tooltip_box(lines: Vec<String>, mx: f32, my: f32) {
     total_h += 8.0;
 
     let pad = 6.0;
-    let box_w = max_w + pad * 2.0;
+    let margin = 4.0;
+    // The box never grows wider than the screen. A long line is cut short
+    // rather than the box running off the edge, which would leave the
+    // clamp below with nothing to clamp to.
+    let box_w = (max_w + pad * 2.0).min(screen_width() - margin * 2.0).max(64.0);
     let box_h = total_h + pad * 2.0;
 
     // Position below-right of cursor, clamped to screen
@@ -274,8 +284,12 @@ pub fn draw_tooltip_box(lines: Vec<String>, mx: f32, my: f32) {
     if by + box_h > screen_height() {
         by = my - box_h - 14.0;
     }
-    bx = bx.clamp(4.0, screen_width() - box_w - 4.0);
-    by = by.clamp(4.0, screen_height() - box_h - 4.0);
+    // The bounds must never cross over, or the clamp panics on a window
+    // that is smaller than the box.
+    let max_bx = (screen_width() - box_w - margin).max(margin);
+    let max_by = (screen_height() - box_h - margin).max(margin);
+    bx = bx.clamp(margin, max_bx);
+    by = by.clamp(margin, max_by);
 
     // Background
     draw_rectangle(bx, by, box_w, box_h, Color::new(0.05, 0.05, 0.08, 0.85));

@@ -20,6 +20,7 @@
 mod behaviors;
 mod cell;
 mod census;
+mod depth;
 mod elements_extreme;
 mod elements_placement;
 mod generation;
@@ -33,8 +34,11 @@ mod quakes;
 mod terrain;
 mod volcano;
 mod vaults;
+mod zorg_cave;
 
+pub use depth::*;
 pub use landmarks::*;
+pub use zorg_cave::*;
 
 use crate::elements::{Behavior, Elem};
 use crate::rng::Rng;
@@ -44,7 +48,11 @@ pub use volcano::Volcano;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Biome {
     Tundra,
+    /// Scorched ground: the ground the volcano has already burned over.
+    Ashland,
     Forest,
+    /// A flowering wood: the same as a forest, but in bloom.
+    Bloomwood,
     Grassland,
     Swamp,
     Desert,
@@ -54,7 +62,9 @@ impl Biome {
     pub fn name(self) -> &'static str {
         match self {
             Biome::Tundra => "Tundra",
+            Biome::Ashland => "Ashland",
             Biome::Forest => "Forest",
+            Biome::Bloomwood => "Bloomwood",
             Biome::Grassland => "Grassland",
             Biome::Swamp => "Swamp",
             Biome::Desert => "Desert",
@@ -65,7 +75,9 @@ impl Biome {
     pub fn temperature_offset(self) -> f32 {
         match self {
             Biome::Tundra => -14.0,
+            Biome::Ashland => 16.0,
             Biome::Forest => -2.0,
+            Biome::Bloomwood => -1.0,
             Biome::Grassland => 2.0,
             Biome::Swamp => 4.0,
             Biome::Desert => 12.0,
@@ -76,7 +88,9 @@ impl Biome {
     pub fn tint(self) -> [f32; 3] {
         match self {
             Biome::Tundra => [0.80, 0.93, 1.14],
+            Biome::Ashland => [1.10, 0.86, 0.78],
             Biome::Forest => [0.80, 1.05, 0.84],
+            Biome::Bloomwood => [1.02, 0.98, 1.06],
             Biome::Grassland => [1.02, 1.04, 0.90],
             Biome::Swamp => [0.84, 0.98, 0.80],
             Biome::Desert => [1.16, 1.0, 0.76],
@@ -92,6 +106,10 @@ pub enum Weather {
     Storm,
     Snow,
     Meteor,
+    /// A fog: the world closes in and nothing can see far.
+    Fog,
+    /// A heatwave: the sun beats down and everything burns a little.
+    Heatwave,
 }
 
 impl Weather {
@@ -102,6 +120,8 @@ impl Weather {
             Weather::Storm => "Storm",
             Weather::Snow => "Snowfall",
             Weather::Meteor => "Meteor Shower",
+            Weather::Fog => "Fog",
+            Weather::Heatwave => "Heatwave",
         }
     }
 
@@ -116,6 +136,8 @@ impl Weather {
             Weather::Storm => 0.72,
             Weather::Snow => 0.84,
             Weather::Meteor => 0.9,
+            Weather::Fog => 0.88,
+            Weather::Heatwave => 0.95,
         }
     }
 
@@ -130,6 +152,8 @@ impl Weather {
             Weather::Storm => 2.1,
             Weather::Snow => 1.7,
             Weather::Meteor => 1.2,
+            Weather::Fog => 1.1,
+            Weather::Heatwave => 1.6,
         }
     }
 
@@ -143,6 +167,8 @@ impl Weather {
             Weather::Storm => 8.0,
             Weather::Snow => 2.0,
             Weather::Meteor => 22.0,
+            Weather::Fog => 3.0,
+            Weather::Heatwave => 5.0,
         }
     }
 
@@ -150,7 +176,10 @@ impl Weather {
     ///
     /// In a storm they huddle near their colony instead of wandering.
     pub fn shelters(self) -> bool {
-        matches!(self, Weather::Storm | Weather::Meteor)
+        matches!(
+            self,
+            Weather::Storm | Weather::Meteor | Weather::Heatwave
+        )
     }
 
     /// How much the rain quenches a creature's thirst.
@@ -158,7 +187,33 @@ impl Weather {
         match self {
             Weather::Rain => 1.8,
             Weather::Storm => 2.2,
+            Weather::Heatwave => 2.6,
             _ => 1.0,
+        }
+    }
+
+    /// How far a creature can see in this weather.
+    ///
+    /// A fog closes the world in: nothing sees far, and the colonies stop
+    /// noticing what is coming until it is on top of them.
+    pub fn vision_factor(self) -> f32 {
+        match self {
+            Weather::Fog => 0.45,
+            Weather::Snow => 0.85,
+            Weather::Storm => 0.8,
+            Weather::Meteor => 0.9,
+            _ => 1.0,
+        }
+    }
+
+    /// How much the weather changes the temperature.
+    pub fn temperature_offset(self) -> f32 {
+        match self {
+            Weather::Snow => -6.0,
+            Weather::Storm => -4.0,
+            Weather::Fog => -2.0,
+            Weather::Heatwave => 11.0,
+            _ => 0.0,
         }
     }
 }
@@ -271,6 +326,14 @@ pub struct World {
     pub emissive: [bool; Elem::TABLE_LEN],
     /// Lookup: the light colour an element radiates.
     pub emission: [[f32; 3]; Elem::TABLE_LEN],
+    /// Lookup: can a ZORG eat this element? A ZORG eats rock and poison,
+    /// which is the exact opposite of what a player eats.
+    pub zorg_food_table: [bool; Elem::TABLE_LEN],
+    /// Lookup: how much a ZORG gets out of this element.
+    pub zorg_nutrition_table: [f32; Elem::TABLE_LEN],
+    /// The row of the floor of the ZORG cave. The ZORGs keep to it: it is
+    /// the one level place in the deep where the poison pools are.
+    pub zorg_cave_floor: i32,
     /// The volcano: where it is and what it is doing.
     pub volcano: Option<(i32, i32)>,
     pub volcano_state: Volcano,
@@ -301,6 +364,15 @@ pub struct World {
     /// The places worth living in. A colony that settles beside one of
     /// them does better than a colony that does not.
     pub landmarks: Vec<LandmarkSite>,
+    /// The heart of the ZORG cave: the chamber in the deep that belongs to
+    /// the ZORGs. Every founding ZORG is born in it.
+    pub zorg_cave: Option<(i32, i32)>,
+    /// Has the ZORG cave been sealed?
+    ///
+    /// A ward of sanctified fire raised inside the cave closes it, and the
+    /// deep can breed no more of them. This is the only way a run can
+    /// actually end against the ZORGs.
+    pub zorg_cave_sealed: bool,
 }
 
 

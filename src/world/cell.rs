@@ -64,6 +64,25 @@ impl World {
             },
             emissive: Elem::emissive_table(),
             emission: Elem::emission_table(),
+            zorg_food_table: {
+                let mut t = [false; Elem::TABLE_LEN];
+                let mut i = 0;
+                while i < Elem::TABLE_LEN {
+                    t[i] = crate::creature::zorg_food(Elem::from_u8(i as u8));
+                    i += 1;
+                }
+                t
+            },
+            zorg_nutrition_table: {
+                let mut t = [0.0f32; Elem::TABLE_LEN];
+                let mut i = 0;
+                while i < Elem::TABLE_LEN {
+                    t[i] = crate::creature::zorg_nutrition(Elem::from_u8(i as u8));
+                    i += 1;
+                }
+                t
+            },
+            zorg_cave_floor: 0,
             volcano: None,
             season: 0,
             volcano_state: Volcano::Sleeping,
@@ -78,6 +97,8 @@ impl World {
             plant_capacity: 0.0,
             census: Census::default(),
             landmarks: Vec::new(),
+            zorg_cave: None,
+            zorg_cave_sealed: false,
         }
     }
 

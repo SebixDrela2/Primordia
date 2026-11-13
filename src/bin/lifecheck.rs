@@ -54,6 +54,52 @@ fn main() {
     // Every colony that has settled beside a landmark: (x, y, species).
     let mut landmark_claims: Vec<(f32, f32, u32)> = Vec::new();
 
+    // ---- The ZORG cave ----
+    //
+    // The deep has a chamber of its own, and every founding ZORG is born
+    // inside it. The cave has to be far below the surface: a ZORG cave
+    // that sits up in the sky would be a hole in the world.
+    println!("--- the ZORG cave ---");
+    let cave = world.zorg_cave_center();
+    match cave {
+        Some((cx, cy)) => {
+            let surface = world.surface_y(cx);
+            println!(
+                "  the cave is at ({}, {}), {} below the surface",
+                cx, cy,
+                cy - surface
+            );
+            if cy <= surface + 8 {
+                println!("FAIL: the ZORG cave is not below the surface");
+                failures += 1;
+            }
+            if cy >= world.h as i32 - 12 {
+                println!("FAIL: the ZORG cave is in the bedrock");
+                failures += 1;
+            }
+            // Every ZORG has to start inside it.
+            let mut outside = 0;
+            for c in creatures.list.iter() {
+                if c.faction != creature::Faction::Zorg {
+                    continue;
+                }
+                if !world.in_zorg_cave(c.x.round() as i32, c.y.round() as i32) {
+                    outside += 1;
+                }
+            }
+            if outside > 0 {
+                println!("FAIL: {} ZORGs did not spawn in the cave", outside);
+                failures += 1;
+            } else {
+                println!("  all founding ZORGs spawned in it");
+            }
+        }
+        None => {
+            println!("FAIL: the world has no ZORG cave");
+            failures += 1;
+        }
+    }
+
     for i in 0..steps {
         world.step();
         creatures.step(&mut world);
@@ -130,10 +176,11 @@ fn main() {
                 .filter(|c| c.disease != creature::Disease::None)
                 .count();
             println!(
-                "  step {:5}  pop {:3}  species {:2}  biggest {:3}  over-cap {:2}  young {:3}  old {:2}  pairs {:4}  splits {:2}  started {:2}  far {:5.0}  sick {:3}  plagues {:2}  practices {}  traits/species {}",
+                "  step {:5}  pop {:3}  species {:2}  zorgs {:3}  biggest {:3}  over-cap {:2}  young {:3}  old {:2}  pairs {:4}  splits {:2}  started {:2}  far {:5.0}  sick {:3}  plagues {:2}  practices {}  traits/species {}",
                 i,
                 creatures.list.len(),
                 s.species,
+                creatures.zorg_count(),
                 biggest,
                 over,
                 s.juveniles,
@@ -170,6 +217,61 @@ fn main() {
             traits.join(", "),
             practices.join(", ")
         );
+    }
+
+    // ---- The ZORGs ----
+    //
+    // The ZORGs live in the deep and are hostile to everything. They must
+    // be there from the start, they must never be a player, and they must
+    // never be allied with anything.
+    println!("\n--- the deep ---");
+    let zorgs = creatures.list.iter().filter(|c| c.faction == creature::Faction::Zorg).count();
+    println!("  ZORGs alive: {}", zorgs);
+    let zorg_species: Vec<u32> = creatures
+        .list
+        .iter()
+        .filter(|c| c.faction == creature::Faction::Zorg)
+        .map(|c| c.species)
+        .collect();
+    if !zorg_species.is_empty() {
+        let first = zorg_species[0];
+        if zorg_species.iter().any(|s| *s != first) {
+            println!("FAIL: the ZORGs are more than one species");
+            failures += 1;
+        }
+        // A ZORG is never allied with anything, and always at war.
+        for r in creatures.diplomacy.relations.iter() {
+            if r.a == first || r.b == first {
+                if r.has(crate::creature::Treaty::Alliance) {
+                    println!("FAIL: a ZORG is allied with a species");
+                    failures += 1;
+                }
+            }
+        }
+    }
+    // A ZORG must never be counted as a player species.
+    let player_species: Vec<u32> = creatures
+        .list
+        .iter()
+        .filter(|c| c.faction == creature::Faction::Player)
+        .map(|c| c.species)
+        .collect();
+    if player_species.contains(&creature::ZORG_SPECIES) {
+        println!("FAIL: a ZORG is counted as a player species");
+        failures += 1;
+    }
+    // No player species may be purple: purple belongs to the ZORGs.
+    for c in creatures.list.iter() {
+        if c.faction != creature::Faction::Player {
+            continue;
+        }
+        let [r, g, b] = c.team_color;
+        // Purple is a strong red and blue with a weak green.
+        if r > 90 && b > 90 && g + 40 < r.min(b) {
+            println!("FAIL: a player species is purple: {:?} {}", c.team_color, r);
+            failures += 1;
+            break;
+        }
     }
 
     // ---- The colonies and their queens ----

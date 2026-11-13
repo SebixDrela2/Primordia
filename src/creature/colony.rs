@@ -202,6 +202,8 @@ impl CreatureSystem {
             // species that spawned badly still survived its first fights.
             self.spawn_near_surface(world);
         }
+        // The ZORGs are already down there, waiting.
+        self.spawn_zorgs(world, ZORG_START);
         self.update_stats();
     }
 
@@ -241,6 +243,8 @@ impl CreatureSystem {
                 .unwrap_or((x, y));
             self.spawn(world, sx as f32, sy as f32, CreatureGenesis::Revival(genome));
         }
+        // The ZORGs survive the revival: they are always down there.
+        self.spawn_zorgs(world, ZORG_START);
         self.update_stats();
     }
 
@@ -258,6 +262,102 @@ impl CreatureSystem {
         self.spawn(world, sx as f32, sy as f32, CreatureGenesis::Random)
     }
 
+    /// A place in the deep caves for the ZORGs to hold.
+    ///
+    /// The ZORGs have a cave of their own: a chamber carved into the deep
+    /// rock, far below the surface, where the poison pools on the floor.
+    /// Every one of them starts there, so the deep has a heart instead of
+    /// a scattering of animals across the bottom of the map.
+    ///
+    /// If the world has no such cave (it is carved during the seed, so it
+    /// normally always has one), the search falls back to the deep caves.
+    fn find_zorg_spot(&mut self, world: &World) -> Option<(f32, f32)> {
+        // The cave of the ZORGs comes first.
+        if let Some((cx, cy)) = world.zorg_cave_center() {
+            // The heart of the chamber is where the queen of the ZORGs
+            // belongs; the rest of them spread out through it.
+            let (cx, cy) = if self.rng.chance(0.35) {
+                (cx, cy)
+            } else {
+                let jitter_x = self.rng.range_i(-10, 11);
+                let jitter_y = self.rng.range_i(-6, 7);
+                (cx + jitter_x, cy + jitter_y)
+            };
+            if let Some((x, y)) = world.find_zorg_cave_cell(cx, cy) {
+                return Some((x as f32, y as f32));
+            }
+        }
+        // No cave: fall back to the deep caves.
+        let w = world.w as i32;
+        let h = world.h as i32;
+        // The deep: the last third of the world, below the caves.
+        let deep_start = h * 2 / 3;
+        for _ in 0..200 {
+            let x = self.rng.range_i(4, w - 4);
+            let y = self.rng.range_i(deep_start, h - 4);
+            if world.get(x, y) != Elem::Empty {
+                continue;
+            }
+            // It has to be a place they can stand: room above and below.
+            if world.get(x, y - 1).is_solid() && world.get(x, y + 1) != Elem::Empty {
+                return Some((x as f32, y as f32));
+            }
+        }
+        // Nothing found: the deep is solid here, so take any empty cell.
+        for _ in 0..200 {
+            let x = self.rng.range_i(4, w - 4);
+            let y = self.rng.range_i(deep_start, h - 4);
+            if world.get(x, y) == Elem::Empty {
+                return Some((x as f32, y as f32));
+            }
+        }
+        None
+    }
+
+    /// Found the first of the ZORGs in their own cave.
+    ///
+    /// The ZORGs are there from the very beginning of the run: they are
+    /// the thing the players have to beat, and they start growing from the
+    /// first tick. They all start together, in the one place in the world
+    /// that belongs to them.
+    pub fn spawn_zorgs(&mut self, world: &World, count: usize) {
+        for _ in 0..count {
+            if self.list.len() >= MAX_POP {
+                return;
+            }
+            let Some((x, y)) = self.find_zorg_spot(world) else {
+                return;
+            };
+            self.spawn(world, x, y, CreatureGenesis::Zorg);
+        }
+    }
+
+    /// Keep the deep from ever being emptied.
+    ///
+    /// The ZORGs are not a colony that can be wiped out for good: as long
+    /// as their cave is there, the deep breeds more of them. A player can
+    /// thin them out and beat them back, but the deep always has a few
+    /// left in it.
+    pub(crate) fn reseed_the_deep(&mut self, world: &World) {
+        if self.tick % 120 != 0 {
+            return;
+        }
+        if self.zorg_count() >= ZORG_MIN {
+            return;
+        }
+        // A sealed cave breeds nothing. That is the point of sealing it.
+        if world.zorg_cave_sealed {
+            return;
+        }
+        if world.zorg_cave_center().is_none() {
+            return;
+        }
+        let Some((x, y)) = self.find_zorg_spot(world) else {
+            return;
+        };
+        self.spawn(world, x, y, CreatureGenesis::Zorg);
+    }
+
     pub(crate) fn spawn(&mut self, world: &World, x: f32, y: f32, genesis: CreatureGenesis<'_>) -> bool {
         if self.list.len() >= MAX_POP {
             return false;
@@ -273,13 +373,37 @@ impl CreatureSystem {
         let start_energy = if is_child { 300.0 } else { 520.0 };
 
         let (net, color, species, generation, size, genes, mutations) = match genesis {
+            CreatureGenesis::Zorg => {
+                // The first ZORG. Its genes are as good a roll as any other
+                // species gets, so it evolves on the same terms as everyone
+                // else: it has to earn its traits.
+                let mut g = [0.0f32; 32];
+                for gi in g.iter_mut() {
+                    *gi = rng.f32();
+                }
+                // The genes of a ZORG are pushed towards what it needs to
+                // live on rock and poison.
+                g[0] = 0.9; // sturdy
+                g[1] = 0.7; // industrious
+                g[3] = 0.6; // fertile
+                g[5] = 0.8; // scavenger
+                (
+                    Net::random(&brain_sizes(), &mut rng),
+                    ZORG_COLOR,
+                    ZORG_SPECIES,
+                    0,
+                    1.4 + rng.f32() * 0.8,
+                    g,
+                    0,
+                )
+            }
             CreatureGenesis::Random => {
                 let mut g = [0.0f32; 32];
                 for gi in g.iter_mut() {
                     *gi = rng.f32();
                 }
                 (
-                    Net::random(&[INPUTS, 24, 12, OUTPUTS], &mut rng),
+                    Net::random(&brain_sizes(), &mut rng),
                     [
                         rng.range_i(90, 256) as u8,
                         rng.range_i(100, 256) as u8,
@@ -297,7 +421,11 @@ impl CreatureSystem {
             }
             CreatureGenesis::Child(parent) => {
                 let mut net = parent.net.clone_net();
-                net.mutate(&mut rng, 0.12, 0.22);
+                // The brain is deeper now, so there are more weights to
+                // shake. The rate is scaled down to keep the total amount of
+                // change in a generation about the same: a young animal
+                // should be its mother's breed with a little of its own.
+                net.mutate(&mut rng, 0.085, 0.15);
                 let color = [
                     (parent.color[0] as i32 + rng.range_i(-18, 19)).clamp(30, 255) as u8,
                     (parent.color[1] as i32 + rng.range_i(-18, 19)).clamp(30, 255) as u8,
@@ -325,7 +453,7 @@ impl CreatureSystem {
                 let mut net = base.net.clone_net();
                 // Stronger shake-up: the winning lineage diverges into several
                 // new species that then compete again.
-                net.mutate(&mut rng, 0.20, 0.30);
+                net.mutate(&mut rng, 0.14, 0.22);
                 let color = [
                     (base.color[0] as i32 + rng.range_i(-32, 33)).clamp(40, 255) as u8,
                     (base.color[1] as i32 + rng.range_i(-32, 33)).clamp(40, 255) as u8,
@@ -359,7 +487,33 @@ impl CreatureSystem {
         // queen there is nobody to organise the colony, so the animals
         // put their effort into finding one. This is what ends the crisis.
         let crisis = in_crisis(&self.succession, species, self.tick);
-        let role = if is_child {
+        let is_zorg = species == ZORG_SPECIES;
+        let role = if is_zorg && !is_child {
+            // The first of the ZORGs is the queen of the cave: it holds
+            // the heart of it as its base. The rest of them are soldiers
+            // and workers: a ZORG colony is a war party.
+            let has_queen = self
+                .list
+                .iter()
+                .any(|c| c.species == ZORG_SPECIES && c.role == Role::Queen);
+            if !has_queen {
+                Role::Queen
+            } else if self.rng.chance(0.55) {
+                Role::Soldier
+            } else {
+                Role::Worker
+            }
+        } else if is_zorg && is_child {
+            // The ZORGs breed soldiers: every one of them is a weapon.
+            let r = self.rng.f32();
+            if r < 0.12 {
+                Role::Queen
+            } else if r < 0.75 {
+                Role::Soldier
+            } else {
+                Role::Worker
+            }
+        } else if is_child {
             match parent_role {
                 Role::Queen => {
                     // Queen's offspring: 78% worker, 10% soldier, 7% envoy,
@@ -447,6 +601,34 @@ impl CreatureSystem {
         // the same crystal grove end up fighting over it.
         let (base_x, base_y) = if is_child {
             (parent_base_x, parent_base_y)
+        } else if is_zorg {
+            // The ZORGs have their own ground: the cave in the deep. They
+            // do not settle beside a landmark, because a landmark is a
+            // thing of the surface.
+            //
+            // The queen holds the heart of the cave; the rest keep to
+            // their own patch of it.
+            let queen_base = self
+                .list
+                .iter()
+                .find(|c| c.species == ZORG_SPECIES && c.role == Role::Queen)
+                .map(|q| (q.base_x, q.base_y));
+            match queen_base {
+                Some(q) => q,
+                None => world
+                    .zorg_cave_center()
+                    .and_then(|(cx, cy)| {
+                        // The heart of the cave is where the ZORG colony
+                        // makes its home, with the larder a step below it.
+                        let fy = world.zorg_cave_floor_row();
+                        world
+                            .find_zorg_cave_cell(cx, fy - 2)
+                            .or_else(|| world.find_zorg_cave_cell(cx, cy))
+                    })
+                    .map(|(px, py)| (px as f32, py as f32))
+                    .or_else(|| self.find_zorg_spot(world))
+                    .unwrap_or((x, y)),
+            }
         } else if role == Role::Queen {
             match self.find_landmark_spot(world, species) {
                 Some(sp) => sp,
@@ -511,6 +693,20 @@ impl CreatureSystem {
         // plague becomes a plague-proof lineage.
         let immunity = immunity_from_genes(&genes);
 
+        // A ZORG is born filthy: it carries the sickness of the deep from
+        // the moment it opens its eyes. It does not suffer from it, but
+        // everything that stands close to it catches it.
+        let carried = if is_zorg {
+            zorg_carried_disease(self.rng.range(5))
+        } else {
+            Disease::None
+        };
+        let carried_timer = if carried == Disease::None {
+            0
+        } else {
+            Plague::from(carried).duration()
+        };
+
         let creature = Creature {
             id: self.next_id,
             x: x.clamp(2.0, world.w as f32 - 3.0),
@@ -528,6 +724,11 @@ impl CreatureSystem {
             net,
             color,
             species,
+            faction: if species == ZORG_SPECIES {
+                Faction::Zorg
+            } else {
+                Faction::Player
+            },
             generation,
             fitness: 0.0,
             offspring: 0,
@@ -556,8 +757,8 @@ impl CreatureSystem {
             tech_level: 0,
             inventory: starting_inv,
             craft_cooldown: 0,
-            disease: Disease::None,
-            disease_timer: 0,
+            disease: carried,
+            disease_timer: carried_timer,
             immunity: [0; 8],
             belief: Belief::None,
             devotion: 0,
@@ -650,6 +851,7 @@ impl Creature {
             net: self.net.clone_net(),
             color: self.color,
             species: self.species,
+            faction: self.faction,
             generation: self.generation,
             fitness: 0.0,
             offspring: 0,
@@ -678,8 +880,18 @@ impl Creature {
             tech_level: self.tech_level,
             inventory: [0; 16],
             craft_cooldown: 0,
-            disease: Disease::None,
-            disease_timer: 0,
+            // A ZORG young is born with the sickness of the deep already
+            // in it, the same one its mother carried.
+            disease: if self.faction == Faction::Zorg {
+                self.disease
+            } else {
+                Disease::None
+            },
+            disease_timer: if self.faction == Faction::Zorg {
+                self.disease_timer
+            } else {
+                0
+            },
             immunity: [0; 8],
             belief: self.belief,
             devotion: 0,

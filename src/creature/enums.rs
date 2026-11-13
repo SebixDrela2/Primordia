@@ -325,6 +325,9 @@ pub enum Tool {
     Cart = 12,
     Boat = 13,
     Glider = 14,
+    /// A brand of sanctified fire: it burns the corruption of the deep and
+    /// scours the ZORGs, but it is a poor weapon against ordinary flesh.
+    Sunfire = 15,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -409,6 +412,8 @@ pub enum Buildable {
     Granary = 10,
     /// A signal beacon.
     Beacon = 11,
+    /// A ward: a pillar of sanctified fire.
+    Ward = 12,
 }
 
 /// The kinds of structure a colony can raise.
@@ -431,6 +436,10 @@ pub mod structure_kind {
     pub const GRANARY: u8 = 6;
     /// A beacon: the colony sees further from it.
     pub const BEACON: u8 = 7;
+    /// A ward: a pillar of sanctified fire. It burns the ZORGs that come
+    /// near it and scours the corruption out of the ground. Raised inside
+    /// the ZORG cave, it seals the cave: the deep stops breeding.
+    pub const WARD: u8 = 8;
 }
 
 /// A shot in flight (arrows, mana bolts, tower fire).

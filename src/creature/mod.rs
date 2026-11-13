@@ -29,19 +29,22 @@ mod personality;
 mod plague;
 mod predation;
 mod raids;
+mod sanctify;
 mod senses;
 mod speciation;
 mod spells;
 mod succession;
 mod stats;
 mod step;
+mod tech;
 mod technology;
+mod zorg;
 
 use crate::elements::Elem;
 use crate::rng::Rng;
 use crate::world::{World, DIRS4, DIRS8};
 
-pub const INPUTS: usize = 252;
+pub const INPUTS: usize = 264;
 pub const OUTPUTS: usize = 25;
 
 /// The network outputs, in order.
@@ -91,6 +94,13 @@ pub mod energy_cost {
     pub const MOVE: f32 = 0.020;
     /// Shoving through loose debris while moving.
     pub const SHOVE: f32 = 0.35;
+    /// Chewing through solid rock.
+    ///
+    /// Only a ZORG does this: it eats stone and ore, and the tunnels it
+    /// chews are how it comes up into the world. It is slow and it tires
+    /// (the stamina cost is the real limit), but it is cheap: the rock it
+    /// chews is its food as well as its way out.
+    pub const CHEW: f32 = 0.06;
     /// Attacking in melee.
     pub const ATTACK: f32 = 6.0;
     /// Loosing a shot.
@@ -213,6 +223,9 @@ pub struct Creature {
     pub net: Net,
     pub color: [u8; 3],
     pub species: u32,
+    /// Which side of the world this creature belongs to. The ZORGs are the
+    /// deep's own ecology and are hostile to every player species.
+    pub faction: Faction,
     pub generation: u32,
     pub fitness: f32,
     pub offspring: u32,
@@ -306,6 +319,11 @@ pub struct Creature {
     pub resting: bool,
     // Memory (tiny blackboard for learned behavior)
     pub memory: [f32; 8],
+    /// The tech its species knows: the discoveries of the tech tree.
+    ///
+    /// The creature carries its species' knowledge with it, so that the
+    /// effect of a discovery can be read where it is used.
+    pub tech: u32,
     // Diplomacy
     /// Ticks until this creature is willing to make another diplomatic move.
     pub diplo_cooldown: u16,
@@ -439,7 +457,7 @@ pub struct CreatureSystem {
     /// How many disease outbreaks have begun in this run.
     pub plagues_started: u32,
     /// What each species has worked out for itself, by species id.
-    pub discoveries: Vec<(u32, u16)>,
+    pub discoveries: Vec<(u32, u32)>,
 }
 
 struct Vehicle {
@@ -461,6 +479,10 @@ pub enum CreatureGenesis<'a> {
     /// A descendant of a previous run's dominant species. The genome is cloned
     /// with extra mutation so the winning lineage diversifies again.
     Revival(&'a RevivalGenome),
+    /// The first of the ZORGs. They come from the bottom of the caves, and
+    /// they are their own species: they eat rock and poison and they are
+    /// hostile to everything.
+    Zorg,
 }
 
 /// Snapshot of the winning species' best genome, carried into the next run.
@@ -485,8 +507,11 @@ pub use names::*;
 pub use personality::*;
 pub use plague::*;
 pub use predation::*;
+pub use sanctify::*;
 pub(crate) use spells::*;
+pub use tech::*;
 pub use senses::*;
 pub use speciation::*;
 pub use succession::*;
 pub use technology::*;
+pub use zorg::*;
