@@ -50,10 +50,10 @@
   - `src/creature/` brain, enums, names, senses, colony, step, actions,
                    building, bonds, combat, diplomacy, personality,
                    heritage, mating, speciation, plague, predation,
-                   succession, spells, technology, stats, zorg,
+                   succession, spells, technology, tech, stats, zorg,
                    sanctify
   - `src/ui/`      effects, hud, knowledge, minimap, victory, actors,
-                   diplomacy
+                   diplomacy, tech
   - `src/render/`  mod.rs (pixel loop), fx.rs (element effects),
                    light.rs (dynamic light field)
 
@@ -109,6 +109,18 @@
   now. The layers are `[senses + memory, 36, 24, 16, decisions]`, and the
   mutation rate is scaled down to match the extra weights, so a young
   animal is still its mother's breed with a little of its own.
+- The **tech tree** (`src/creature/tech.rs`) has **ten tiers** and holds
+  both kinds of thing: the **tools** a creature carries (the pickaxe, the
+  bow, the sunfire) and the **discoveries** a species knows (how to work
+  steel, how to read the stars). Every entry has a real effect, and the
+  tiers build on each other: nothing in a tier can be worked out or made
+  before the tier below it is finished. A colony can only make what it
+  knows how to make - the sword comes with smithing, the bow with ranged
+  craft, the sunfire with sanctification.
+- The tech tree is on the screen: **T** opens the whole tree (it scrolls
+  with the wheel), and a small panel on the side shows the tier the world
+  has reached, how much of the tree is known, and the latest and the
+  greatest discovery.
 - The life history of a species is its r/K strategy: `Prolific` raises
   three small cheap young and dies young, `Prolonged` raises one
   well-invested-in young and lives long. It changes the litter size, the

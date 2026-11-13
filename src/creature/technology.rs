@@ -493,6 +493,30 @@ impl CreatureSystem {
         out
     }
 
+    /// The most important discovery the world has made.
+    ///
+    /// That is the one furthest up the tree: the light of the surface, if
+    /// anybody has worked it out, matters more than another row of grain.
+    pub fn greatest_discovery(&self) -> Option<Discovery> {
+        let mut best: Option<Discovery> = None;
+        for (_, bits) in self.discoveries.iter() {
+            for d in Discovery::all() {
+                if bits & d.bit() != 0 {
+                    best = match best {
+                        Some(b) if b.tier() >= d.tier() => Some(b),
+                        _ => Some(d),
+                    };
+                }
+            }
+        }
+        best
+    }
+
+    /// The discovery that was made last, and the species that made it.
+    pub fn latest_discovery(&self) -> Option<(Discovery, u32)> {
+        self.last_discovery
+    }
+
     /// Allies share what they know.
     ///
     /// Knowledge travels along a treaty: an allied species can pick up a
@@ -513,6 +537,10 @@ impl CreatureSystem {
             let db = self.species_discoveries(b);
             if da & !db != 0 {
                 self.note_discovery(b, da & !db);
+                // The last thing that was shared is the last thing found.
+                if let Some(d) = Discovery::all().into_iter().find(|d| da & d.bit() != 0) {
+                    self.last_discovery = Some((d, b));
+                }
                 self.diplomacy.log_event(
                     format!("species {} shares its knowledge with species {}", a, b),
                     self.species_color(a),
@@ -599,6 +627,7 @@ impl CreatureSystem {
                 let chance = if lore { 0.34 } else { 0.22 };
                 if self.rng.chance(chance) {
                     self.note_discovery(sp, d.bit());
+                    self.last_discovery = Some((d, sp));
                     let name = c_name(sp);
                     self.diplomacy.log_event(
                         format!("DISCOVERY: the {} work out {}", name, d.name()),
@@ -628,12 +657,33 @@ impl CreatureSystem {
     /// The creature carries its species' discoveries with it, so that the
     /// effects of a discovery can be read where they are used.
     pub(crate) fn refresh_tech(&mut self) {
-        for c in self.list.iter_mut() {
-            let known = self.species_discoveries(c.species);
-            if c.tech != known {
-                c.tech = known;
+        // The knowledge of every species, worked out once.
+        let mut known: Vec<u32> = vec![0; self.next_species as usize + 8];
+        for (sp, d) in self.discoveries.iter() {
+            if (*sp as usize) < known.len() {
+                known[*sp as usize] = *d;
             }
         }
+        for c in self.list.iter_mut() {
+            let k = known.get(c.species as usize).copied().unwrap_or(0);
+            if c.tech != k {
+                c.tech = k;
+            }
+        }
+    }
+
+    /// The best mining any species knows about.
+    ///
+    /// The world lets itself be dug into a little deeper for every species
+    /// that has worked out how to go down.
+    pub fn best_deep_mining(&self) -> u32 {
+        let mut best = 0;
+        for (_, d) in self.discoveries.iter() {
+            if d & discovery_bits::DEEPMINING != 0 {
+                best = best.max(1);
+            }
+        }
+        best
     }
 }
 

@@ -3,7 +3,13 @@ use super::*;
 impl World {
     pub fn step(&mut self) {
         self.frame += 1;
-        self.mine_budget = 3;
+        // How much the world lets itself be dug into this tick. Deep
+        // mining: a colony that knows how to go down digs a bigger hole.
+        self.mine_budget = if self.deep_mining > 0 {
+            (3 + self.deep_mining as i32 * 2)
+        } else {
+            3
+        };
 
         // Process the live cells only. The list is maintained incrementally:
         // cells that change (or move) are queued for the next step, so the

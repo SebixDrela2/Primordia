@@ -423,6 +423,14 @@ impl CreatureSystem {
             return;
         }
         let mut infected: Vec<(usize, Disease)> = Vec::new();
+        // Purge: a colony that has worked out how to scour the filth of
+        // the deep resists what the ZORGs carry.
+        let mut purge = 1.0f32;
+        for (_, d) in self.discoveries.iter() {
+            if *d & discovery_bits::PURGE != 0 {
+                purge *= 0.5;
+            }
+        }
         // One buffer for all the carriers: the neighbours of a carrier are
         // collected first so the world can be borrowed while they are
         // looked at.
@@ -452,7 +460,7 @@ impl CreatureSystem {
                 if catch <= 0.0 {
                     continue;
                 }
-                if self.rng.chance(0.05 * catch) {
+                if self.rng.chance(0.05 * catch * purge) {
                     infected.push((j, disease));
                 }
             }

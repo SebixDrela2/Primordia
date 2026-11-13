@@ -458,6 +458,8 @@ pub struct CreatureSystem {
     pub plagues_started: u32,
     /// What each species has worked out for itself, by species id.
     pub discoveries: Vec<(u32, u32)>,
+    /// The discovery that was made last, and the species that made it.
+    pub last_discovery: Option<(Discovery, u32)>,
 }
 
 struct Vehicle {

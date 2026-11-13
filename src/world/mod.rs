@@ -373,6 +373,11 @@ pub struct World {
     /// deep can breed no more of them. This is the only way a run can
     /// actually end against the ZORGs.
     pub zorg_cave_sealed: bool,
+    /// How much deeper the colonies are digging.
+    ///
+    /// The best mining any species knows about, as a number of extra cells
+    /// the world lets itself be dug into in a tick.
+    pub deep_mining: u32,
 }
 
 

@@ -139,6 +139,14 @@ async fn main() {
     {
         ui.diplomacy_open = true;
     }
+    // PRIMORDIA_PANEL=tech opens the tech tree straight away.
+    if std::env::var("PRIMORDIA_PANEL")
+        .ok()
+        .as_deref()
+        .map_or(false, |p| p.eq_ignore_ascii_case("tech"))
+    {
+        ui.tech_open = true;
+    }
     // PRIMORDIA_SNAPSHOT=out.png writes a picture of the game after
     // PRIMORDIA_SNAPSHOT_AFTER seconds and closes the window.
     let snapshot = std::env::var("PRIMORDIA_SNAPSHOT").ok();
@@ -251,6 +259,11 @@ async fn main() {
             ui.knowledge_open = !ui.knowledge_open;
         }
 
+        // T: toggle the tech tree window
+        if is_key_pressed(KeyCode::T) {
+            ui.tech_open = !ui.tech_open;
+        }
+
         // G: toggle the diplomacy panel
         if is_key_pressed(KeyCode::G) {
             ui.diplomacy_open = !ui.diplomacy_open;
@@ -276,10 +289,13 @@ async fn main() {
         // Scroll wheel: zoom in/out around the mouse cursor. Some platforms
         // report large/accumulated wheel deltas (e.g. ±120), so normalize each
         // frame to a single notch and apply a gentle step.
+        //
+        // The wheel over the tech tree scrolls the tree instead of zooming.
         let (_, wheel_y) = mouse_wheel();
-        if wheel_y != 0.0 {
+        let (mx, my) = mouse_position();
+        let over_tech = ui.tech_open && tech_tree_under_pointer(mx, my);
+        if wheel_y != 0.0 && !over_tech {
             let direction = wheel_y.signum();
-            let (mx, my) = mouse_position();
             let old_sx = screen_width() / view_w;
             let old_sy = screen_height() / view_h;
             let anchor_x = cam_x + mx / old_sx;
@@ -711,6 +727,12 @@ async fn main() {
         if ui.knowledge_open {
             draw_knowledge_window(&world, &creatures, &ui);
         }
+
+        // The tech tree: the whole tree, and where the world has got to.
+        if ui.tech_open {
+            draw_tech_tree(&creatures, &mut ui);
+        }
+        draw_tech_panel(&creatures);
 
         // Victory / extinction overlay sits on top of everything.
         if let Some(v) = &victory {

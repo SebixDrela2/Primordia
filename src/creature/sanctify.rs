@@ -56,6 +56,17 @@ pub fn sunfire_multiplier(target_is_zorg: bool) -> f32 {
     }
 }
 
+/// The damage a Sunfire does, with the craft of the colony taken into
+/// account.
+pub fn sunfire_damage(tech: u32, target_is_zorg: bool) -> f32 {
+    let mut mult = sunfire_multiplier(target_is_zorg);
+    // Sunfirecraft: the fire is made to burn.
+    if tech & discovery_bits::SUNFIRECRAFT != 0 {
+        mult *= 1.3;
+    }
+    mult
+}
+
 /// Is this cell part of the corruption of the deep?
 ///
 /// The things the ZORGs leave behind them: the virus, the bacteria, the
@@ -81,6 +92,13 @@ impl CreatureSystem {
         if self.tick % 5 != 0 {
             return;
         }
+        // Wardcraft: the fire of a ward reaches further.
+        let mut radius = WARD_RADIUS;
+        for (_, d) in self.discoveries.iter() {
+            if *d & discovery_bits::WARDCRAFT != 0 {
+                radius *= 1.5;
+            }
+        }
         let wards: Vec<(f32, f32, u32)> = self
             .structures
             .iter()
@@ -95,7 +113,7 @@ impl CreatureSystem {
         for (wx, wy, species) in wards.iter() {
             // The ZORGs inside the light of the ward.
             let mut near: Vec<usize> = Vec::new();
-            grid.near(*wx, *wy, WARD_RADIUS as usize, |idx| near.push(idx as usize));
+            grid.near(*wx, *wy, radius as usize, |idx| near.push(idx as usize));
             for j in near {
                 if j >= self.list.len() {
                     continue;
@@ -105,11 +123,11 @@ impl CreatureSystem {
                     continue;
                 }
                 let d = ((c.x - wx).powi(2) + (c.y - wy).powi(2)).sqrt();
-                if d > WARD_RADIUS {
+                if d > radius {
                     continue;
                 }
                 // The nearer it stands to the fire, the harder it burns.
-                let burn = WARD_BURN * (1.0 - d / WARD_RADIUS);
+                let burn = WARD_BURN * (1.0 - d / radius);
                 self.list[j].health -= burn;
             }
             // A ward belongs to a colony: its owners are heartened by it.
@@ -128,14 +146,14 @@ impl CreatureSystem {
         // burning: the ground does not clean itself in a second.
         if self.tick % 20 == 0 {
             for (wx, wy, _) in wards.iter() {
-                let r = WARD_RADIUS as i32;
+                let r = radius as i32;
                 let cx = *wx as i32;
                 let cy = *wy as i32;
                 for y in (cy - r)..(cy + r) {
                     for x in (cx - r)..(cx + r) {
                         let dx = (x - cx) as f32;
                         let dy = (y - cy) as f32;
-                        if dx * dx + dy * dy > WARD_RADIUS * WARD_RADIUS {
+                        if dx * dx + dy * dy > radius * radius {
                             continue;
                         }
                         if is_corruption(world.get(x, y)) {

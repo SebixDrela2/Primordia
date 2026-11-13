@@ -37,25 +37,10 @@ pub(crate) fn act_steer(
                 // pooled on its floor; a fed one goes up through the rock
                 // after the colonies that live in the light.
                 if c.faction == Faction::Zorg {
-                    let hx = c.base_x - c.x;
-                    let hy = c.base_y - c.y;
-                    let hd = (hx * hx + hy * hy).sqrt().max(0.1);
-                    // It needs to feed when it is hungry, and it needs to
-                    // feed when it is tired: the rock of the deep is its
-                    // bread as well as its feast.
-                    let needs_food = c.hunger >= 45.0 || c.energy < c.max_energy * 0.45;
-                    if needs_food {
-                        // It goes home, to the larder on the floor of the
-                        // cave.
-                        steer_x += hx / hd * 1.8;
-                        steer_y += hy / hd * 1.8;
-                        speed_mult_extra = speed_mult_extra.max(1.1);
-                    } else {
-                        // It has eaten: it pushes up through the rock
-                        // towards the world.
-                        steer_y -= 0.55;
-                        speed_mult_extra = speed_mult_extra.max(1.1);
-                    }
+                    let (zx, zy, zs) = zorg_steer(c);
+                    steer_x += zx;
+                    steer_y += zy;
+                    speed_mult_extra = speed_mult_extra.max(zs);
                 }
 
                 // ---- The volcano ----
@@ -377,15 +362,7 @@ pub(crate) fn act_move(world: &mut World, c: &mut Creature, behaviour_speed: f32
                         // does not eat its way down through the floor of
                         // its own cave, though - that would swallow the
                         // larder whole.
-                        let digging_up = c.vy < 0.0;
-                        let n = world.zorg_nutrition_table[here as usize];
-                        if digging_up
-                            && n > 0.0
-                            && (c.hunger > 20.0 || c.energy < c.max_energy * 0.5)
-                        {
-                            c.energy = (c.energy + n * 4.0).min(c.max_energy);
-                            c.hunger = (c.hunger - n * 4.0).max(0.0);
-                        }
+                        zorg_feed_on_rock(c, here, c.vy < 0.0);
                         ok = true;
                     }
                 }
@@ -457,44 +434,18 @@ pub(crate) fn act_eat(world: &mut World, c: &mut Creature, out: &[f32]) -> bool 
                     } else {
                         2
                     };
+                    // Geodesy: the colony knows where the food is, and
+                    // finds it further off.
+                    let radius = if c.knows_tech(Discovery::Geodesy) {
+                        (radius as f32 * 1.3) as i32
+                    } else {
+                        radius
+                    };
                     if c.faction == Faction::Zorg {
                         // A ZORG has its own ecology: it eats the rock and
                         // the poison of the deep, and nothing it eats is
-                        // ever bad for it. It chews its way to the food,
-                        // so it can reach a long way.
-                        //
-                        // It only eats when it needs to, though. A ZORG
-                        // that eats every step would strip the cave bare
-                        // in a few ticks and then starve in the hole it
-                        // made.
-                        //
-                        // It feeds on hunger *and* on tiredness: the rock
-                        // of the deep is its bread as well as its feast,
-                        // and a ZORG that has spent the night chewing its
-                        // way up through the rock needs the bread.
-                        if c.hunger < 15.0 && c.energy > c.max_energy * 0.55 {
-                            return false;
-                        }
-                        // It eats what it can reach. A ZORG that could eat
-                        // the walls of its own cave from across it would
-                        // hollow the cave out and then starve in the hole.
-                        let zradius = if hungry { 3 } else { 2 };
-                        if let Some((fx, fy)) = world.find_zorg_food(gx, gy, zradius) {
-                            if let Some((nutrition, toxicity)) = world.eat_zorg(fx, fy) {
-                                c.energy = (c.energy + nutrition * 4.0).min(c.max_energy);
-                                c.hunger = (c.hunger - nutrition * 4.0).max(0.0);
-                                // The acid of the deep is a feast to a ZORG:
-                                // it heals it as well as feeding it.
-                                let e = world.get(fx, fy);
-                                if crate::creature::zorg_nutrition(e) >= 40.0 {
-                                    c.health = (c.health + 6.0).min(100.0);
-                                }
-                                if toxicity > 0.0 {
-                                    c.health -= toxicity * 0.25;
-                                }
-                                ate_something = true;
-                            }
-                        }
+                        // ever bad for it.
+                        ate_something = zorg_act_eat(world, c, hungry);
                     } else if let Some((fx, fy)) = world.find_food(gx, gy, radius) {
                         let eaten_elem = world.get(fx, fy);
                         if let Some((nutrition, toxicity)) = world.eat(fx, fy) {
@@ -504,7 +455,12 @@ pub(crate) fn act_eat(world: &mut World, c: &mut Creature, out: &[f32]) -> bool 
                             //
                             // A colony that has hunted for generations gets
                             // more out of the same carcass.
-                            let nutrition = nutrition * c.hunting_bonus();
+                            let mut nutrition = nutrition * c.hunting_bonus();
+                            // Herbalism: the colony knows which plants are
+                            // worth eating.
+                            if c.knows_tech(Discovery::Herbalism) && eaten_elem.is_organic() {
+                                nutrition *= 1.15;
+                            }
                             c.energy = (c.energy + nutrition * 4.0).min(c.max_energy);
                             c.hunger = (c.hunger - nutrition * 4.0).max(0.0);
                             if eaten_elem == Elem::Water {
@@ -560,7 +516,17 @@ pub(crate) fn act_eat(world: &mut World, c: &mut Creature, out: &[f32]) -> bool 
                                 _ => {}
                             }
                             if toxicity > 0.0 {
-                                c.health -= toxicity * 0.25;
+                                // Antitoxins: the colony can hold its own
+                                // against poison. Deepdiving: the deep does
+                                // no harm at all.
+                                let mut harm = 0.25;
+                                if c.knows_tech(Discovery::Antitoxins) {
+                                    harm *= 0.5;
+                                }
+                                if c.knows_tech(Discovery::Deepdiving) {
+                                    harm = 0.0;
+                                }
+                                c.health -= toxicity * harm;
                             }
                             if c.energy > c.max_energy * 0.75 {
                                 c.health = (c.health + 0.5).min(100.0);
@@ -699,6 +665,16 @@ pub(crate) fn act_craft(
                 let knows_ranged = discoveries & discovery_bits::RANGED != 0;
                 let knows_medicine = discoveries & discovery_bits::MEDICINE != 0;
                 let knows_sanctify = discoveries & discovery_bits::SANCTIFY != 0;
+                let knows_siegecraft = discoveries & discovery_bits::SIEGECRAFT != 0;
+                // What the colony knows how to make. The sword comes with
+                // smithing, the bow with ranged craft, and so on: a colony
+                // cannot make a thing it has not worked out how to make.
+                let can_make = |t: Tool| -> bool {
+                    match tool_gate(t) {
+                        None => true,
+                        Some(d) => c.tech & d.bit() != 0,
+                    }
+                };
                 let nn_wants_craft = out[6] > 0.25;
                 let exploratory_craft = c.tool == Tool::None && c.craft_cooldown == 0
                     && (c.age * 13 + c.id * 17) % 25 < 1;
@@ -711,6 +687,7 @@ pub(crate) fn act_craft(
                 let tool_before = c.tool;
                 let bombs_before = c.bombs;
                 let salves_before = c.salves;
+                let inv_before = c.inventory;
                 if wants_craft {
                     // Sunfire: 1 crystal + 1 wood (tech 1).
                     //
@@ -851,7 +828,11 @@ pub(crate) fn act_craft(
                         c.craft_cooldown = 70;
                     }
                     // Bomb: 3 gunpowder + 2 wood - thrown at rivals
-                    else if c.bombs < 3 && c.inventory[9] >= 3 && c.inventory[6] >= 2 {
+                    else if c.bombs < 3
+                        && knows_siegecraft
+                        && c.inventory[9] >= 3
+                        && c.inventory[6] >= 2
+                    {
                         c.inventory[9] = c.inventory[9].saturating_sub(3);
                         c.inventory[6] = c.inventory[6].saturating_sub(2);
                         c.bombs += 1;
@@ -862,8 +843,8 @@ pub(crate) fn act_craft(
                     // from plants alone.
                     else if c.salves < 3
                         && c.inventory[9] == 0
-                        && (knows_medicine
-                            || (c.inventory[6] >= 2 && c.inventory[4] >= 1))
+                        && knows_medicine
+                        && (c.inventory[6] >= 2 && c.inventory[4] >= 1)
                     {
                         c.inventory[6] = c.inventory[6].saturating_sub(2);
                         if !knows_medicine {
@@ -883,6 +864,19 @@ pub(crate) fn act_craft(
                     // puts the creature on a short cooldown so it stops
                     // hammering the same impossible recipe.
                     else {
+                        c.craft_cooldown = 25;
+                    }
+
+                    // ---- What the colony knows how to make ----
+                    //
+                    // A colony cannot make a thing it has not worked out
+                    // how to make: the sword comes with smithing, the bow
+                    // with ranged craft, the sunfire with sanctification.
+                    // If it tries, it puts the tools down again and keeps
+                    // its materials.
+                    if c.tool != tool_before && !can_make(c.tool) {
+                        c.tool = tool_before;
+                        c.inventory = inv_before;
                         c.craft_cooldown = 25;
                     }
                 }
@@ -1018,6 +1012,17 @@ pub(crate) fn act_combat(
                     Tool::Staff => 24.0,
                     _ => 0.0,
                 };
+                // Ranged craft: the bow flies further. Siegecraft: the
+                // colony's shots fly further and hit harder.
+                let mut ranged_range = ranged_range;
+                let mut shot_damage = 1.0f32;
+                if c.knows_tech(Discovery::Ranged) && c.tool == Tool::Bow {
+                    ranged_range *= 1.25;
+                }
+                if c.knows_tech(Discovery::Siegecraft) {
+                    ranged_range *= 1.25;
+                    shot_damage = 1.25;
+                }
                 let wants_shoot = out[14] > 0.3 || (out[4] > 0.6 && c.role == Role::Soldier);
                 if ranged_range > 0.0 && wants_shoot && c.fire_cooldown == 0 && c.energy > 40.0 {
                     let mut target: Option<(f32, f32, f32)> = None;
@@ -1041,9 +1046,9 @@ pub(crate) fn act_combat(
                         let inv = 1.0 / d.max(0.001);
                         let (ux, uy) = (dx * inv, dy * inv);
                         let (speed, dmg, life, elem) = if c.tool == Tool::Bow {
-                            (3.2, 26.0, 34, Elem::Wood)
+                            (3.2, 26.0 * shot_damage, 34, Elem::Wood)
                         } else {
-                            (2.6, 34.0, 30, Elem::Mana)
+                            (2.6, 34.0 * shot_damage, 30, Elem::Mana)
                         };
                         shots.push(Projectile {
                             x: c.x,

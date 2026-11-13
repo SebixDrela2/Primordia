@@ -458,19 +458,42 @@ impl Creature {
         } else {
             1.0
         };
-        base * hardy * hollow * self.stage.health_factor()
+        // Steel armour, and the steel that goes into the body: a colony that
+        // has worked out metallurgy is a hardier one.
+        let steel = if self.knows_tech(Discovery::Metallurgy) { 1.2 } else { 1.0 };
+        base * hardy * hollow * steel * self.stage.health_factor()
+    }
+
+    /// Does the species of this creature know this discovery?
+    ///
+    /// The creature carries the knowledge of its species with it, so that
+    /// the effect of a discovery can be read where it is used.
+    pub fn knows_tech(&self, d: Discovery) -> bool {
+        self.tech & d.bit() != 0
+    }
+
+    /// The names of the discoveries this creature's species knows.
+    pub fn tech_name(&self) -> String {
+        crate::creature::discovery_list(self.tech)
+            .iter()
+            .map(|d| d.name())
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     /// How much a salve heals.
     ///
     /// A colony that has worked out medicine heals more from the same
-    /// salve.
+    /// salve, and a colony that has worked out alchemy heals more still.
     pub fn salve_power(&self, discoveries: u32) -> f32 {
+        let mut power = 1.0;
         if discoveries & discovery_bits::MEDICINE != 0 {
-            1.5
-        } else {
-            1.0
+            power = 1.5;
         }
+        if discoveries & discovery_bits::ALCHEMY != 0 {
+            power *= 1.2;
+        }
+        power
     }
 
     /// How much this creature can carry.
@@ -503,8 +526,15 @@ impl Creature {
     }
 
     /// How well this creature takes a hit.
+    ///
+    /// A colony that has worked out tactics fights as one: it covers each
+    /// other, and less of the blow lands.
     pub fn damage_taken(&self, amount: f32) -> f32 {
-        amount * self.affinity.armor_factor()
+        let mut dmg = amount * self.affinity.armor_factor();
+        if self.knows_tech(Discovery::Tactics) {
+            dmg *= 0.85;
+        }
+        dmg
     }
 
     /// Whether this creature knows a practice.

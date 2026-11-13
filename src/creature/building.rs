@@ -57,6 +57,20 @@ pub(crate) fn act_build(
                     let mut place_x = gx;
                     let mut place_y = gy;
 
+                    // Architecture: a colony that knows how to build well
+                    // pays less for what it raises.
+                    let discount = if c.knows_tech(Discovery::Architecture) {
+                        0.7
+                    } else {
+                        1.0
+                    };
+                    // Masonry: what it builds stands up longer.
+                    let sturdy = if c.knows_tech(Discovery::Masonry) {
+                        1.4
+                    } else {
+                        1.0
+                    };
+
                     // Choose structure type based on tech/carried
                     let want_wall = c.inventory[0] >= 3 && c.tech_level < 2;
                     let want_door = c.inventory[0] >= 5 && c.role == Role::Builder;
@@ -107,8 +121,8 @@ pub(crate) fn act_build(
                         .count();
                     let want_ward = sanctified
                         && c.tech_level >= 2
-                        && c.inventory[4] >= 2
-                        && c.inventory[0] >= 6
+                        && c.inventory[4] >= (2.0 * discount) as u16
+                        && c.inventory[0] >= (6.0 * discount) as u16
                         && wards_built < 3;
 
                     // A hungry colony prefers a farm to a wall: a farm is
@@ -246,7 +260,7 @@ pub(crate) fn act_build(
                         }
                         if chosen == Buildable::Farm {
                             // A farm costs 4 wood to build.
-                            c.inventory[6] = c.inventory[6].saturating_sub(4);
+                            c.inventory[6] = c.inventory[6].saturating_sub((4 as f32 * discount) as u16);
                             // The plot is recorded so the colony knows how
                             // many it has, and so the cap below applies.
                             structures.push(Structure {
@@ -254,7 +268,7 @@ pub(crate) fn act_build(
                                 y: place_y as f32,
                                 species: c.species,
                                 color: c.team_color,
-                                hp: 100.0,
+                                hp: 100.0 * sturdy,
                                 cooldown: 0,
                                 armed: false,
                                 kind: 3,
@@ -267,14 +281,14 @@ pub(crate) fn act_build(
                                 .iter()
                                 .filter(|s| s.species == c.species && s.kind == 1)
                                 .count();
-                            c.inventory[6] = c.inventory[6].saturating_sub(8);
+                            c.inventory[6] = c.inventory[6].saturating_sub((8 as f32 * discount) as u16);
                             if mine < 6 {
                                 structures.push(Structure {
                                     x: place_x as f32,
                                     y: place_y as f32,
                                     species: c.species,
                                     color: c.team_color,
-                                    hp: 120.0,
+                                    hp: 120.0 * sturdy,
                                     cooldown: 40,
                                     armed: true,
                                     kind: 1,
@@ -283,13 +297,13 @@ pub(crate) fn act_build(
                         } else if chosen == Buildable::Temple {
                             // Temples rally the colony: nearby members recover
                             // faster and keep their spirits up.
-                            c.inventory[4] = c.inventory[4].saturating_sub(2);
+                            c.inventory[4] = c.inventory[4].saturating_sub((2 as f32 * discount) as u16);
                             structures.push(Structure {
                                 x: place_x as f32,
                                 y: place_y as f32,
                                 species: c.species,
                                 color: c.team_color,
-                                hp: 200.0,
+                                hp: 200.0 * sturdy,
                                 cooldown: 0,
                                 armed: false,
                                 kind: structure_kind::TEMPLE,
@@ -318,10 +332,10 @@ pub(crate) fn act_build(
                                 }
                                 _ => (structure_kind::PLAIN, 0, 0, 0, 0, 100.0),
                             };
-                            c.inventory[6] = c.inventory[6].saturating_sub(wood);
-                            c.inventory[1] = c.inventory[1].saturating_sub(metal);
-                            c.inventory[0] = c.inventory[0].saturating_sub(stone);
-                            c.inventory[4] = c.inventory[4].saturating_sub(crystal);
+                            c.inventory[6] = c.inventory[6].saturating_sub((wood as f32 * discount) as u16);
+                            c.inventory[1] = c.inventory[1].saturating_sub((metal as f32 * discount) as u16);
+                            c.inventory[0] = c.inventory[0].saturating_sub((stone as f32 * discount) as u16);
+                            c.inventory[4] = c.inventory[4].saturating_sub((crystal as f32 * discount) as u16);
                             structures.push(Structure {
                                 x: place_x as f32,
                                 y: place_y as f32,

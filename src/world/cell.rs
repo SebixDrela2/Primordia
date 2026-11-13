@@ -99,6 +99,7 @@ impl World {
             landmarks: Vec::new(),
             zorg_cave: None,
             zorg_cave_sealed: false,
+            deep_mining: 0,
         }
     }
 

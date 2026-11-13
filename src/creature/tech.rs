@@ -17,7 +17,7 @@
 use super::*;
 
 /// What kind of thing an entry in the tree is.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TechKind {
     /// A tool a creature carries.
     Tool(Tool),
@@ -88,32 +88,31 @@ pub fn tier_blurb(tier: u8) -> &'static str {
 
 /// The whole tech tree, tier by tier.
 pub fn tech_tree() -> Vec<TechEntry> {
-    use TechKind::*;
     vec![
         // ---- Tier 1: the first hands ----
         TechEntry {
-            kind: Tool(Tool::Pickaxe),
+            kind: TechKind::Tool(Tool::Pickaxe),
             tier: 1,
             name: "Pickaxe",
             effect: "breaks the rock and the ore",
             cost: "5 stone + 2 wood",
         },
         TechEntry {
-            kind: Tool(Tool::Spear),
+            kind: TechKind::Tool(Tool::Spear),
             tier: 1,
             name: "Spear",
             effect: "a reach and a point",
             cost: "2 wood + 1 stone",
         },
         TechEntry {
-            kind: Discovery(Discovery::Husbandry),
+            kind: TechKind::Discovery(Discovery::Husbandry),
             tier: 1,
             name: "Husbandry",
             effect: "the colony eats better",
             cost: "farming",
         },
         TechEntry {
-            kind: Discovery(Discovery::Pottery),
+            kind: TechKind::Discovery(Discovery::Pottery),
             tier: 1,
             name: "Pottery",
             effect: "hunger grows 15% slower",
@@ -121,28 +120,28 @@ pub fn tech_tree() -> Vec<TechEntry> {
         },
         // ---- Tier 2: the craft ----
         TechEntry {
-            kind: Tool(Tool::Sword),
+            kind: TechKind::Tool(Tool::Sword),
             tier: 2,
             name: "Sword",
             effect: "+35 melee damage",
             cost: "3 metal + 2 wood",
         },
         TechEntry {
-            kind: Tool(Tool::Hammer),
+            kind: TechKind::Tool(Tool::Hammer),
             tier: 2,
             name: "Hammer",
             effect: "raises buildings faster",
             cost: "5 stone + 3 metal",
         },
         TechEntry {
-            kind: Discovery(Discovery::Smithing),
+            kind: TechKind::Discovery(Discovery::Smithing),
             tier: 2,
             name: "Smithing",
             effect: "+30% melee damage",
             cost: "crafting and mining",
         },
         TechEntry {
-            kind: Discovery(Discovery::Ranged),
+            kind: TechKind::Discovery(Discovery::Ranged),
             tier: 2,
             name: "Ranged Craft",
             effect: "a bow from wood alone, and it flies 25% further",
@@ -150,28 +149,28 @@ pub fn tech_tree() -> Vec<TechEntry> {
         },
         // ---- Tier 3: the workshop ----
         TechEntry {
-            kind: Tool(Tool::Bow),
+            kind: TechKind::Tool(Tool::Bow),
             tier: 3,
             name: "Bow",
             effect: "a shot from a distance",
             cost: "3 wood",
         },
         TechEntry {
-            kind: Tool(Tool::Shield),
+            kind: TechKind::Tool(Tool::Shield),
             tier: 3,
             name: "Shield",
             effect: "15% less damage taken",
             cost: "3 wood + 2 metal",
         },
         TechEntry {
-            kind: Discovery(Discovery::Architecture),
+            kind: TechKind::Discovery(Discovery::Architecture),
             tier: 3,
             name: "Architecture",
             effect: "buildings cost 30% less",
             cost: "building",
         },
         TechEntry {
-            kind: Discovery(Discovery::Masonry),
+            kind: TechKind::Discovery(Discovery::Masonry),
             tier: 3,
             name: "Masonry",
             effect: "buildings stand 40% longer",
@@ -179,28 +178,28 @@ pub fn tech_tree() -> Vec<TechEntry> {
         },
         // ---- Tier 4: the trade ----
         TechEntry {
-            kind: Tool(Tool::Cart),
+            kind: TechKind::Tool(Tool::Cart),
             tier: 4,
             name: "Cart",
             effect: "carries twice as much",
             cost: "5 wood + 3 metal",
         },
         TechEntry {
-            kind: Tool(Tool::Backpack),
+            kind: TechKind::Tool(Tool::Backpack),
             tier: 4,
             name: "Backpack",
             effect: "carries half again as much",
             cost: "4 leather + 2 wood",
         },
         TechEntry {
-            kind: Discovery(Discovery::Commerce),
+            kind: TechKind::Discovery(Discovery::Commerce),
             tier: 4,
             name: "Commerce",
             effect: "trade brings in 50% more",
             cost: "trade and ritual",
         },
         TechEntry {
-            kind: Discovery(Discovery::Cartography),
+            kind: TechKind::Discovery(Discovery::Cartography),
             tier: 4,
             name: "Cartography",
             effect: "+20% sight",
@@ -208,28 +207,28 @@ pub fn tech_tree() -> Vec<TechEntry> {
         },
         // ---- Tier 5: the medicine ----
         TechEntry {
-            kind: Craft(Consumable::Salve),
+            kind: TechKind::Craft(Consumable::Salve),
             tier: 5,
             name: "Salve",
             effect: "heals a wounded colonymate",
             cost: "2 plant + 1 crystal",
         },
         TechEntry {
-            kind: Discovery(Discovery::Medicine),
+            kind: TechKind::Discovery(Discovery::Medicine),
             tier: 5,
             name: "Medicine",
             effect: "salves heal 40% more",
             cost: "crafting and ritual",
         },
         TechEntry {
-            kind: Discovery(Discovery::Herbalism),
+            kind: TechKind::Discovery(Discovery::Herbalism),
             tier: 5,
             name: "Herbalism",
             effect: "food is worth 15% more",
             cost: "farming and ritual",
         },
         TechEntry {
-            kind: Discovery(Discovery::Surgery),
+            kind: TechKind::Discovery(Discovery::Surgery),
             tier: 5,
             name: "Surgery",
             effect: "wounds mend 40% faster",
@@ -237,35 +236,35 @@ pub fn tech_tree() -> Vec<TechEntry> {
         },
         // ---- Tier 6: the mine ----
         TechEntry {
-            kind: Tool(Tool::Drill),
+            kind: TechKind::Tool(Tool::Drill),
             tier: 6,
             name: "Drill",
             effect: "digs twice as fast",
             cost: "3 copper + 2 metal",
         },
         TechEntry {
-            kind: Tool(Tool::Scanner),
+            kind: TechKind::Tool(Tool::Scanner),
             tier: 6,
             name: "Scanner",
             effect: "sees twice as far",
             cost: "2 gold + 1 crystal",
         },
         TechEntry {
-            kind: Discovery(Discovery::DeepMining),
+            kind: TechKind::Discovery(Discovery::DeepMining),
             tier: 6,
             name: "Deep Mining",
             effect: "the colony digs 50% deeper",
             cost: "mining and crafting",
         },
         TechEntry {
-            kind: Discovery(Discovery::Geodesy),
+            kind: TechKind::Discovery(Discovery::Geodesy),
             tier: 6,
             name: "Geodesy",
             effect: "the colony finds food 30% further off",
             cost: "astronomy and sanctuary",
         },
         TechEntry {
-            kind: Discovery(Discovery::Smelting),
+            kind: TechKind::Discovery(Discovery::Smelting),
             tier: 6,
             name: "Smelting",
             effect: "+25% melee damage",
@@ -273,35 +272,35 @@ pub fn tech_tree() -> Vec<TechEntry> {
         },
         // ---- Tier 7: the stars ----
         TechEntry {
-            kind: Tool(Tool::Staff),
+            kind: TechKind::Tool(Tool::Staff),
             tier: 7,
             name: "Staff",
             effect: "casts the old spells",
             cost: "1 wood + 1 crystal",
         },
         TechEntry {
-            kind: Tool(Tool::Amulet),
+            kind: TechKind::Tool(Tool::Amulet),
             tier: 7,
             name: "Amulet",
             effect: "+40% mana",
             cost: "1 gold + 1 gem",
         },
         TechEntry {
-            kind: Discovery(Discovery::Astronomy),
+            kind: TechKind::Discovery(Discovery::Astronomy),
             tier: 7,
             name: "Astronomy",
             effect: "+40% sight",
             cost: "ritual",
         },
         TechEntry {
-            kind: Discovery(Discovery::Sanctuary),
+            kind: TechKind::Discovery(Discovery::Sanctuary),
             tier: 7,
             name: "Sanctuary",
             effect: "mana comes 50% faster",
             cost: "ritual",
         },
         TechEntry {
-            kind: Discovery(Discovery::Navigation),
+            kind: TechKind::Discovery(Discovery::Navigation),
             tier: 7,
             name: "Navigation",
             effect: "the colony moves 15% faster",
@@ -309,35 +308,35 @@ pub fn tech_tree() -> Vec<TechEntry> {
         },
         // ---- Tier 8: the light ----
         TechEntry {
-            kind: Tool(Tool::Sunfire),
+            kind: TechKind::Tool(Tool::Sunfire),
             tier: 8,
             name: "Sunfire",
             effect: "scours the ZORGs; a poor weapon against ordinary flesh",
             cost: "1 crystal + 1 gold + 1 wood",
         },
         TechEntry {
-            kind: Discovery(Discovery::Sanctification),
+            kind: TechKind::Discovery(Discovery::Sanctification),
             tier: 8,
             name: "Sanctification",
             effect: "the light of the surface, made into a weapon",
             cost: "crafting and ritual",
         },
         TechEntry {
-            kind: Discovery(Discovery::Wardcraft),
+            kind: TechKind::Discovery(Discovery::Wardcraft),
             tier: 8,
             name: "Wardcraft",
             effect: "wards burn 50% wider",
             cost: "building and sanctuary",
         },
         TechEntry {
-            kind: Discovery(Discovery::Antitoxins),
+            kind: TechKind::Discovery(Discovery::Antitoxins),
             tier: 8,
             name: "Antitoxins",
             effect: "poison does half the harm",
             cost: "crafting and ritual",
         },
         TechEntry {
-            kind: Discovery(Discovery::Purge),
+            kind: TechKind::Discovery(Discovery::Purge),
             tier: 8,
             name: "Purge",
             effect: "the sickness of the deep is resisted",
@@ -345,42 +344,42 @@ pub fn tech_tree() -> Vec<TechEntry> {
         },
         // ---- Tier 9: the war ----
         TechEntry {
-            kind: Craft(Consumable::Bomb),
+            kind: TechKind::Craft(Consumable::Bomb),
             tier: 9,
             name: "Bomb",
             effect: "thrown at a rival",
             cost: "3 gunpowder + 2 wood",
         },
         TechEntry {
-            kind: Discovery(Discovery::Siegecraft),
+            kind: TechKind::Discovery(Discovery::Siegecraft),
             tier: 9,
             name: "Siegecraft",
             effect: "shots fly 25% further and hit 25% harder",
             cost: "ranged craft and warfare",
         },
         TechEntry {
-            kind: Discovery(Discovery::Tactics),
+            kind: TechKind::Discovery(Discovery::Tactics),
             tier: 9,
             name: "Tactics",
             effect: "15% less damage taken",
             cost: "warfare and ritual",
         },
         TechEntry {
-            kind: Discovery(Discovery::Ironwill),
+            kind: TechKind::Discovery(Discovery::Ironwill),
             tier: 9,
             name: "Ironwill",
             effect: "sickness does half the harm",
             cost: "warfare and farming",
         },
         TechEntry {
-            kind: Discovery(Discovery::Sunfirecraft),
+            kind: TechKind::Discovery(Discovery::Sunfirecraft),
             tier: 9,
             name: "Sunfirecraft",
             effect: "the sunfire burns 30% harder",
             cost: "sanctification and crafting",
         },
         TechEntry {
-            kind: Discovery(Discovery::Radiance),
+            kind: TechKind::Discovery(Discovery::Radiance),
             tier: 9,
             name: "Radiance",
             effect: "+40% mana",
@@ -388,42 +387,42 @@ pub fn tech_tree() -> Vec<TechEntry> {
         },
         // ---- Tier 10: the deep ----
         TechEntry {
-            kind: Tool(Tool::Boat),
+            kind: TechKind::Tool(Tool::Boat),
             tier: 10,
             name: "Boat",
             effect: "crosses the water",
             cost: "6 wood",
         },
         TechEntry {
-            kind: Tool(Tool::Glider),
+            kind: TechKind::Tool(Tool::Glider),
             tier: 10,
             name: "Glider",
             effect: "crosses the sky",
             cost: "4 wood + 2 cloth",
         },
         TechEntry {
-            kind: Discovery(Discovery::Metallurgy),
+            kind: TechKind::Discovery(Discovery::Metallurgy),
             tier: 10,
             name: "Metallurgy",
             effect: "+20% health",
             cost: "crafting and mining",
         },
         TechEntry {
-            kind: Discovery(Discovery::Alchemy),
+            kind: TechKind::Discovery(Discovery::Alchemy),
             tier: 10,
             name: "Alchemy",
             effect: "wounds mend 30% faster, salves 20% more",
             cost: "crafting and ritual",
         },
         TechEntry {
-            kind: Discovery(Discovery::Deepdiving),
+            kind: TechKind::Discovery(Discovery::Deepdiving),
             tier: 10,
             name: "Deepdiving",
             effect: "the deep does no harm",
             cost: "navigation and sanctuary",
         },
         TechEntry {
-            kind: Discovery(Discovery::Dominion),
+            kind: TechKind::Discovery(Discovery::Dominion),
             tier: 10,
             name: "Dominion",
             effect: "the deep is closed: it breeds far more slowly",
@@ -435,18 +434,18 @@ pub fn tech_tree() -> Vec<TechEntry> {
 /// The discovery that has to be known before a tool can be made.
 pub fn tool_gate(tool: Tool) -> Option<Discovery> {
     Some(match tool {
-        Pickaxe | Spear => return None,
-        Sword | Hammer => Discovery::Smithing,
-        Bow => Discovery::Ranged,
-        Shield => Discovery::Masonry,
-        Cart => Discovery::Architecture,
-        Backpack => Discovery::Masonry,
-        Drill => Discovery::Metallurgy,
-        Scanner => Discovery::Cartography,
-        Staff => Discovery::Sanctuary,
-        Amulet => Discovery::Radiance,
-        Sunfire => Discovery::Sanctification,
-        Boat | Glider => Discovery::Navigation,
+        Tool::Pickaxe | Tool::Spear => return None,
+        Tool::Sword | Tool::Hammer => Discovery::Smithing,
+        Tool::Bow => Discovery::Ranged,
+        Tool::Shield => Discovery::Masonry,
+        Tool::Cart => Discovery::Architecture,
+        Tool::Backpack => Discovery::Masonry,
+        Tool::Drill => Discovery::Metallurgy,
+        Tool::Scanner => Discovery::Cartography,
+        Tool::Staff => Discovery::Sanctuary,
+        Tool::Amulet => Discovery::Radiance,
+        Tool::Sunfire => Discovery::Sanctification,
+        Tool::Boat | Tool::Glider => Discovery::Navigation,
         Tool::None => return None,
     })
 }

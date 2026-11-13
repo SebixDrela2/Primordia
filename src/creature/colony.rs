@@ -38,6 +38,8 @@ impl CreatureSystem {
             migrations_started: 0,
             plagues_started: 0,
             discoveries: Vec::new(),
+
+            last_discovery: None,
         }
     }
 
@@ -342,7 +344,20 @@ impl CreatureSystem {
         if self.tick % 120 != 0 {
             return;
         }
-        if self.zorg_count() >= ZORG_MIN {
+        // Dominion: a colony that has worked out how to close the deep
+        // holds it closed. The ZORGs breed far more slowly, and the floor
+        // of their numbers is lower.
+        let mut floor = ZORG_MIN;
+        let mut slow = false;
+        for (_, d) in self.discoveries.iter() {
+            if *d & discovery_bits::DOMINION != 0 {
+                slow = true;
+            }
+        }
+        if slow {
+            floor = 2;
+        }
+        if self.zorg_count() >= floor {
             return;
         }
         // A sealed cave breeds nothing. That is the point of sealing it.
@@ -796,6 +811,7 @@ impl CreatureSystem {
             max_stamina: 100.0,
             resting: false,
             memory: [0.0; 8],
+            tech: 0,
             diplo_cooldown: 0,
             diplo_progress: 0.0,
             diplo_partner: None,
@@ -934,6 +950,7 @@ impl Creature {
             max_stamina: 100.0,
             resting: false,
             memory: [0.0; 8],
+            tech: 0,
             diplo_cooldown: 0,
             diplo_progress: 0.0,
             diplo_partner: None,

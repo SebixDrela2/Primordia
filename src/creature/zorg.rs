@@ -90,6 +90,93 @@ impl CreatureSystem {
     }
 }
 
+/// A ZORG eats.
+///
+/// It has its own ecology: it eats the rock and the poison of the deep,
+/// and nothing it eats is ever bad for it. It chews its way to the food,
+/// so it can reach a long way.
+///
+/// It only eats when it needs to, though. A ZORG that eats every step
+/// would strip the cave bare in a few ticks and then starve in the hole
+/// it made.
+///
+/// It feeds on hunger *and* on tiredness: the rock of the deep is its
+/// bread as well as its feast, and a ZORG that has spent the night
+/// chewing its way up through the rock needs the bread.
+pub fn zorg_act_eat(world: &mut World, c: &mut Creature, hungry: bool) -> bool {
+    if c.hunger < 15.0 && c.energy > c.max_energy * 0.55 {
+        return false;
+    }
+    let gx = c.x.round() as i32;
+    let gy = c.y.round() as i32;
+    // It eats what it can reach. A ZORG that could eat the walls of its
+    // own cave from across it would hollow the cave out and then starve in
+    // the hole.
+    let zradius = if hungry { 3 } else { 2 };
+    let Some((fx, fy)) = world.find_zorg_food(gx, gy, zradius) else {
+        return false;
+    };
+    let Some((nutrition, toxicity)) = world.eat_zorg(fx, fy) else {
+        return false;
+    };
+    c.energy = (c.energy + nutrition * 4.0).min(c.max_energy);
+    c.hunger = (c.hunger - nutrition * 4.0).max(0.0);
+    // The acid of the deep is a feast to a ZORG: it heals it as well as
+    // feeding it.
+    let e = world.get(fx, fy);
+    if zorg_nutrition(e) >= 40.0 {
+        c.health = (c.health + 6.0).min(100.0);
+    }
+    if toxicity > 0.0 {
+        c.health -= toxicity * 0.25;
+    }
+    true
+}
+
+/// A ZORG feeds on the rock it chews.
+///
+/// The tunnel it digs upwards is a meal as well as a way out. It does not
+/// eat its way down through the floor of its own cave, though: that would
+/// swallow the larder whole.
+pub fn zorg_feed_on_rock(c: &mut Creature, elem: Elem, digging_up: bool) {
+    if !digging_up {
+        return;
+    }
+    let n = zorg_nutrition(elem);
+    if n <= 0.0 {
+        return;
+    }
+    if c.hunger <= 20.0 && c.energy >= c.max_energy * 0.5 {
+        return;
+    }
+    c.energy = (c.energy + n * 4.0).min(c.max_energy);
+    c.hunger = (c.hunger - n * 4.0).max(0.0);
+}
+
+/// Where a ZORG wants to go.
+/// A ZORG belongs to the deep, but it is a predator of the surface, so it
+/// pushes upward: out of the caves and into the world. It also does not
+/// care about its own kind and it is never afraid of anything.
+///
+/// The cave in the deep is its home and its larder, though. A hungry ZORG
+/// goes down to it and feeds on the poison pooled on its floor; a fed one
+/// goes up through the rock after the colonies that live in the light.
+pub fn zorg_steer(c: &Creature) -> (f32, f32, f32) {
+    let hx = c.base_x - c.x;
+    let hy = c.base_y - c.y;
+    let hd = (hx * hx + hy * hy).sqrt().max(0.1);
+    // It needs to feed when it is hungry, and it needs to feed when it is
+    // tired: the rock of the deep is its bread as well as its feast.
+    let needs_food = c.hunger >= 45.0 || c.energy < c.max_energy * 0.45;
+    if needs_food {
+        // It goes home, to the larder on the floor of the cave.
+        (hx / hd * 1.8, hy / hd * 1.8, 1.1)
+    } else {
+        // It has eaten: it pushes up through the rock towards the world.
+        (0.0, -0.55, 1.1)
+    }
+}
+
 /// The species id of the ZORGs.
 ///
 /// The ZORGs are reserved id zero: every player species is numbered from

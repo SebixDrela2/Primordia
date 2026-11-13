@@ -375,6 +375,11 @@ impl CreatureSystem {
                     if self.species_discoveries(a_species) & discovery_bits::SMITHING != 0 {
                         dmg *= 1.3;
                     }
+                    // Smelting: the ore is worked where it is found, and
+                    // the edge it takes is better.
+                    if self.species_discoveries(a_species) & discovery_bits::SMELTING != 0 {
+                        dmg *= 1.25;
+                    }
                     // A Sunfire is made for the deep, not for a rival. It
                     // scours a ZORG where it stands, but against ordinary
                     // flesh it is barely better than a torch - a colony that
@@ -382,7 +387,7 @@ impl CreatureSystem {
                     // disadvantage.
                     if attacker.tool == Tool::Sunfire {
                         let target_is_zorg = self.list[j].faction == Faction::Zorg;
-                        dmg *= sanctify::sunfire_multiplier(target_is_zorg);
+                        dmg *= sanctify::sunfire_damage(attacker.tech, target_is_zorg);
                     }
                     if attacker.active_spell == Spell::Fireball && attacker.spell_cd[1] == 0 { dmg += 20.0; }
                     // The victim's own build decides how much of it lands.

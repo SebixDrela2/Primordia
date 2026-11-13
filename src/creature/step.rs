@@ -171,7 +171,7 @@ impl CreatureSystem {
         // What each species has worked out for itself, indexed by species
         // id. It is a snapshot for this tick: a discovery made now takes
         // effect on the next one.
-        let mut discoveries_by_species: Vec<u16> = vec![0; self.next_species as usize + 8];
+        let mut discoveries_by_species: Vec<u32> = vec![0; self.next_species as usize + 8];
         for (sp, d) in &self.discoveries {
             if (*sp as usize) < discoveries_by_species.len() {
                 discoveries_by_species[*sp as usize] = *d;
@@ -260,7 +260,10 @@ impl CreatureSystem {
                 // Needs decay
                 // Hardy species tire of hunger more slowly.
                 let hardy = if c.traits & trait_bits::HARDY != 0 { 0.7 } else { 1.0 };
-                c.hunger = (c.hunger + 0.06 * hardy).clamp(0.0, 100.0);
+                // Pottery: the colony's stores keep, so it goes hungry
+                // more slowly.
+                let stores = if c.knows_tech(Discovery::Pottery) { 0.85 } else { 1.0 };
+                c.hunger = (c.hunger + 0.06 * hardy * stores).clamp(0.0, 100.0);
                 // A colony without a queen loses heart: the animals burn
                 // their energy faster and the colony falls apart.
                 let crisis = crisis_drain_of(c.species, self.tick);
@@ -392,7 +395,15 @@ impl CreatureSystem {
                 // time growing into its frame.
                 let cap = c.max_health();
                 if c.health < cap {
-                    c.health = (c.health + 0.05).min(cap);
+                    // Surgery and alchemy mend the wounded faster.
+                    let mut mend = 0.05;
+                    if c.knows_tech(Discovery::Surgery) {
+                        mend *= 1.4;
+                    }
+                    if c.knows_tech(Discovery::Alchemy) {
+                        mend *= 1.3;
+                    }
+                    c.health = (c.health + mend).min(cap);
                 }
                 // A ZORG in its own cave is at home: the poison of the deep
                 // restores it faster than the open air ever could.
@@ -445,6 +456,10 @@ impl CreatureSystem {
                 // world much more strongly.
                 if discoveries & discovery_bits::SANCTUARY != 0 {
                     c.mana = (c.mana + MANA_REGEN * 0.8).clamp(0.0, c.max_mana);
+                }
+                // Radiance: the colony's magic is brighter.
+                if c.knows_tech(Discovery::Radiance) {
+                    c.mana = (c.mana + MANA_REGEN * 0.6).clamp(0.0, c.max_mana);
                 }
 
                 // Cooldowns
@@ -589,6 +604,12 @@ impl CreatureSystem {
                 // slower still, a hollow-boned one faster, and the wind and
                 // the rain slow everybody down.
                 let speed_cap = c.speed_cap() * world.weather.speed_factor() * c.disease_speed_factor();
+                // Navigation: the colony finds its way about better.
+                let speed_cap = if c.knows_tech(Discovery::Navigation) {
+                    speed_cap * 1.15
+                } else {
+                    speed_cap
+                };
                 // A climber is quicker in the open air than under the rock.
                 let climbing = if c.traits & trait_bits::CLIMBER != 0
                     && world.get(c.x.round() as i32, c.y.round() as i32) == Elem::Empty
@@ -772,6 +793,12 @@ impl CreatureSystem {
                             if pact { 18.0 } else { 5.0 } * c.culture_factor(Culture::Commerce);
                         // A market makes the exchange worth much more.
                         let gain = if near_market { gain * 1.6 } else { gain };
+                        // Commerce: the colony knows what it is selling.
+                        let gain = if c.knows_tech(Discovery::Commerce) {
+                            gain * 1.5
+                        } else {
+                            gain
+                        };
                         c.energy = (c.energy + gain).min(c.max_energy);
                         c.energy = (c.energy - energy_cost::TRADE).max(0.0);
                         // Trading warms the relations up: a pact is
@@ -1053,12 +1080,20 @@ impl CreatureSystem {
         self.spread_zorg_plague(&grid);
 
         // ---- The deep is never empty ----
-        //
         // As long as the cave is there, the ZORGs breed back up out of it.
         // A player can thin them out, but the deep cannot be emptied for
         // good - unless a ward of sanctified fire is raised inside the
         // cave and seals it.
         self.reseed_the_deep(world);
+
+        // ---- The knowledge of the species ----
+        //
+        // Every creature carries the tech of its species, so that the
+        // effects of a discovery can be read where they are used.
+        if self.tick % 60 == 0 {
+            self.refresh_tech();
+            world.deep_mining = self.best_deep_mining();
+        }
 
         // ---- The wards burn the corruption and the ZORGs ----
         //

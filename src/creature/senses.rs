@@ -349,6 +349,10 @@ impl CreatureSystem {
         if discoveries & discovery_bits::ASTRONOMY != 0 {
             vision *= 1.4;
         }
+        // Cartography: the colony knows its own country.
+        if discoveries & discovery_bits::CARTOGRAPHY != 0 {
+            vision *= 1.2;
+        }
         vision *= c.vision_factor(day_night);
         // A fog closes the world in: nothing sees far.
         vision *= world.weather.vision_factor();

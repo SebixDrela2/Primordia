@@ -14,6 +14,10 @@ pub enum HoverTarget {
 pub struct UiState {
     pub     hover: HoverTarget,
     pub     knowledge_open: bool,
+    /// The tech tree window (toggled with T).
+    pub     tech_open: bool,
+    /// How far the tech tree has been scrolled.
+    pub     tech_scroll: f32,
     /// Whether the diplomacy panel is on screen (toggled with G).
     pub     diplomacy_open: bool,
     pub     discovered_elements: Vec<u8>,
@@ -25,6 +29,8 @@ impl UiState {
         Self {
             hover: HoverTarget::None,
             knowledge_open: false,
+            tech_open: false,
+            tech_scroll: 0.0,
             diplomacy_open: false,
             discovered_elements: Vec::new(),
             discovered_creatures: Vec::new(),
@@ -180,6 +186,12 @@ pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx
                 for cu in culture {
                     lines.push(format!("  {}", cu));
                 }
+            }
+            // The tech the species knows: what it has worked out and what
+            // it can make.
+            let tech = crate::ui::tech::tech_of(c);
+            if tech != "nothing yet" {
+                lines.push(format!("tech: {}", tech));
             }
             if c.disease != creature::Disease::None {
                 let plague = creature::Plague::from(c.disease);
