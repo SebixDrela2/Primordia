@@ -188,6 +188,17 @@
   colony's fire has to be fed with **wood** - and wood is trees, not
   grass - and a colony with no firewood goes cold, and the cold comes
   in. A colony that does nothing but sit by its own fire goes hungry.
+- **A heap breeds sickness.** Ten creatures packed onto the same spot is
+  how a plague starts: the risk is `0.00008 x (the heap size - 9)` per
+  creature per tick. The victim catches the **plague**, which catches
+  easily and kills, and the ground under the heap turns to **virus**,
+  which spreads through the organic matter around it. This is the oldest
+  way for a colony to die, and it is why the herds are worth spreading
+  out over.
+- **No magnet**. The pull of the hunt only reaches as far as a hunt does
+  (fourteen cells) and it is a gentle one: a hunter that could smell
+  prey from across the valley would bring the whole colony with it, and
+  the colony would pile onto one animal in open ground.
 - The **tech tree** (`src/creature/tech.rs`) has **ten tiers** and holds
   both kinds of thing: the **tools** a creature carries (the pickaxe, the
   bow, the sunfire) and the **discoveries** a species knows (how to work

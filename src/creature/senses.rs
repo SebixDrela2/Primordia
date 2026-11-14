@@ -398,12 +398,16 @@ const SMELL_FALLOFF: f32 = 8.0;
 /// and that is what brings it home. This is the one thing in the world
 /// that a creature knows by its nose alone, and it is what replaced the
 /// hard-coded pull towards the base.
-const KIN_RANGE: f32 = 70.0;
+///
+/// Forty cells: far enough to find the herd, near enough that a creature
+/// on the far side of the map is not dragged across it by the smell of
+/// its own kind.
+const KIN_RANGE: f32 = 40.0;
 
 /// How quickly the smell of your own kind fades.
 ///
 /// Very gently: a colony two dozen cells away still smells like home.
-const KIN_FALLOFF: f32 = 30.0;
+const KIN_FALLOFF: f32 = 20.0;
 
 /// How finely the far end of the smell is sampled.
 ///

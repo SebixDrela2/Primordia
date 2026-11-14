@@ -147,10 +147,20 @@ pub(crate) fn act_steer(
                     && c.stage.can_fight()
                 {
                     if let Some((dx, dy, d)) = prey {
-                        if d > 1.5 {
-                            steer_x += dx / d;
-                            steer_y += dy / d;
-                            speed_mult_extra = speed_mult_extra.max(1.3);
+                        // The pull is a nudge and not a magnet.
+                        //
+                        // A hunter that can smell prey from across the
+                        // valley would come running, and then every hunter
+                        // in the colony would come running too, and the
+                        // whole colony would pile onto one animal in the
+                        // middle of open ground. So the pull only reaches
+                        // as far as a hunt does, and it is a gentle one:
+                        // the creature's own wanting is what carries it
+                        // the rest of the way.
+                        if d > 1.5 && d < 14.0 {
+                            steer_x += (dx / d) * 0.45;
+                            steer_y += (dy / d) * 0.45;
+                            speed_mult_extra = speed_mult_extra.max(1.15);
                         }
                     }
                 }

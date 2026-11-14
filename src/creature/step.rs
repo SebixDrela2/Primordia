@@ -195,6 +195,11 @@ impl CreatureSystem {
         // after the loop, because learning touches the whole colony.
         let mut learned: Vec<(usize, Culture)> = Vec::new();
 
+        // Where the ground turned to virus this tick, because a heap of
+        // animals stood on it. The cells are written after the loop, so
+        // that the world is not borrowed while the creatures are.
+        let mut virus_spawns: Vec<(i32, i32)> = Vec::new();
+
         // The predation memory, laid out as a table so the behaviours can
         // look a fear up in constant time.
         let fear_entries = FearTable::build(self.predation.entries(), self.next_species as usize + 8);
@@ -294,7 +299,35 @@ impl CreatureSystem {
                 });
                 let crowding = 1.0 + 0.08 * crowd.min(16) as f32;
 
-
+                // ---- Crowding breeds sickness ----
+                //
+                // Ten animals packed onto the same spot is how a plague
+                // starts. The filth they leave behind turns to virus, and
+                // the sickness goes through the whole heap and the whole
+                // colony with it.
+                //
+                // This is the oldest way for a colony to die, and it is
+                // the reason a colony that has spread too wide and lived
+                // too long in one place is a colony in danger: the more
+                // of them there are in one place, the more certain it is
+                // that one of them will be the one that catches it.
+                if crowd >= 10 && c.disease == Disease::None {
+                    // The chance goes up steeply with the size of the heap:
+                    // a dozen animals in one spot is a certainty over a
+                    // few hundred ticks, twenty is worse.
+                    let risk = 0.00008 * (crowd - 9) as f32;
+                    if self.rng.chance(risk) {
+                        c.disease = Disease::Plague;
+                        c.disease_timer = Plague::from(Disease::Plague).duration();
+                        self.plagues_started += 1;
+                        // And the ground under them turns to virus, which
+                        // spreads through the organic matter around it.
+                        virus_spawns.push((
+                            c.x.round() as i32,
+                            c.y.round() as i32,
+                        ));
+                    }
+                }
                 // The land under its feet.
                 //
                 // A colony that settles beside a crystal grove, a hot
@@ -1408,6 +1441,18 @@ impl CreatureSystem {
         // finds out that a warm nest is worth going out for.
         if self.tick % 60 == 0 {
             self.tend_the_fires();
+        }
+
+        // ---- The virus that a heap of animals leaves behind ----
+        //
+        // The ground under a crowd of creatures turns to virus, and the
+        // virus spreads through the organic matter around it: the plants
+        // first, and then everything else it can get into. This is what
+        // a plague does to the ground it came from.
+        for (vx, vy) in virus_spawns {
+            if world.get(vx, vy) == Elem::Empty {
+                world.set_xy(vx, vy, Elem::Virus);
+            }
         }
 
         // Combat resolution (see combat.rs).

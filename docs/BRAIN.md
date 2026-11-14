@@ -930,8 +930,38 @@ and the world takes it at its word:
 - **The fire keeps the cold out.** A lit fire at the base means the
   winter does not bite the colony. That is the whole of the reward for
   gathering: a warm nest is worth going out for.
+- **A heap breeds sickness.** Ten animals packed onto the same spot is
+  how a plague starts: the risk is `0.00008 × (the size of the heap − 9)`
+  per creature per tick, so a dozen in one place is an outbreak within a
+  few hundred ticks and twenty is worse. The victim catches the **plague**
+  — which catches easily and kills — and the ground under the heap turns
+  to **virus**, which spreads through the organic matter around it.
 
-### 12.8 The world
+  This is the oldest way for a colony to die, and it is why a colony
+  that has spread too wide and lived too long in one place is a colony
+  in danger. It is also the reason the herds are worth spreading out
+  over: the animals that pile onto the same carcass are the ones that
+  bring the sickness home.
+
+### 12.8 The pull of the hunt
+
+A colony that has learned to hunt stalks the nearest animal of another
+kind — but only as far as a hunt reaches, and gently:
+
+```rust
+if d > 1.5 && d < 14.0 {
+    steer_x += (dx / d) * 0.45;
+    steer_y += (dy / d) * 0.45;
+}
+```
+
+A hunter that could smell prey from across the valley would come
+running, and then every hunter in the colony would come running too, and
+the whole colony would pile onto one animal in the middle of open
+ground. The creature's own wanting is what carries it the rest of the
+way.
+
+### 12.9 The world
 
 Everything about the world is hard-coded: the cellular automaton, the
 reactions between elements, the weather table, the seasons, the volcano,
@@ -945,7 +975,7 @@ already grows there puts out a seedling beside itself. The world is kept
 from turning into one green mat by a hard cap that thins the vegetation
 when it gets too thick.
 
-### 12.9 Diplomatic negotiation
+### 12.10 Diplomatic negotiation
 
 The outcome of a negotiation is computed by hard rules in
 `diplomacy/negotiation.rs` using the network's outputs 20–23 as *inputs*
