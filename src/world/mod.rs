@@ -371,6 +371,19 @@ pub struct World {
     pub mine_budget: i32,
     /// The environmental pressure on the world. See `Pressure`.
     pub pressure: Pressure,
+    /// How hard the world is right now, from 0.0 to 1.0.
+    ///
+    /// The senses are primitive now, which is the point of them: a
+    /// creature has to work out for itself that the green soft thing is
+    /// worth eating. That makes the early world much harder than it was,
+    /// because a colony of creatures that cannot find food dies before the
+    /// first of them has learned how.
+    ///
+    /// So the world starts forgiving and gets harder. The ramp is the sum
+    /// of the environmental pressures below plus the run's own progress,
+    /// and it is what the creature systems read when they ask "how hard is
+    /// it to live at the moment".
+    pub difficulty: f32,
     /// How many plants this world has recently been able to support.
     ///
     /// The surface does not have a fixed carrying capacity: a wet world grows

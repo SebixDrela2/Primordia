@@ -1,5 +1,12 @@
 # PRIMORDIA - working rules
 
+## Documentation
+- `docs/SIMULATION.md` - the full simulation reference.
+- `docs/BRAIN.md` - the complete reference for the creature brain: all
+  161 inputs, all 33 outputs, the architecture, and exactly what is
+  random, what is evolved and what is hard-coded. Read this before
+  changing anything in `src/creature/brain.rs` or `src/creature/senses.rs`.
+
 ## Build
 - Always compile with the native CPU target: `-C target-cpu=native`.
   This is already configured in `.cargo/config.toml`, so a plain
@@ -20,10 +27,11 @@
 - `cargo run --release --bin zorgcheck -- [seed]` checks the ZORG cave:
   that it exists, that it is deep in the world, that it has a floor and a
   larder, and that every founding ZORG is born inside it.
-- `cargo run --release --bin braincheck -- 12000` checks the minds: that a
-  species which works out Cognition grows its brains, that the shape of a
-  mind drifts down the generations, and that the function a mind fires
-  with is bred rather than fixed.
+- `cargo run --release --bin braincheck -- 12000` checks the minds: that
+  the senses are primitive, that a mind learns to want what it smells,
+  that the colony feeds itself, and that the colony does not go extinct.
+  It steps the **world** as well as the creatures: a check that only moved
+  the animals would measure a world that never changes.
 - `cargo run --release --bin aircheck -- 3000` checks the air: that the
   undergroves are deep and have air in them, that the open air is fresher
   than the deep, that fire in a sealed cave goes out, and that stale air
@@ -51,7 +59,7 @@
   in the sibling files; private fields stay reachable because every
   submodule is a child of the module that defines the struct.
 - Current layout:
-  - `src/elements/`  mod.rs (enum + lookup tables), properties.rs
+  - `src/elements/`  mod.rs (enum + lookup tables), properties.rs, percept.rs
   - `src/world/`   cell, terrain, generation, element placement, vaults,
                    structures, landmarks, physics, behaviors, reactions,
                    maintain, census, query, zorg_cave
@@ -125,7 +133,7 @@
   memory feed the first layer together, and the memory is rebuilt from
   the last hidden layer every time the creature thinks, so a brain can act
   on what it saw a while ago and not only on what is in front of it right
-  now. The layers are `[senses + memory, 36, 24, 16, decisions]`, and the
+  now. The layers are `[senses + memory, 56, 40, 24, decisions]`, and the
   mutation rate is scaled down to match the extra weights, so a young
   animal is still its mother's breed with a little of its own.
 - A brain is **not** a fixed shape. It has three tiers, and a species
@@ -138,14 +146,30 @@
   like anything else, so two species with the same senses think
   differently.
 - A brain **learns inside a life**. When an animal eats, builds, fights
-  or trades, the decision that worked is strengthened a little in the
-  last layer. The pull is slow, and the weights are settled now and then
-  so a life of reinforcement cannot turn a few weights into everything.
+  or trades, the decision that worked is strengthened a little by
+  back-propagation. The pull is slow, and the weights are settled now and
+  then so a life of reinforcement cannot turn a few weights into everything.
 - The **shape** of a mind is bred as well: a young animal is born now and
   then with one neuron more or less than its mother had.
-- The creatures **see more than they used to**: the light that reaches
-  them, the heat underfoot and which way is warmer, the nearest place
-  worth living in and what it gives, and how close the ZORGs are.
+- The **senses are primitive**. A creature is told what things look
+  like (colour, light, warmth, texture, wetness, gloss), what they smell
+  like (sweet, rotten, acid, mineral, smoke) and how loud they are - and
+  nothing else. There is no "there is food that way" input any more: the
+  creature has to work out for itself that the green soft sweet-smelling
+  thing is worth eating. The eight **desires** (one per direction) are
+  how it says what it wants to do about what it perceives, and the
+  actions are **local**: it bites the cell next to it, not the best thing
+  within six cells.
+- The **instincts are weights, not code**. A newborn mind is born with a
+  direct path from the raw senses to the desires: the sweet smell pulls,
+  the acrid smell pushes away, and the open sky pulls upward. Evolution
+  is free to strengthen, weaken or reverse that bias, and it does.
+- The **surface regrows**. Vegetation is seeded on the ground beside the
+  surface and a plant puts out seedlings of its own, so a colony that
+  grazes its neighbourhood bare finds the green coming back - and a
+  creature that has learnt to walk towards a sweet smell is walking
+  towards something that is there again. A hard cap keeps the world from
+  turning into one green mat.
 - The **tech tree** (`src/creature/tech.rs`) has **ten tiers** and holds
   both kinds of thing: the **tools** a creature carries (the pickaxe, the
   bow, the sunfire) and the **discoveries** a species knows (how to work

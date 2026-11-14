@@ -30,7 +30,7 @@ mod plague;
 mod predation;
 mod raids;
 mod sanctify;
-mod senses;
+pub mod senses;
 mod speciation;
 mod spells;
 mod succession;
@@ -46,17 +46,18 @@ use crate::world::{World, DIRS4, DIRS8};
 
 /// How many things a creature can perceive.
 ///
-/// The senses are the eyes of the network: every channel is one thing the
-/// animal can notice about the world, and the network decides what to do
-/// about it. The block at the end (the last sixteen) is the *detailed*
-/// senses: the light, the heat, the places worth living in and the
-/// things that come up out of the deep.
-pub const INPUTS: usize = 284;
-pub const OUTPUTS: usize = 25;
+/// The senses are the eyes of the network, and they are deliberately
+/// primitive: eight directions of sight, smell and sound, plus what the
+/// animal knows about its own body, plus what it can see of its own kind
+/// and of strangers. Nothing is labelled. The network is told that
+/// something is green and soft and smells sweet, and it has to work out
+/// for itself that this is worth eating.
+pub const INPUTS: usize = crate::creature::senses::TOTAL_INPUTS;
+pub const OUTPUTS: usize = 33;
 
 /// The network outputs, in order.
 ///
-/// The first twenty are the original behaviour outputs:
+/// The first twenty-five are the behaviour outputs, unchanged:
 ///
 /// ```text
 ///  0 move_x      1 move_y      2 eat         3 reproduce
@@ -64,9 +65,19 @@ pub const OUTPUTS: usize = 25;
 ///  8 mount       9 trade      10 rest       11 switch_spell
 /// 12 dig/mine   13 gather_water 14 shoot    15 flee
 /// 16 seek       17 forage     18 rally      19 defend
+/// 20 negotiate 21 hostile    22 ally       23 tribute
+/// 24 seek_mate
 /// ```
 ///
-/// The last five drive the diplomacy and courtship sectors.
+/// The last eight are the **desires**: how much the creature wants to go
+/// in each of the eight directions.
+///
+/// This is what makes the whole thing work. With a single "move x" and
+/// "move y" the network has to learn the hard mapping from "the thing I
+/// want is over there" to "these are the coordinates to press". With one
+/// desire per direction it only has to learn "this direction looks good",
+/// and because the percepts are laid out in the same eight directions, the
+/// mapping is almost trivial for the hidden layer to find.
 pub mod outputs {
     /// Open talks with a foreign creature.
     pub const NEGOTIATE: usize = 20;
@@ -78,6 +89,10 @@ pub mod outputs {
     pub const TRIBUTE: usize = 23;
     /// Court a mate of its own kind.
     pub const SEEK_MATE: usize = 24;
+    /// The first of the per-direction desires.
+    pub const DESIRE: usize = 25;
+    /// How many directions there are.
+    pub const DESIRE_COUNT: usize = 8;
 }
 const MAX_POP: usize = 500;
 /// Above this population creatures stop reproducing so the world stays lively
@@ -244,10 +259,40 @@ pub struct Creature {
     pub out_cache: [f32; OUTPUTS],
     /// Has the brain run at least once for this creature?
     pub brain_ready: bool,
-    /// The last look at the world around the creature. It is refreshed on
+    /// What the creature last saw, smelled and heard. It is refreshed on
     /// the same tick the brain runs on, so the steering uses a picture that
     /// is one tick old at worst.
-    pub(crate) scan_cache: LocalScan,
+    pub(crate) percept_cache: Percept,
+    /// Which of the eight directions the creature most wanted to go in.
+    ///
+    /// This is remembered so that a reward can be given to the direction
+    /// that worked: a creature that found food was heading somewhere when
+    /// it found it, and that is the direction that gets the credit.
+    pub(crate) desire_dir: usize,
+    /// Which way the thing that hurt it came from, if something did.
+    ///
+    /// This is the lesson the creature has to learn: it was hurt, and the
+    /// hurt came from over there. The direction is remembered so that the
+    /// credit can be given to the direction it was in, and not to
+    /// whatever the creature happened to want most.
+    pub(crate) hurt_dir: i8,
+    /// Which way the thing it killed was in.
+    ///
+    /// The same idea, the other way round: the strike landed, and it
+    /// landed because the creature went that way.
+    pub(crate) kill_dir: i8,
+    /// The health it had the last time it thought about such things.
+    ///
+    /// The damage that hurts a creature usually arrives from outside the
+    /// tick it is noticed in: a shot or a bite is resolved after the
+    /// creatures have all had their turn. So the creature remembers what
+    /// its health was, and the difference between then and now is what
+    /// tells it that something hit it.
+    pub(crate) health_seen: f32,
+    /// The kills it had the last time it thought about such things.
+    pub(crate) kills_seen: u32,
+    /// What it last ate. A diagnostic, for the census of meals.
+    pub(crate) last_meal: Elem,
     pub size: f32,
     pub last_x: f32,
     pub last_y: f32,
@@ -417,6 +462,11 @@ pub struct CreatureSystem {
     births_total: u32,
     deaths_total: u32,
     pub eats_total: u64,
+    /// What the creatures have been eating, by element.
+    ///
+    /// This is a diagnostic: it says what the colony is living on, which
+    /// is the quickest way to see whether the senses are working.
+    pub eats_by_elem: [u32; 128],
     pub builds_total: u64,
     pub trades_total: u64,
     pub spells_cast: u64,
@@ -524,3 +574,4 @@ pub use speciation::*;
 pub use succession::*;
 pub use technology::*;
 pub use zorg::*;
+

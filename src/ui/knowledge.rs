@@ -20,6 +20,15 @@ pub struct UiState {
     pub     tech_scroll: f32,
     /// Whether the diplomacy panel is on screen (toggled with G).
     pub     diplomacy_open: bool,
+    /// The mind inspector (toggled with M).
+    pub     minds_open: bool,
+    /// Which mind the inspector is showing.
+    ///
+    /// Not a scroll offset: the inspector shows one mind at a time, and
+    /// the wheel walks from one of the cleverest animals to the next. The
+    /// inspector clamps it to the number of minds it has, so the count
+    /// cannot run away.
+    pub     minds_index: f32,
     pub     discovered_elements: Vec<u8>,
     pub     discovered_creatures: Vec<u32>,
 }
@@ -32,6 +41,8 @@ impl UiState {
             tech_open: false,
             tech_scroll: 0.0,
             diplomacy_open: false,
+            minds_open: false,
+            minds_index: 0.0,
             discovered_elements: Vec::new(),
             discovered_creatures: Vec::new(),
         }

@@ -1,5 +1,137 @@
-use super::*;
+//! The senses: what a creature can actually perceive.
+//!
+//! This is the heart of the change that made the brain work. Before, the
+//! senses told the network what things *were*: "there is food that way",
+//! "that is metal", "that is poison". A creature did not have to learn
+//! anything, because the answer was handed to it, and the hard-coded
+//! action layer did the rest: `out[2] > 0.3` meant "eat", and the code
+//! went and found food within six cells and ate it. The network never had
+//! to perceive anything at all.
+//!
+//! Now the senses tell the network what things *look like*. The network
+//! gets colour, light, warmth, texture, wetness, gloss, smell and sound —
+//! and nothing else. It has to work out for itself that green and soft
+//! and sweet-smelling is worth eating, and that green and wet and
+//! acid-smelling is worth avoiding.
+//!
+//! What a creature knows about *itself* — its hunger, its health, its
+//! direction of travel — is still there. That is proprioception, not
+//! knowledge of the world, and every animal has it.
+//!
+//! The other half of the change is in `src/creature/actions.rs`: the
+//! actions are now *local*. A creature bites the cell it is next to, not
+//! the best thing within a radius. To eat at all it has to perceive the
+//! food, desire to go towards it, and arrive.
 
+use super::*;
+use crate::elements::Look;
+
+/// The channels of the sight sense.
+///
+/// Sight is the wide sense: it reports what is over there, in every
+/// direction at once, but only in terms of how things look.
+pub mod sight {
+    /// How far away the nearest thing in that direction is, from 0 (far) to
+    /// 1 (touching).
+    pub const NEAR: usize = 0;
+    /// How much light comes back from that direction.
+    pub const LIGHT: usize = 1;
+    /// How much of the red, green and blue there is.
+    pub const RED: usize = 2;
+    pub const GREEN: usize = 3;
+    pub const BLUE: usize = 4;
+    /// How warm it is over there.
+    pub const WARM: usize = 5;
+    /// How yielding it is over there.
+    pub const SOFT: usize = 6;
+    /// How wet it is over there.
+    pub const WET: usize = 7;
+    /// How glossy it is over there.
+    pub const SHEEN: usize = 8;
+    /// Something alive is over there.
+    ///
+    /// This is the sight of another creature: a shape that moves. It says
+    /// nothing about what the creature is, whether it is friendly, or
+    /// whether it is good to eat. That is the network's work.
+    pub const LIFE: usize = 9;
+    /// How many channels the sense has.
+    pub const CHANNELS: usize = 10;
+}
+
+/// The channels of the smell sense.
+///
+/// Smell is the sense that carries most of what sight cannot: an animal
+/// can find food it cannot see. Each channel is a different kind of
+/// scent, and the network has to work out which one means "worth eating".
+pub mod smell {
+    /// The sweet smell of something ripe.
+    pub const SWEET: usize = 0;
+    /// The sharp smell of rot.
+    pub const ROTTEN: usize = 1;
+    /// The acrid smell of chemicals and acid.
+    pub const ACID: usize = 2;
+    /// The smell of stone and metal.
+    pub const MINERAL: usize = 3;
+    /// The smell of smoke and burning.
+    pub const SMOKE: usize = 4;
+    /// The smell of my own kind.
+    ///
+    /// Every animal smells its own kind: it is how a creature that has
+    /// wandered off finds the herd again, and it is how it knows that the
+    /// shapes it can see are of its own species and not strangers. It
+    /// carries much further than sight, which is the point of it.
+    pub const KIN: usize = 5;
+    /// How many channels the sense has.
+    pub const CHANNELS: usize = 6;
+}
+
+/// The channels of the hearing sense.
+///
+/// Hearing tells a creature that something is happening, and roughly
+/// where. It does not say what.
+pub mod hearing {
+    /// How loud it is.
+    pub const LOUD: usize = 0;
+    /// How many channels the sense has.
+    pub const CHANNELS: usize = 1;
+}
+
+/// How many directions a creature can look in.
+pub const DIRS: usize = 8;
+
+/// How many channels one direction of perception has.
+pub const DIR_CHANNELS: usize = sight::CHANNELS + smell::CHANNELS + hearing::CHANNELS;
+
+/// Where the perception block starts in the input vector.
+pub const PERCEPT_BASE: usize = 0;
+
+/// Where the body block starts in the input vector.
+pub const BODY_BASE: usize = PERCEPT_BASE + DIRS * DIR_CHANNELS;
+
+/// How many channels the body has.
+pub const BODY_CHANNELS: usize = 30;
+
+/// The body channel that says whether there is open sky above.
+pub const BODY_OPEN_SKY: usize = 28;
+
+/// Which of the eight directions is up.
+///
+/// The directions run clockwise from south, so up is the fifth.
+pub const DIR_UP: usize = 4;
+
+/// Where the kin block starts in the input vector.
+pub const KIN_BASE: usize = BODY_BASE + BODY_CHANNELS;
+
+/// How many channels the kin block has.
+pub const KIN_CHANNELS: usize = 15;
+
+/// How many inputs the network has in total.
+pub const TOTAL_INPUTS: usize = KIN_BASE + KIN_CHANNELS;
+
+/// A uniform spatial hash so neighbour queries do not scan the whole colony.
+///
+/// This is not a sense: it is the bookkeeping that lets a creature find out
+/// what is near it without walking the whole population.
 pub(crate) struct SpatialGrid {
     cell: usize,
     gw: usize,
@@ -52,718 +184,598 @@ impl SpatialGrid {
     }
 }
 
-/// A cheap local scan of the world around a creature (radius 8, every other
-/// cell). Shared between the neural senses and the steering behaviours so the
-/// world is only scanned once per creature per step.
+/// The primitive description of the world as one animal sees it.
+///
+/// This replaces the old `LocalScan`, which used to carry the answer key:
+/// the direction of the nearest food, the direction of the nearest ore,
+/// the direction of the nearest poison. All of that is gone. What is left
+/// is only what an animal could work out by looking, listening and
+/// smelling.
 #[derive(Clone, Copy)]
-pub(crate) struct LocalScan {
-    /// (dx, dy, distance) of the closest interesting thing.
-    pub(crate) food: (f32, f32, f32),
-    pub(crate) water: (f32, f32, f32),
-    pub(crate) wood: (f32, f32, f32),
-    pub(crate) ore: (f32, f32, f32),
-    pub(crate) hazard: (f32, f32, f32),
-    pub(crate) poison: (f32, f32, f32),
-    /// wood, metal, crystal, food, water, solid, empty, lava/fire, acid, plants, structures
-    pub(crate) counts: [f32; 11],
+pub(crate) struct Percept {
+    /// What each of the eight directions looks, smells and sounds like.
+    ///
+    /// The layout inside each direction is: the sight channels, then the
+    /// smell channels, then the sound.
+    pub dir: [[f32; DIR_CHANNELS]; DIRS],
+}
+
+impl Percept {
+    pub(crate) fn empty() -> Self {
+        Percept {
+            dir: [[0.0; DIR_CHANNELS]; DIRS],
+        }
+    }
+
+    /// The sight channels of one direction.
+    pub(crate) fn sight_of(&self, d: usize) -> &[f32] {
+        &self.dir[d][..sight::CHANNELS]
+    }
+
+    /// The smell channels of one direction.
+    pub(crate) fn smell_of(&self, d: usize) -> &[f32] {
+        &self.dir[d][sight::CHANNELS..sight::CHANNELS + smell::CHANNELS]
+    }
 }
 
 /// Element lookup tables, so the hot scan does not match on the enum.
 pub(crate) struct ElemTables {
-    solid: [bool; Elem::TABLE_LEN],
-    edible: [bool; Elem::TABLE_LEN],
-    nutrition: [f32; Elem::TABLE_LEN],
-    toxicity: [f32; Elem::TABLE_LEN],
-    /// Bit flags: wood | metal | crystal | hazard | poison | plant
-    classes: [u8; Elem::TABLE_LEN],
-    /// The metals a creature can work with.
-    metal: [bool; Elem::TABLE_LEN],
-    /// The crystals a creature can work with.
-    crystal: [bool; Elem::TABLE_LEN],
+    /// What each element looks like.
+    pub look: [Look; Elem::TABLE_LEN],
+    /// How each element smells, per channel.
+    pub scent: [[f32; smell::CHANNELS]; Elem::TABLE_LEN],
+    /// How loud each element is.
+    pub noise: [f32; Elem::TABLE_LEN],
 }
-
-const CLASS_WOOD: u8 = 1;
-const CLASS_METAL: u8 = 2;
-const CLASS_CRYSTAL: u8 = 4;
-const CLASS_HAZARD: u8 = 8;
-const CLASS_POISON: u8 = 16;
-const CLASS_PLANT: u8 = 32;
 
 impl ElemTables {
     pub(crate) fn new() -> Self {
-        let mut classes = [0u8; Elem::TABLE_LEN];
-        let mut metal = [false; Elem::TABLE_LEN];
-        let mut crystal = [false; Elem::TABLE_LEN];
-        let mut i = 0;
-        while i < Elem::TABLE_LEN {
-            classes[i] = match Elem::from_u8(i as u8) {
-                Elem::Wood | Elem::Roots | Elem::Charcoal => CLASS_WOOD,
-                Elem::Metal
-                | Elem::Copper
-                | Elem::Tin
-                | Elem::Bronze
-                | Elem::Iron
-                | Elem::Steel
-                | Elem::Gold
-                | Elem::Silver
-                | Elem::Rust => CLASS_METAL,
-                Elem::Crystal | Elem::Gem | Elem::Diamond => CLASS_CRYSTAL,
-                Elem::Lava | Elem::Magma | Elem::Fire | Elem::Ember => CLASS_HAZARD,
-                Elem::Acid | Elem::Poison | Elem::Chlorine | Elem::Tar => CLASS_POISON,
-                Elem::Plant | Elem::Moss | Elem::Spore | Elem::Fungus => CLASS_PLANT,
-                _ => 0,
-            };
-            // The metals and crystals the senses look for. These are the
-            // same lists the old matching used, kept as tables so the hot
-            // loop never touches the enum.
-            metal[i] = matches!(
-                Elem::from_u8(i as u8),
-                Elem::Metal
-                    | Elem::Copper
-                    | Elem::Gold
-                    | Elem::Iron
-                    | Elem::Silver
-                    | Elem::Wire
-                    | Elem::Circuit
-            );
-            crystal[i] = matches!(
-                Elem::from_u8(i as u8),
-                Elem::Crystal | Elem::Gem | Elem::Diamond | Elem::Mana
-            );
-            i += 1;
-        }
         ElemTables {
-            solid: Elem::solid_table(),
-            edible: Elem::edible_table(),
-            nutrition: Elem::nutrition_table(),
-            toxicity: Elem::toxicity_table(),
-            classes,
-            metal,
-            crystal,
+            look: crate::elements::look_table(),
+            scent: scent_table(),
+            noise: noise_table(),
         }
     }
+}
+
+/// How each element smells.
+///
+/// The scents are what let a creature find food it cannot see, and what
+/// let it learn that one smell is worth having and another is not. A
+/// rotten thing and a sweet thing must smell different, or nothing can
+/// be learnt from them.
+///
+/// Note that the sweet smell belongs to the things that are *ripe*, and
+/// the acid smell to the things that will hurt. A plant and a pool of
+/// poison both look green; only the nose tells them apart, and even then
+/// the animal has to learn which is which.
+fn scent_table() -> [[f32; smell::CHANNELS]; Elem::TABLE_LEN] {
+    let mut t = [[0.0f32; smell::CHANNELS]; Elem::TABLE_LEN];
+    let mut i = 0;
+    while i < Elem::TABLE_LEN {
+        let e = Elem::from_u8(i as u8);
+        let s = match e {
+            // Ripe and sweet: the things worth eating.
+            Elem::Plant | Elem::Crop | Elem::Food | Elem::Honey => [1.0, 0.0, 0.0, 0.0, 0.0],
+            Elem::Meat | Elem::Egg | Elem::Blood => [0.4, 0.3, 0.0, 0.0, 0.0],
+            // Rot.
+            Elem::Corpse => [0.0, 1.0, 0.2, 0.0, 0.0],
+            Elem::Bacteria | Elem::Virus => [0.0, 0.9, 0.1, 0.0, 0.0],
+            // The deep's reek.
+            Elem::Fungus | Elem::Spore | Elem::Moss => [0.2, 0.5, 0.0, 0.0, 0.0],
+            // Acrid.
+            Elem::Acid | Elem::Poison | Elem::Chlorine => [0.0, 0.2, 1.0, 0.0, 0.0],
+            Elem::Alcohol => [0.2, 0.0, 0.7, 0.0, 0.0],
+            // Stone and metal.
+            Elem::Stone
+            | Elem::Granite
+            | Elem::Metal
+            | Elem::Copper
+            | Elem::Tin
+            | Elem::Bronze
+            | Elem::Iron
+            | Elem::Steel
+            | Elem::Gold
+            | Elem::Silver
+            | Elem::Rust
+            | Elem::Glass
+            | Elem::Crystal
+            | Elem::Gem
+            | Elem::Diamond
+            | Elem::Obsidian
+            | Elem::Brick
+            | Elem::Concrete => [0.0, 0.0, 0.0, 0.7, 0.0],
+            Elem::Salt | Elem::Sulfur => [0.0, 0.1, 0.3, 0.5, 0.0],
+            // Burning.
+            Elem::Fire | Elem::Ember | Elem::Lava | Elem::Magma | Elem::Plasma => {
+                [0.0, 0.0, 0.0, 0.0, 1.0]
+            }
+            Elem::Smoke | Elem::Ash | Elem::Charcoal | Elem::Gunpowder | Elem::Tar => {
+                [0.0, 0.3, 0.1, 0.0, 0.8]
+            }
+            Elem::Oil => [0.1, 0.0, 0.0, 0.4, 0.2],
+            // Damp.
+            Elem::Water | Elem::Mud | Elem::Snow | Elem::Ice => [0.0, 0.0, 0.0, 0.0, 0.0],
+            Elem::Roots | Elem::Wood | Elem::Leather => [0.2, 0.2, 0.0, 0.1, 0.0],
+            _ => [0.0; 5],
+        };
+        // The sixth channel is the smell of the creature's own kind, and
+        // that is not something a *material* has: it is filled in from the
+        // creatures themselves, further down.
+        let mut row = [0.0f32; smell::CHANNELS];
+        row[..5].copy_from_slice(&s);
+        t[i] = row;
+        i += 1;
+    }
+    t
+}
+
+/// How loud each element is.
+fn noise_table() -> [f32; Elem::TABLE_LEN] {
+    let mut t = [0.0f32; Elem::TABLE_LEN];
+    let mut i = 0;
+    while i < Elem::TABLE_LEN {
+        t[i] = match Elem::from_u8(i as u8) {
+            Elem::Fire | Elem::Lava | Elem::Magma | Elem::Plasma => 0.9,
+            Elem::Water | Elem::Steam | Elem::Acid | Elem::Poison => 0.5,
+            Elem::Gunpowder => 1.0,
+            Elem::Smoke => 0.2,
+            _ => 0.0,
+        };
+        i += 1;
+    }
+    t
 }
 
 thread_local! {
     static TABLES: ElemTables = ElemTables::new();
 }
 
-impl LocalScan {
-    pub(crate) fn empty() -> Self {
-        LocalScan {
-            food: (0.0, 0.0, f32::MAX),
-            water: (0.0, 0.0, f32::MAX),
-            wood: (0.0, 0.0, f32::MAX),
-            ore: (0.0, 0.0, f32::MAX),
-            hazard: (0.0, 0.0, f32::MAX),
-            poison: (0.0, 0.0, f32::MAX),
-            counts: [0.0; 11],
+/// Which of the eight directions a thing lies in.
+///
+/// The directions run clockwise from south, so the fifth of them is up.
+/// A thing that is exactly between two directions belongs to the closer
+/// of the two, and a thing that is exactly on the observer does not
+/// belong to any of them.
+pub(crate) fn direction_of(dx: f32, dy: f32) -> usize {
+    let mut best = 0usize;
+    let mut best_dot = f32::MIN;
+    for (i, (bx, by)) in DIRS8.iter().enumerate() {
+        let len = ((bx * bx + by * by) as f32).sqrt();
+        let dot = (dx * *bx as f32 + dy * *by as f32) / len;
+        if dot > best_dot {
+            best_dot = dot;
+            best = i;
         }
     }
+    best
 }
 
-pub(crate) fn scan_local(world: &World, cx: i32, cy: i32) -> LocalScan {
-    TABLES.with(|t| scan_local_with(world, cx, cy, t))
+/// Look at the world around a creature and report what it can perceive.
+///
+/// This is the whole sensory apparatus of an animal now. There is no
+/// `find_food` in here, no "this is metal", no "this is poison". There is
+/// only what is over there and how it looks, smells and sounds.
+///
+/// The other creatures are part of that: they are seen like anything else
+/// (a shape that moves) and smelled like anything else (their own kind
+/// smells like home). What a creature *makes* of them is not decided here.
+pub(crate) fn scan_percept(
+    world: &World,
+    cx: i32,
+    cy: i32,
+    species: u32,
+    agents: &[(u32, f32, f32, u32, u8, f32)],
+    grid: &SpatialGrid,
+) -> Percept {
+    TABLES.with(|tab| scan_percept_with(world, cx, cy, species, agents, grid, tab))
 }
 
-pub(crate) fn scan_local_with(world: &World, cx: i32, cy: i32, tab: &ElemTables) -> LocalScan {
-    let mut s = LocalScan::empty();
-    let w = world.w as i32;
-    let h = world.h as i32;
-    for dy in (-8..=8).step_by(2) {
-        let y = cy + dy;
-        if y < 0 || y >= h {
-            continue;
-        }
-        for dx in (-8..=8).step_by(2) {
-            let x = cx + dx;
-            if x < 0 || x >= w {
+/// How far an animal can see.
+const SIGHT_RANGE: i32 = 8;
+
+/// How far an animal can smell.
+///
+/// Smell carries much further than sight. A creature can tell that
+/// something sweet is over there long before it can see what it is, and
+/// that is the whole reason it can find food at all: the surface is
+/// thinly covered in plants, so a creature that can only smell eight
+/// cells ahead would spend its life starving a few steps from dinner.
+const SMELL_RANGE: i32 = 30;
+
+/// How quickly a smell fades with distance.
+///
+/// The nose does not work like an eye: a smell does not vanish the moment
+/// it is far away, it only gets fainter. So the falloff is gentle - a
+/// plant twenty cells off still reads as clearly sweet - and it is
+/// deliberately far flatter than the `1/step` weighting the sight uses.
+const SMELL_FALLOFF: f32 = 8.0;
+
+/// How far the smell of your own kind carries.
+///
+/// Much further than any other smell. A colony is held together by it: an
+/// animal that has wandered off can still smell where its own kind is,
+/// and that is what brings it home. This is the one thing in the world
+/// that a creature knows by its nose alone, and it is what replaced the
+/// hard-coded pull towards the base.
+const KIN_RANGE: f32 = 70.0;
+
+/// How quickly the smell of your own kind fades.
+///
+/// Very gently: a colony two dozen cells away still smells like home.
+const KIN_FALLOFF: f32 = 30.0;
+
+/// How finely the far end of the smell is sampled.
+///
+/// Beyond the sight range every second cell is smelled, so the nose does
+/// not have to look at every cell of a twenty-cell ray.
+const SMELL_STEP: i32 = 2;
+
+pub(crate) fn scan_percept_with(
+    world: &World,
+    cx: i32,
+    cy: i32,
+    species: u32,
+    agents: &[(u32, f32, f32, u32, u8, f32)],
+    grid: &SpatialGrid,
+    tab: &ElemTables,
+) -> Percept {
+    let mut p = Percept::empty();
+
+    for (d, (dx, dy)) in DIRS8.iter().enumerate() {
+        let mut found = false;
+        let mut near = 0.0f32;
+        let mut light = 0.0f32;
+        let mut red = 0.0f32;
+        let mut green = 0.0f32;
+        let mut blue = 0.0f32;
+        let mut warm = 0.0f32;
+        let mut soft = 0.0f32;
+        let mut wet = 0.0f32;
+        let mut sheen = 0.0f32;
+        // Smell does not come from one cell: it drifts. So the scent of a
+        // direction is everything that can be smelled along it, and the
+        // strongest smell wins, the way a real nose works.
+        let mut scent = [0.0f32; smell::CHANNELS];
+        // Sound carries further than sight.
+        let mut loud = 0.0f32;
+
+        for step in 1..=SMELL_RANGE {
+            // The far end of the ray is sampled more coarsely: the nose is
+            // good at telling that something is there, not at reading every
+            // cell of it.
+            let step_size = if step <= SIGHT_RANGE { 1 } else { SMELL_STEP };
+            if step > SIGHT_RANGE && step % step_size != 0 {
                 continue;
             }
-            let k = world.kind[(y as usize) * world.w + x as usize];
-            if k == Elem::Empty as u8 {
-                s.counts[6] += 1.0;
+            let sx = cx + dx * step;
+            let sy = cy + dy * step;
+            if sx < 0 || sy < 0 || sx >= world.w as i32 || sy >= world.h as i32 {
                 continue;
             }
-            let dist = ((dx * dx + dy * dy) as f32).sqrt();
-            let cls = tab.classes[k as usize];
-            if tab.solid[k as usize] {
-                s.counts[5] += 1.0;
+            let k = world.kind[sy as usize * world.w + sx as usize] as usize;
+            if k == Elem::Empty as usize {
+                continue;
             }
-            if tab.nutrition[k as usize] > 0.0 && tab.edible[k as usize] {
-                s.counts[3] += 1.0;
-                if dist < s.food.2 {
-                    s.food = (dx as f32, dy as f32, dist);
-                }
+            let lk = &tab.look[k];
+            let w = 1.0 / step as f32;
+            // The smell falls off gently, so that a distant thing is still
+            // worth walking towards.
+            let sw = 1.0 / (1.0 + (step - 1) as f32 / SMELL_FALLOFF);
+            if !found && step <= SIGHT_RANGE {
+                // The first thing in this direction is the thing it sees.
+                found = true;
+                near = 1.0 - (step - 1) as f32 / SIGHT_RANGE as f32;
+                light = lk.bright;
+                red = lk.rgb[0];
+                green = lk.rgb[1];
+                blue = lk.rgb[2];
+                warm = lk.warm;
+                soft = lk.soft;
+                wet = lk.wet;
+                sheen = lk.sheen;
+            } else {
+                // Further things add their glow behind the nearer one.
+                light = light.max(lk.bright * w);
+                warm = warm.max(lk.warm * w);
             }
-            if k == Elem::Water as u8 {
-                s.counts[4] += 1.0;
-                if dist < s.water.2 {
-                    s.water = (dx as f32, dy as f32, dist);
-                }
-            }
-            if cls & CLASS_WOOD != 0 {
-                s.counts[0] += 1.0;
-                if dist < s.wood.2 {
-                    s.wood = (dx as f32, dy as f32, dist);
-                }
-            }
-            if cls & (CLASS_METAL | CLASS_CRYSTAL) != 0 {
-                if cls & CLASS_METAL != 0 {
-                    s.counts[1] += 1.0;
-                }
-                if cls & CLASS_CRYSTAL != 0 {
-                    s.counts[2] += 1.0;
-                }
-                if dist < s.ore.2 {
-                    s.ore = (dx as f32, dy as f32, dist);
-                }
-            }
-            if cls & CLASS_HAZARD != 0 {
-                s.counts[7] += 1.0;
-                if dist < s.hazard.2 {
-                    s.hazard = (dx as f32, dy as f32, dist);
-                }
-            }
-            if cls & CLASS_POISON != 0 {
-                s.counts[8] += 1.0;
-                if dist < s.poison.2 {
-                    s.poison = (dx as f32, dy as f32, dist);
+            // The smell along this direction.
+            //
+            // Smell carries much further than sight, so every cell along
+            // the ray is smelled, not just the first one. Each kind of
+            // scent is tracked on its own: the strongest *sweet* thing in
+            // that direction is what the nose picks out of it, even if
+            // there is plain stone in between.
+            let sc = &tab.scent[k];
+            for c in 0..smell::CHANNELS {
+                if sc[c] * sw > scent[c] {
+                    scent[c] = sc[c] * sw;
                 }
             }
-            if cls & CLASS_PLANT != 0 {
-                s.counts[9] += 1.0;
+            // Loud things carry.
+            let n = tab.noise[k];
+            if n * sw > loud {
+                loud = n * sw;
             }
         }
+
+        let s = &mut p.dir[d];
+        s[sight::NEAR] = near;
+        s[sight::LIGHT] = light;
+        s[sight::RED] = red;
+        s[sight::GREEN] = green;
+        s[sight::BLUE] = blue;
+        s[sight::WARM] = warm;
+        s[sight::SOFT] = soft;
+        s[sight::WET] = wet;
+        s[sight::SHEEN] = sheen;
+        let sb = sight::CHANNELS;
+        for c in 0..smell::CHANNELS {
+            s[sb + c] = scent[c];
+        }
+        s[sb + smell::CHANNELS] = loud;
     }
-    s
-}
 
-
-impl CreatureSystem {
-    pub(crate) fn sense(
-        agents: &[(u32, f32, f32, u32, u8, f32)],
-        grid: &SpatialGrid,
-        c: &Creature,
-        world: &World,
-        day_night: f32,
-        temperature: f32,
-        season: u8,
-        scan: &LocalScan,
-        shots: &[(f32, f32, u32)],
-        zorgs: &[(f32, f32)],
-        own_turrets: u32,
-        enemy_turrets: u32,
-        species_population: u32,
-        rival_population: u32,
-        ds: &DiplomaticSense,
-        near_beacon: bool,
-        discoveries: u32,
-        input: &mut [f32],
-    ) {
-        input.fill(0.0);
-        let cx = c.x.round() as i32;
-        let cy = c.y.round() as i32;
-
-        // 8 directions × 6 channels = 48 (food, hazard, water, solid, metal, crystal)
-        // The element properties come from the lookup tables: this loop runs
-        // for every creature and matching on the enum here is far too slow.
-        TABLES.with(|tab| {
-            for (d, (dx, dy)) in DIRS8.iter().enumerate() {
-                let mut food = 0.0;
-                let mut hazard = 0.0;
-                let mut water = 0.0;
-                let mut solid = 0.0;
-                let mut metal = 0.0;
-                let mut crystal = 0.0;
-                for step in 1..=8i32 {
-                    let sx = cx + dx * step;
-                    let sy = cy + dy * step;
-                    if sx < 0 || sy < 0 || sx >= world.w as i32 || sy >= world.h as i32 {
-                        continue;
-                    }
-                    let k = world.kind[sy as usize * world.w + sx as usize] as usize;
-                    if k == Elem::Empty as usize {
-                        continue;
-                    }
-                    let w = 1.0 / step as f32;
-                    if tab.nutrition[k] > 0.0 {
-                        food += w;
-                    }
-                    if tab.toxicity[k] > 0.0 {
-                        hazard += w;
-                    }
-                    if k == Elem::Water as usize {
-                        water += w;
-                    }
-                    if tab.solid[k] {
-                        solid += w;
-                    }
-                    if tab.metal[k] {
-                        metal += w;
-                    }
-                    if tab.crystal[k] {
-                        crystal += w;
-                    }
-                }
-                let base = d * 6;
-                input[base] = food.min(1.0);
-                input[base + 1] = hazard.min(1.0);
-                input[base + 2] = water.min(1.0);
-                input[base + 3] = solid.min(1.0);
-                input[base + 4] = metal.min(1.0);
-                input[base + 5] = crystal.min(1.0);
-            }
-        });
-
-        // Creature proximity: one pass over the colony gives the nearest
-        // neighbour, the nearest rival, the nearest ally and the local
-        // friend/foe counts.
-        let mut nearest_dist = f32::MAX;
-        let mut nearest_dx = 0.0;
-        let mut nearest_dy = 0.0;
-        let mut others = 0.0;
-        let mut same = 0.0;
-        let mut enemy = 0.0;
-        let (mut e_dx, mut e_dy, mut e_dist) = (0.0f32, 0.0f32, f32::MAX);
-        let (mut a_dx, mut a_dy, mut a_dist) = (0.0f32, 0.0f32, f32::MAX);
-        let mut e_is_queen = 0.0;
-        let mut e_is_soldier = 0.0;
-        let mut e_hp = 0.0;
-        let mut a_is_queen = 0.0;
-        let mut enemies_close = 0.0f32;
-        let mut enemies_far = 0.0f32;
-        // An alliance brings shared vision: the allies' eyes become your
-        // eyes, so a creature with an ally spots a threat much further
-        // away. A hivemind species shares one mind and sees even further,
-        // and a nocturnal animal's eyes are worth more in the dark.
-        let mut vision = if ds.alliances > 0.0 { 34.0 } else { 20.0 };
-        if c.traits & trait_bits::HIVEMIND != 0 {
-            vision *= 1.6;
-        }
-        // A beacon is a signal fire on a high place: the colony sees
-        // further from it.
-        if near_beacon {
-            vision *= 1.5;
-        }
-        // A colony that has learned to read the stars sees much further.
-        if discoveries & discovery_bits::ASTRONOMY != 0 {
-            vision *= 1.4;
-        }
-        // Cartography: the colony knows its own country.
-        if discoveries & discovery_bits::CARTOGRAPHY != 0 {
-            vision *= 1.2;
-        }
-        vision *= c.vision_factor(day_night);
-        // A fog closes the world in: nothing sees far.
-        vision *= world.weather.vision_factor();
-        grid.near(c.x, c.y, vision as usize, |idx| {
+    // ---- The other creatures ----
+    //
+    // A creature is seen like anything else: a shape that moves, over
+    // there. And it is smelled: an animal can smell its own kind from
+    // further away than it can see it, which is how a creature that has
+    // wandered off finds the herd again.
+    //
+    // What the creature *makes* of what it sees is not decided here. This
+    // is only the shape of the thing and the smell of it.
+    {
+        let mut life = [0.0f32; DIRS];
+        let mut kin = [0.0f32; DIRS];
+        grid.near(cx as f32, cy as f32, KIN_RANGE as usize, |idx| {
             let a = &agents[idx as usize];
-            let (id, ox, oy, ospecies, orole, ohp) =
-                (a.0, a.1, a.2, a.3, a.4, a.5);
-            if id == c.id {
+            let dx = a.1 - cx as f32;
+            let dy = a.2 - cy as f32;
+            let d = (dx * dx + dy * dy).sqrt();
+            if d < 0.5 || d > KIN_RANGE {
                 return;
             }
-            let dx = ox - c.x;
-            let dy = oy - c.y;
-            let d2 = dx * dx + dy * dy;
-            if d2 < 400.0 {
-                others += 1.0;
-                if ospecies == c.species {
-                    same += 1.0;
-                } else {
-                    enemy += 1.0;
+            let dir = direction_of(dx, dy);
+            // Seen: the nearer it is, the more of it there is.
+            if d <= SIGHT_RANGE as f32 {
+                let v = (1.0 - (d - 1.0) / SIGHT_RANGE as f32).max(0.0);
+                if v > life[dir] {
+                    life[dir] = v;
                 }
             }
-            if d2 < nearest_dist {
-                nearest_dist = d2;
-                nearest_dx = dx;
-                nearest_dy = dy;
+            // Smelt: only its own kind smells like home, and it carries a
+            // long way.
+            if a.3 == species {
+                let w = 1.0 / (1.0 + (d - 1.0) / KIN_FALLOFF);
+                if w > kin[dir] {
+                    kin[dir] = w;
+                }
             }
-            let d = d2.sqrt();
-            if ospecies == c.species {
-                if d < a_dist {
-                    a_dist = d;
-                    a_dx = dx;
-                    a_dy = dy;
-                    a_is_queen = if orole == Role::Queen as u8 { 1.0 } else { 0.0 };
-                }
-            } else {
-                if d < e_dist {
-                    e_dist = d;
-                    e_dx = dx;
-                    e_dy = dy;
-                    e_hp = ohp;
-                    e_is_queen = if orole == Role::Queen as u8 { 1.0 } else { 0.0 };
-                    e_is_soldier = if orole == Role::Soldier as u8 { 1.0 } else { 0.0 };
-                }
-                if d < 10.0 {
-                    enemies_close += 1.0;
-                } else if d < 25.0 {
-                    enemies_far += 1.0;
-                }            }
         });
-
-        // Internal state (16) - slots 32-47
-        input[32] = (c.energy / c.max_energy).clamp(0.0, 1.0);
-        input[33] = (c.health / (if c.role == Role::Soldier { 150.0 } else { 100.0 })).clamp(0.0, 1.0);
-        input[34] = (c.age as f32 / MAX_AGE as f32).clamp(0.0, 1.0);
-        input[35] = (c.vx / 2.2).clamp(-1.0, 1.0);
-        input[36] = (c.vy / 2.2).clamp(-1.0, 1.0);
-        input[37] = (nearest_dx / 20.0f32).clamp(-1.0f32, 1.0f32);
-        input[38] = (nearest_dy / 20.0f32).clamp(-1.0f32, 1.0f32);
-        input[39] = (others / 10.0f32).clamp(0.0, 1.0);
-        input[40] = c.hunger / 100.0;
-        input[41] = c.thirst / 100.0;
-        input[42] = c.stamina / c.max_stamina;
-        input[43] = (c.mana / c.max_mana).clamp(0.0, 1.0);
-        input[44] = (c.craft_cooldown as f32 / 50.0).clamp(0.0, 1.0);
-        input[45] = (c.spell_cooldown as f32 / 60.0).clamp(0.0, 1.0);
-        input[46] = if c.resting { 1.0 } else { 0.0 };
-        input[47] = (c.carried / c.carry_cap()).clamp(0.0, 1.0);
-
-        // Colony awareness (8) - slots 48-55
-        let base_dx = c.base_x - c.x;
-        let base_dy = c.base_y - c.y;
-        let base_dist = (base_dx * base_dx + base_dy * base_dy).sqrt().max(1.0);
-        input[48] = (base_dx / base_dist).clamp(-1.0, 1.0);
-        input[49] = (base_dy / base_dist).clamp(-1.0, 1.0);
-        input[50] = 1.0 - (base_dist / 100.0).min(1.0);
-        // Same-species count nearby
-        input[51] = (same / 10.0f32).clamp(0.0f32, 1.0f32);
-        input[52] = (enemy / 10.0f32).clamp(0.0f32, 1.0f32);
-        input[53] = match c.role { Role::Queen => 1.0, _ => 0.0 };
-        input[54] = match c.role { Role::Soldier => 1.0, _ => 0.0 };
-        input[55] = day_night;
-
-        // Role one-hot - slots 56-62
-        input[56] = if c.role == Role::Worker { 1.0 } else { 0.0 };
-        input[57] = if c.role == Role::Priest { 1.0 } else { 0.0 };
-        input[58] = if c.role == Role::Merchant { 1.0 } else { 0.0 };
-        input[59] = if c.role == Role::Builder { 1.0 } else { 0.0 };
-        input[60] = if c.role == Role::Explorer { 1.0 } else { 0.0 };
-        input[61] = if c.role == Role::Shaman { 1.0 } else { 0.0 };
-        input[62] = temperature / 40.0;
-
-        // Tool & tech state (10) - slots 63-72
-        input[63] = (c.tool as u8 as f32 / 14.0).clamp(0.0, 1.0);
-        input[64] = (c.tool_durability as f32 / 2000.0).clamp(0.0, 1.0);
-        input[65] = (c.tech_level as f32 / 4.0).clamp(0.0, 1.0);
-        input[66] = (c.inventory.iter().sum::<u16>() as f32 / 2000.0).clamp(0.0, 1.0);
-        input[67] = (c.craft_cooldown as f32 / 70.0).clamp(0.0, 1.0);
-        input[68] = (c.inventory[0] as f32 / 50.0).clamp(0.0, 1.0); // stone
-        input[69] = (c.inventory[1] as f32 / 50.0).clamp(0.0, 1.0); // metal
-        input[70] = (c.inventory[2] as f32 / 30.0).clamp(0.0, 1.0); // copper
-        input[71] = (c.inventory[3] as f32 / 20.0).clamp(0.0, 1.0); // gold
-        input[72] = (c.inventory[4] as f32 / 20.0).clamp(0.0, 1.0); // crystal
-
-        // Magic state (8) - slots 73-80
-        input[73] = (c.mana / c.max_mana).clamp(0.0, 1.0);
-        input[74] = (c.active_spell as u8 as f32 / 10.0).clamp(0.0, 1.0);
-        input[75] = if c.known_spells > 0 { 1.0 } else { 0.0 };
-        input[76] = (c.spell_cd[0] as f32 / 60.0).clamp(0.0, 1.0);
-        input[77] = (c.spell_cd[1] as f32 / 60.0).clamp(0.0, 1.0);
-        input[78] = (c.spell_cd[2] as f32 / 60.0).clamp(0.0, 1.0);
-        input[79] = (c.spell_cd[3] as f32 / 60.0).clamp(0.0, 1.0);
-        input[80] = (c.spell_cd[4] as f32 / 60.0).clamp(0.0, 1.0);
-
-        // Mount/vehicle state (4) - slots 81-84
-        input[81] = if c.mount_kind != MountKind::None { 1.0 } else { 0.0 };
-        input[82] = c.mount_stamina / 100.0;
-        input[83] = if c.vehicle.is_some() { 1.0 } else { 0.0 };
-        input[84] = (c.reputation as f32 / 100.0).clamp(-1.0, 1.0);
-
-        // Memory blackboard (8) - slots 85-92
-        for i in 0..8 { input[85 + i] = c.memory[i]; }
-
-        // Resource inventory detailed (16) - slots 93-108
-        for i in 0..16 {
-            input[93 + i] = (c.inventory[i] as f32 / 100.0).clamp(0.0, 1.0);
+        for d in 0..DIRS {
+            p.dir[d][sight::LIFE] = life[d];
+            p.dir[d][sight::CHANNELS + smell::KIN] = kin[d];
         }
-
-        // Disease & social (8) - slots 109-116
-        input[109] = match c.disease { Disease::None => 0.0, _ => 1.0 };
-        input[110] = (c.disease_timer as f32 / 300.0).clamp(0.0, 1.0);
-        input[111] = (c.loyalty as f32 / 100.0).clamp(-1.0, 1.0);
-        input[112] = (c.devotion as f32 / 100.0).clamp(0.0, 1.0);
-        input[113] = (c.mood as u8 as f32 / 9.0).clamp(0.0, 1.0);
-        input[114] = (c.mood_timer as f32 / 180.0).clamp(0.0, 1.0);
-        input[115] = (c.trade_partner.map_or(0, |p| p) as f32 / 1000.0).clamp(0.0, 1.0);
-        input[116] = (c.squad_id as f32 / 10.0).clamp(0.0, 1.0);
-
-        // Genetics (16) - slots 117-132
-        for i in 0..16 { input[117 + i] = c.genes[i]; }
-
-        // Offspring & kills (4) - slots 133-136
-        input[133] = (c.offspring as f32 / 20.0).clamp(0.0, 1.0);
-        input[134] = (c.kills as f32 / 20.0).clamp(0.0, 1.0);
-        input[135] = (c.generation as f32 / 50.0).clamp(0.0, 1.0);
-        input[136] = (c.mutations as f32 / 20.0).clamp(0.0, 1.0);
-
-        // Season (4) - slots 137-140
-        input[137] = if season == 0 { 1.0 } else { 0.0 };
-        input[138] = if season == 1 { 1.0 } else { 0.0 };
-        input[139] = if season == 2 { 1.0 } else { 0.0 };
-        input[140] = if season == 3 { 1.0 } else { 0.0 };
-
-        // ---- Extended senses (160-223) ----------------------------------
-        // Enemy awareness (160-171)
-        input[160] = (e_dx / 30.0).clamp(-1.0, 1.0);
-        input[161] = (e_dy / 30.0).clamp(-1.0, 1.0);
-        input[162] = (1.0 - (e_dist / 60.0).min(1.0)).max(0.0);
-        input[163] = e_is_queen;
-        input[164] = e_is_soldier;
-        input[165] = (e_hp / 150.0).clamp(0.0, 1.0);
-        input[166] = (enemies_close / 6.0).clamp(0.0, 1.0);
-        input[167] = (enemies_far / 10.0).clamp(0.0, 1.0);
-        input[168] = (a_dx / 30.0).clamp(-1.0, 1.0);
-        input[169] = (a_dy / 30.0).clamp(-1.0, 1.0);
-        input[170] = (1.0 - (a_dist / 60.0).min(1.0)).max(0.0);
-        input[171] = a_is_queen;
-
-        // Threats (172-181)
-        let mut shot_dx = 0.0;
-        let mut shot_dy = 0.0;
-        let mut shots_near = 0.0f32;
-        for &(sx, sy, s_species) in shots {
-            if s_species == c.species {
-                continue;
-            }
-            let dx = sx - c.x;
-            let dy = sy - c.y;
-            let d = (dx * dx + dy * dy).sqrt();
-            if d < 20.0 {
-                shots_near += 1.0;
-                shot_dx += dx;
-                shot_dy += dy;
-            }
-        }
-        input[172] = (shots_near / 5.0).clamp(0.0, 1.0);
-        input[173] = (shot_dx / 30.0).clamp(-1.0, 1.0);
-        input[174] = (shot_dy / 30.0).clamp(-1.0, 1.0);
-        input[175] = (scan.counts[7] / 6.0).clamp(0.0, 1.0);
-        input[176] = (scan.hazard.0 / 16.0).clamp(-1.0, 1.0);
-        input[177] = (scan.hazard.1 / 16.0).clamp(-1.0, 1.0);
-        input[178] = (scan.counts[8] / 6.0).clamp(0.0, 1.0);
-        input[179] = (scan.poison.0 / 16.0).clamp(-1.0, 1.0);
-        input[180] = (scan.poison.1 / 16.0).clamp(-1.0, 1.0);
-        let max_hp = if c.role == Role::Soldier { 150.0 } else { 100.0 };
-        input[181] = if c.health < max_hp * 0.35 { 1.0 } else { 0.0 };
-
-        // Foraging (182-193)
-        input[182] = (scan.food.0 / 16.0).clamp(-1.0, 1.0);
-        input[183] = (scan.food.1 / 16.0).clamp(-1.0, 1.0);
-        input[184] = (1.0 - (scan.food.2 / 24.0).min(1.0)).max(0.0);
-        input[185] = (scan.water.0 / 16.0).clamp(-1.0, 1.0);
-        input[186] = (scan.water.1 / 16.0).clamp(-1.0, 1.0);
-        input[187] = (1.0 - (scan.water.2 / 24.0).min(1.0)).max(0.0);
-        input[188] = (scan.wood.0 / 16.0).clamp(-1.0, 1.0);
-        input[189] = (scan.wood.1 / 16.0).clamp(-1.0, 1.0);
-        input[190] = (1.0 - (scan.wood.2 / 24.0).min(1.0)).max(0.0);
-        input[191] = (scan.ore.0 / 16.0).clamp(-1.0, 1.0);
-        input[192] = (scan.ore.1 / 16.0).clamp(-1.0, 1.0);
-        input[193] = (1.0 - (scan.ore.2 / 24.0).min(1.0)).max(0.0);
-
-        // Resources & colony (194-203)
-        input[194] = (scan.counts[0] / 20.0).clamp(0.0, 1.0);
-        input[195] = (scan.counts[1] / 10.0).clamp(0.0, 1.0);
-        input[196] = (scan.counts[2] / 10.0).clamp(0.0, 1.0);
-        input[197] = (scan.counts[3] / 15.0).clamp(0.0, 1.0);
-        input[198] = (scan.counts[4] / 10.0).clamp(0.0, 1.0);
-        input[199] = (own_turrets as f32 / 6.0).clamp(0.0, 1.0);
-        input[200] = (enemy_turrets as f32 / 6.0).clamp(0.0, 1.0);
-        input[201] = (scan.counts[10] / 10.0).clamp(0.0, 1.0);
-        input[202] = (base_dist / 120.0).min(1.0);
-        input[203] = (base_dx / 60.0).clamp(-1.0, 1.0);
-
-        // Environment (204-211)
-        let surface_y = world.surface_y(cx);
-        input[204] = ((cy - surface_y) as f32 / 60.0).clamp(0.0, 1.0);
-        input[205] = if world.get(cx, cy - 3) == Elem::Empty { 1.0 } else { 0.0 };
-        input[206] = (scan.counts[5] / 40.0).clamp(0.0, 1.0);
-        input[207] = (scan.counts[6] / 40.0).clamp(0.0, 1.0);
-        input[208] = (scan.counts[4] / 10.0).clamp(0.0, 1.0);
-        input[209] = ((scan.counts[7] + scan.counts[8]) / 8.0).clamp(0.0, 1.0);
-        input[210] = (scan.counts[3] / 15.0).clamp(0.0, 1.0);
-        input[211] = (scan.counts[9] / 20.0).clamp(0.0, 1.0);
-
-        // Personal readiness (212-221)
-        input[212] = (c.fire_cooldown as f32 / 60.0).clamp(0.0, 1.0);
-        input[213] = if c.fire_cooldown == 0 { 1.0 } else { 0.0 };
-        input[214] = if c.tool == Tool::Bow { 1.0 } else { 0.0 };
-        input[215] = if c.tool == Tool::Staff { 1.0 } else { 0.0 };
-        input[216] = if matches!(c.tool, Tool::Pickaxe | Tool::Drill) { 1.0 } else { 0.0 };
-        input[217] = if c.tool == Tool::Hammer { 1.0 } else { 0.0 };
-        input[218] = if c.inventory[6] >= 8 && c.tech_level >= 1 { 1.0 } else { 0.0 };
-        input[219] = (c.build_cooldown as f32 / 10.0).clamp(0.0, 1.0);
-        input[220] = if c.hunger > 70.0 { 1.0 } else { 0.0 };
-        input[221] = if c.thirst > 70.0 { 1.0 } else { 0.0 };
-
-        // Colony strength (222-223)
-        input[222] = (species_population as f32 / 40.0).clamp(0.0, 1.0);
-        input[223] = (rival_population as f32 / 40.0).clamp(0.0, 1.0);
-
-        // ---- Diplomacy (224-243) -----------------------------------------
-        // What the creature knows about other species: who is nearby, how it
-        // feels about them and how the two colonies compare in strength.
-        input[224] = ds.state;
-        input[225] = (ds.trust / 100.0).clamp(-1.0, 1.0);
-        input[226] = ds.at_war;
-        input[227] = ds.allied;
-        input[228] = ds.is_envoy;
-        input[229] = (1.0 - (ds.dist / 40.0).min(1.0)).max(0.0);
-        input[230] = ds.alliances / 4.0;
-        input[231] = ds.wars / 4.0;
-        input[232] = ds.treaties / 8.0;
-        input[233] = (ds.balance - 1.0).clamp(-1.0, 1.0);
-        input[234] = ds.talking;
-        // The partner's identity, hashed into a few buckets so the network
-        // can tell "the species I always trade with" from "a stranger".
-        let partner_bucket = ds.partner.unwrap_or(0) % 8;
-        input[235] = if partner_bucket == 0 { 1.0 } else { 0.0 };
-        input[236] = if partner_bucket == 1 { 1.0 } else { 0.0 };
-        input[237] = if partner_bucket == 2 { 1.0 } else { 0.0 };
-        input[238] = if partner_bucket == 3 { 1.0 } else { 0.0 };
-        // How far the creature still has to walk to reach a foreign colony.
-        input[239] = (ds.dist / 120.0).min(1.0);
-        // The creature's own diplomatic standing (reputation and pacts).
-        input[240] = (c.reputation as f32 / 100.0).clamp(-1.0, 1.0);
-        input[241] = (c.pacts_signed as f32 / 10.0).clamp(0.0, 1.0);
-        input[242] = if c.diplo_cooldown == 0 { 1.0 } else { 0.0 };
-        input[243] = (c.diplo_progress).clamp(0.0, 1.0);
-
-        // ---- Life and heritage (244-251) ---------------------------------
-        // The stage of life, then the five axes of the temperament.
-        input[244] = match c.stage {
-            Stage::Juvenile => 0.0,
-            Stage::Adult => 0.5,
-            Stage::Elder => 1.0,
-        };
-        input[245] = c.personality.aggression;
-        input[246] = c.personality.curiosity;
-        input[247] = c.personality.sociability;
-        input[248] = c.personality.greed;
-        input[249] = c.personality.caution;
-        // What the species is adapted to, and what it has learned.
-        input[250] = (c.affinity as u8 as f32) / 6.0;
-        input[251] = (c.culture.count_ones() as f32) / 8.0;
-
-        // ---- The place and the sky (252-263) ------------------------------
-        // Which zone of the deep the creature is standing in, and what the
-        // weather is doing. These are the things a colony can evolve a
-        // taste for: a line that prefers the crystal depths, or one that
-        // keeps out of the fog.
-        let depth = cy - surface_y;
-        let zone = crate::world::DepthZone::of(depth);
-        input[252] = if zone == crate::world::DepthZone::Shallows { 1.0 } else { 0.0 };
-        input[253] = if zone == crate::world::DepthZone::CrystalDepths { 1.0 } else { 0.0 };
-        input[254] = if zone == crate::world::DepthZone::SulphurWorks { 1.0 } else { 0.0 };
-        input[255] = if zone == crate::world::DepthZone::BoneGalleries { 1.0 } else { 0.0 };
-        input[256] = if zone == crate::world::DepthZone::MagmaLayer { 1.0 } else { 0.0 };
-        // How far down it is, over the whole range of the deep.
-        input[257] = (depth as f32 / 240.0).clamp(0.0, 1.0);
-        // The weather, one-hot: the fog and the heat are the two that
-        // change what a creature should be doing.
-        input[258] = if world.weather == crate::world::Weather::Clear { 1.0 } else { 0.0 };
-        input[259] = if world.weather == crate::world::Weather::Rain { 1.0 } else { 0.0 };
-        input[260] = if world.weather == crate::world::Weather::Storm { 1.0 } else { 0.0 };
-        input[261] = if world.weather == crate::world::Weather::Snow { 1.0 } else { 0.0 };
-        input[262] = if world.weather == crate::world::Weather::Fog { 1.0 } else { 0.0 };
-        input[263] = if world.weather == crate::world::Weather::Heatwave { 1.0 } else { 0.0 };
-        input[280] = if world.weather == crate::world::Weather::Sandstorm { 1.0 } else { 0.0 };
-        // The air itself: how fresh it is where the creature stands. The
-        // plants of the surface breathe out oxygen, so the open air is
-        // fresh and a sealed cave is stale.
-        input[281] = world.fresh_air(cx, cy, 3);
-
-        // ---- The world in detail (264-279) --------------------------------
-        // The light that reaches this place, the heat underfoot, the
-        // places that are worth living in and the things that come up out
-        // of the deep. These are the senses that make the world worth
-        // reading: a creature that can feel the light and smell a grove
-        // can find its way home in the dark.
-        let daylight = 0.5 - 0.5 * (day_night * std::f32::consts::TAU).cos();
-        let deep = (cy - surface_y).max(0) as f32;
-        // The light does not reach into the rock.
-        let light = daylight * (1.0 - (deep / 50.0).min(0.92));
-        input[264] = light;
-        // The heat of the ground underfoot, and which way is warmer: a
-        // creature that feels the heat knows whether to go up or down.
-        let cell_index = (cy.max(0) as usize).min(world.h.saturating_sub(1)) * world.w
-            + (cx.max(0) as usize).min(world.w.saturating_sub(1));
-        let h_now = world.heat.get(cell_index).copied().unwrap_or(0) as f32 / 255.0;
-        let h_up = if cy > 0 {
-            world.heat.get(cell_index - world.w).copied().unwrap_or(0) as f32 / 255.0
-        } else {
-            h_now
-        };
-        let h_down = world.heat.get(cell_index + world.w).copied().unwrap_or(0) as f32 / 255.0;
-        input[265] = h_now;
-        input[266] = (h_up - h_down).clamp(-1.0, 1.0);
-        // The nearest place worth living in: how far, and which way.
-        let mut best_l = f32::MAX;
-        let mut ldx = 0.0f32;
-        let mut ldy = 0.0f32;
-        for l in world.landmarks.iter() {
-            let dx = l.x - c.x;
-            let dy = l.y - c.y;
-            let d2 = dx * dx + dy * dy;
-            if d2 < best_l {
-                best_l = d2;
-                ldx = dx;
-                ldy = dy;
-            }
-        }
-        if best_l < f32::MAX {
-            let d = best_l.sqrt();
-            input[267] = (1.0 - d / 220.0).max(0.0);
-            if d > 0.001 {
-                input[268] = (ldx / d).clamp(-1.0, 1.0);
-                input[269] = (ldy / d).clamp(-1.0, 1.0);
-            }
-        }
-        // What the ground under the creature gives it.
-        let bonus = world.landmark_bonus(c.x, c.y);
-        input[270] = if bonus.food { 1.0 } else { 0.0 };
-        input[271] = if bonus.warmth { 1.0 } else { 0.0 };
-        input[272] = if bonus.mana > 0.0 { 1.0 } else { 0.0 };
-        input[273] = if bonus.purity { 1.0 } else { 0.0 };
-        input[274] = if bonus.plague { 1.0 } else { 0.0 };
-        // And the two new ones: a mind that has somewhere to think, and
-        // somewhere to breathe.
-        input[282] = if bonus.mind { 1.0 } else { 0.0 };
-        input[283] = if bonus.air { 1.0 } else { 0.0 };
-        // The deep. A ZORG is the one thing that is never a neighbour and
-        // always a threat, so the creature can smell how close it is.
-        let mut zorg_d = f32::MAX;
-        let mut zdx = 0.0f32;
-        let mut zdy = 0.0f32;
-        for &(zx, zy) in zorgs.iter() {
-            let dx = zx - c.x;
-            let dy = zy - c.y;
-            let d2 = dx * dx + dy * dy;
-            if d2 < zorg_d {
-                zorg_d = d2;
-                zdx = dx;
-                zdy = dy;
-            }
-        }
-        if zorg_d < f32::MAX {
-            let d = zorg_d.sqrt();
-            input[275] = (1.0 - d / 60.0).max(0.0);
-            if d > 0.001 {
-                input[276] = (zdx / d).clamp(-1.0, 1.0);
-                input[277] = (zdy / d).clamp(-1.0, 1.0);
-            }
-        }
-        // Air and water: what the creature is standing in.
-        let above = if cy > 0 {
-            world.get(cx, cy - 1)
-        } else {
-            Elem::Empty
-        };
-        input[278] = if above == Elem::Empty && cy <= surface_y { 1.0 } else { 0.0 };
-        input[279] = if world.get(cx, cy) == Elem::Water { 1.0 } else { 0.0 };
     }
 
+    p
 }
+
+/// Which direction a thing is strongest in.
+///
+/// The animal does not know what it is smelling, only that the smell is
+/// stronger one way than another. This picks that way out, and it refuses
+/// to answer when the answer is not clear: a smell that is the same in
+/// every direction is no direction at all, and teaching an animal to walk
+/// towards a smell that is everywhere teaches it to walk in circles.
+///
+/// The strength that comes back is zero in that case, so the caller does
+/// not have to think about it.
+pub(crate) fn strongest_direction<F>(p: &Percept, f: F) -> (usize, f32)
+where
+    F: Fn(&[f32], &[f32]) -> f32,
+{
+    let mut best = 0usize;
+    let mut best_v = f32::MIN;
+    let mut second_v = 0.0f32;
+    for d in 0..DIRS {
+        let v = f(p.sight_of(d), p.smell_of(d));
+        if v > best_v {
+            second_v = best_v.max(0.0);
+            best_v = v;
+            best = d;
+        } else if v > second_v {
+            second_v = v;
+        }
+    }
+    if best_v <= 0.0 {
+        return (0, 0.0);
+    }
+    // Clear enough if it stands out, or if nothing else smells at all.
+    if best_v > second_v * 1.25 || second_v < 0.05 {
+        (best, best_v)
+    } else {
+        (best, 0.0)
+    }
+}
+
+/// Write the body block: everything the creature knows about itself.
+///
+/// This is proprioception. An animal knows how hungry it is and which way
+/// it is going, and that is not knowledge of the world: it is knowledge
+/// of its own body. The distinction matters, because this is the *only*
+/// place the network is allowed to be told a fact outright.
+pub(crate) fn write_body(
+    c: &Creature,
+    world: &World,
+    day_night: f32,
+    temperature: f32,
+    input: &mut [f32],
+) {
+    let b = BODY_BASE;
+    input[b] = (c.energy / c.max_energy).clamp(0.0, 1.0);
+    input[b + 1] = (c.health / c.max_health()).clamp(0.0, 1.0);
+    input[b + 2] = (c.hunger / 100.0).clamp(0.0, 1.0);
+    input[b + 3] = (c.thirst / 100.0).clamp(0.0, 1.0);
+    input[b + 4] = (c.stamina / c.max_stamina).clamp(0.0, 1.0);
+    input[b + 5] = (c.mana / c.max_mana).clamp(0.0, 1.0);
+    input[b + 6] = if c.resting { 1.0 } else { 0.0 };
+    input[b + 7] = (c.carried / c.carry_cap()).clamp(0.0, 1.0);
+    input[b + 8] = (c.age as f32 / MAX_AGE as f32).clamp(0.0, 1.0);
+    input[b + 9] = (c.vx / 2.2).clamp(-1.0, 1.0);
+    input[b + 10] = (c.vy / 2.2).clamp(-1.0, 1.0);
+    input[b + 11] = (c.vx.abs() + c.vy.abs()).clamp(0.0, 1.0);
+    input[b + 12] = (c.tool as u8 as f32 / 15.0).clamp(0.0, 1.0);
+    input[b + 13] = (c.tool_durability as f32 / 2000.0).clamp(0.0, 1.0);
+    input[b + 14] = (c.tech_level as f32 / 4.0).clamp(0.0, 1.0);
+    input[b + 15] = (c.inventory.iter().sum::<u16>() as f32 / 2000.0).clamp(0.0, 1.0);
+    input[b + 16] = (c.craft_cooldown as f32 / 70.0).clamp(0.0, 1.0);
+    input[b + 17] = (c.spell_cooldown as f32 / 60.0).clamp(0.0, 1.0);
+    input[b + 18] = (c.fire_cooldown as f32 / 60.0).clamp(0.0, 1.0);
+    input[b + 19] = (c.build_cooldown as f32 / 10.0).clamp(0.0, 1.0);
+    input[b + 20] = if c.disease == Disease::None { 0.0 } else { 1.0 };
+    input[b + 21] = (c.disease_timer as f32 / 300.0).clamp(0.0, 1.0);
+    input[b + 22] = (c.mood as u8 as f32 / 9.0).clamp(0.0, 1.0);
+    // How much light reaches the animal's own eyes.
+    input[b + 23] = (0.5 - 0.5 * (day_night * std::f32::consts::TAU).cos()).clamp(0.0, 1.0);
+    // How warm it is.
+    input[b + 24] = (temperature / 40.0).clamp(-1.0, 1.0);
+    // How fresh the air is.
+    input[b + 25] = world.fresh_air(
+        c.x.round() as i32,
+        c.y.round() as i32,
+        2,
+    );
+    // Rain on the skin, and the wind. These are what a creature feels of
+    // the weather: it does not know it is a "sandstorm", it knows the air
+    // is full of grit and it is being blown about.
+    input[b + 26] = match world.weather {
+        crate::world::Weather::Rain | crate::world::Weather::Storm => 1.0,
+        _ => 0.0,
+    };
+    input[b + 27] = match world.weather {
+        crate::world::Weather::Storm | crate::world::Weather::Sandstorm => 1.0,
+        crate::world::Weather::Rain => 0.4,
+        _ => 0.0,
+    };
+    // How enclosed the animal is: it can feel whether it is under open
+    // sky or shut in the rock.
+    let cx = c.x.round() as i32;
+    let cy = c.y.round() as i32;
+    let open = world.get(cx, cy - 4) == Elem::Empty;
+    input[b + 28] = if open { 1.0 } else { 0.0 };
+    // How much light reaches the place it is standing in.
+    //
+    // This is not a reading of the depth: an animal does not know how far
+    // it is under the ground, it only knows that it is dark. The light
+    // says the same thing and says it honestly - the deep is dark, and
+    // the surface is not.
+    let depth = (cy - world.surface_y(cx)).max(0) as f32 / 240.0;
+    let sky_light = (0.5 - 0.5 * (day_night * std::f32::consts::TAU).cos()).clamp(0.0, 1.0);
+    input[b + 29] = (sky_light * (1.0 - depth.min(1.0))).clamp(0.0, 1.0);
+}
+
+/// Write the kin block: what the creature can see of its own kind, and of
+/// others.
+///
+/// A creature recognises its own kind by how they look, and it can see
+/// the colour of a stranger. It cannot see a treaty, and it is not told
+/// one: whether the red ones are friends or enemies is something it has
+/// to work out for itself.
+pub(crate) fn write_kin(
+    c: &Creature,
+    agents: &[(u32, f32, f32, u32, u8, f32)],
+    grid: &SpatialGrid,
+    input: &mut [f32],
+) {
+    let k = KIN_BASE;
+    let mut same_dist = 0.0f32;
+    let mut same_count = 0.0f32;
+    let mut other_dist = 0.0f32;
+    let mut other_count = 0.0f32;
+    let mut other_col = [0.0f32; 3];
+    let mut other_size = 0.0f32;
+    // Which way they are. The network has to be able to tie the colour
+    // it sees to the direction it is in, or it can never learn that the
+    // red ones are the ones to run from.
+    let mut same_dir = [0.0f32; 2];
+    let mut other_dir = [0.0f32; 2];
+
+    grid.near(c.x, c.y, 30, |idx| {
+        let a = &agents[idx as usize];
+        if a.0 == c.id {
+            return;
+        }
+        let dx = a.1 - c.x;
+        let dy = a.2 - c.y;
+        let d = (dx * dx + dy * dy).sqrt();
+        if d > 30.0 {
+            return;
+        }
+        if a.3 == c.species {
+            same_count += 1.0;
+            if same_dist == 0.0 || d < same_dist {
+                same_dist = d;
+                same_dir = [dx / d, dy / d];
+            }
+        } else {
+            other_count += 1.0;
+            if other_dist == 0.0 || d < other_dist {
+                other_dist = d;
+                other_dir = [dx / d, dy / d];
+                // The colour of the nearest stranger, as the creature sees
+                // it: the species colour is exactly what is on show.
+                let col = species_color(a.3);
+                other_col = [
+                    col[0] as f32 / 255.0,
+                    col[1] as f32 / 255.0,
+                    col[2] as f32 / 255.0,
+                ];
+                other_size = a.5;
+            }
+        }
+    });
+
+    let own = species_color(c.species);
+    let own_col = [
+        own[0] as f32 / 255.0,
+        own[1] as f32 / 255.0,
+        own[2] as f32 / 255.0,
+    ];
+
+    input[k] = if same_count > 0.0 {
+        (1.0 - same_dist / 30.0).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    input[k + 1] = (same_count / 10.0).clamp(0.0, 1.0);
+    input[k + 2] = if other_count > 0.0 {
+        (1.0 - other_dist / 30.0).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    input[k + 3] = (other_count / 10.0).clamp(0.0, 1.0);
+    input[k + 4] = other_col[0];
+    input[k + 5] = other_col[1];
+    input[k + 6] = other_col[2];
+    input[k + 7] = other_size;
+    input[k + 8] = own_col[0];
+    input[k + 9] = own_col[1];
+    input[k + 10] = own_col[2];
+    input[k + 11] = same_dir[0];
+    input[k + 12] = same_dir[1];
+    input[k + 13] = other_dir[0];
+    input[k + 14] = other_dir[1];
+}
+
+/// Write the perception block into the input vector.
+pub(crate) fn write_percept(p: &Percept, input: &mut [f32]) {
+    for (d, dir) in p.dir.iter().enumerate() {
+        let b = PERCEPT_BASE + d * DIR_CHANNELS;
+        for c in 0..DIR_CHANNELS {
+            input[b + c] = dir[c];
+        }
+    }
+}
+

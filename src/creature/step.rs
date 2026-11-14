@@ -235,6 +235,16 @@ impl CreatureSystem {
             {
                 let c = &mut self.list[index];
                 c.age += 1;
+                // ---- What has happened to it since it last looked ----
+                //
+                // The harm that reaches a creature usually arrives from
+                // outside its own turn: a shot or a bite is resolved after
+                // every creature has had its turn. So the creature keeps
+                // what its health and its kills were, and the difference
+                // between then and now is what tells it that something
+                // hit it, or that something died.
+                let hurt = c.health < c.health_seen - 2.0;
+                let killed = c.kills > c.kills_seen;
 
                 // ---- Life stage and learning ----
                 //
@@ -276,7 +286,20 @@ impl CreatureSystem {
                 // Pottery: the colony's stores keep, so it goes hungry
                 // more slowly.
                 let stores = if c.knows_tech(Discovery::Pottery) { 0.85 } else { 1.0 };
-                c.hunger = (c.hunger + 0.06 * hardy * stores).clamp(0.0, 100.0);
+                // The world gets harder as the run goes on, and hunger is
+                // the first thing that gets harder. At the start of a run
+                // a creature that has not yet learned to feed itself is
+                // given the benefit of the doubt: hunger barely moves.
+                // By the end there is no benefit of the doubt left, and
+                // the same creature would have starved three times over.
+                //
+                // The rate is kept in step with what a meal is worth: a
+                // plant fills a creature for a fixed number of ticks, and
+                // if the two drift apart then a colony that is eating well
+                // still goes hungry, which is not a difficulty but a bug.
+                let hardship = world.hardship();
+                let hunger_rate = 0.06 * hardy * stores;
+                c.hunger = (c.hunger + hunger_rate).clamp(0.0, 100.0);
                 // A colony without a queen loses heart: the animals burn
                 // their energy faster and the colony falls apart.
                 let crisis = crisis_drain_of(c.species, self.tick);
@@ -306,8 +329,11 @@ impl CreatureSystem {
                 if discoveries & discovery_bits::HUSBANDRY != 0 {
                     c.hunger = (c.hunger - 0.02).clamp(0.0, 100.0);
                 }                // The rain quenches a thirst that would otherwise build up.
-                c.thirst = (c.thirst + 0.045 * hardy / world.weather.thirst_factor())
-                    .clamp(0.0, 100.0);
+                // The thirst follows the hunger: the world is gentler at
+                // the start of a run and thirstier at the end of it.
+                let thirst_rate = 0.045 * hardy / world.weather.thirst_factor()
+                    * (0.25 + 0.75 * hardship);
+                c.thirst = (c.thirst + thirst_rate).clamp(0.0, 100.0);
                 // A ZORG lives in the wet deep and drinks the poison it
                 // eats. It never needs water from a lake, so it does not
                 // waste its time looking for any.
@@ -414,12 +440,22 @@ impl CreatureSystem {
                 if c.resting {
                     c.stamina =
                         (c.stamina + STAMINA_REGEN * air_factor).clamp(0.0, c.max_stamina);
-                    c.energy = (c.energy + 0.02 - breath).min(c.max_energy);
+                    // A resting creature recovers what it is missing, not a
+                    // fixed crumb. A tired animal that sleeps wakes up
+                    // fit; one that only gets a little back never does.
+                    c.energy = (c.energy
+                        + (c.max_energy - c.energy) * 0.01
+                        - breath)
+                        .min(c.max_energy);
                 } else {
                     // The weather makes every day harder, and stale air
-                    // makes it harder still.
-                    c.energy -=
-                        0.08 * world.weather.energy_factor() * (1.4 - 0.4 * air) + breath;
+                    // makes it harder still. So does the run itself: early
+                    // on, the world lets a creature live a little easier.
+                    c.energy -= 0.08
+                        * world.weather.energy_factor()
+                        * (1.4 - 0.4 * air)
+                        * (0.55 + 0.45 * hardship)
+                        + breath;
                 }
                 // A bonded pair looks after each other: a creature with a
                 // living partner is better fed and in better spirits.
@@ -479,9 +515,13 @@ impl CreatureSystem {
                 // The cold bites. A species that has never felt a winter
                 // suffers for it, and the ember people suffer more. A hot
                 // spring keeps the cold out.
+                //
+                // The cold is part of the difficulty: the first winters of
+                // a run are mild, and by the end of a long one the cold is
+                // the thing that decides which colonies survive.
                 if self.temperature < 4.0 && !place.warmth {
                     let chill = (4.0 - self.temperature) * c.affinity.cold_vulnerability();
-                    c.health -= chill * 0.012;
+                    c.health -= chill * 0.012 * (0.3 + 0.7 * hardship);
                 }
                 // Fire does not hurt a creature that was born to it.
                 let (fx, fy) = (c.x.round() as i32, c.y.round() as i32);
@@ -546,49 +586,48 @@ impl CreatureSystem {
                 // run, the picture from the last time it did is used.
                 let think = self.tick % 2 == 0 || !c.brain_ready;
                 if think {
-                    c.scan_cache = scan_local(world, c.x.round() as i32, c.y.round() as i32);
+                    c.percept_cache = scan_percept(
+                        world,
+                        c.x.round() as i32,
+                        c.y.round() as i32,
+                        c.species,
+                        &agents,
+                        &grid,
+                    );
                 }
-                let scan = c.scan_cache;
-                let own_pop = species_counts
-                    .iter()
-                    .find(|(id, _)| *id == c.species)
-                    .map(|(_, n)| *n)
-                    .unwrap_or(1);
-                let own_towers = tower_counts
-                    .iter()
-                    .find(|(id, _)| *id == c.species)
-                    .map(|(_, n)| *n)
-                    .unwrap_or(0);
+                let percept = c.percept_cache;
 
                 // The brain is only re-thought every other tick, with the
                 // decision kept between the ticks it does not run on.
                 if think {
-                    Self::sense(
-                        &agents,
-                        &grid,
+                    // ---- The senses ----
+                    //
+                    // The creature sees, smells and hears the world, and
+                    // knows its own body. That is all it is given.
+                    write_percept(&percept, &mut input_buf);
+                    write_body(
                         c,
                         world,
                         self.day_night,
                         self.temperature,
-                        self.season,
-                        &scan,
-                        &shot_positions,
-                        &zorg_positions,
-                        own_towers,
-                        total_towers.saturating_sub(own_towers),
-                        own_pop,
-                        (pop_now as u32).saturating_sub(own_pop),
-                        &ds,
-                        near_beacon,
-                        discoveries_by_species
-                            .get(c.species as usize)
-                            .copied()
-                            .unwrap_or(0),
                         &mut input_buf,
                     );
+                    write_kin(c, &agents, &grid, &mut input_buf);
                     c.net.forward_into(&input_buf, &mut net_act, &mut net_next);
                     c.out_cache.copy_from_slice(&net_act);
                     c.brain_ready = true;
+                    // Remember which direction the creature most wanted to
+                    // go in, so that a reward can be given to it later.
+                    let mut best_dir = 0usize;
+                    let mut best_desire = f32::MIN;
+                    for d in 0..outputs::DESIRE_COUNT {
+                        let v = c.out_cache[outputs::DESIRE + d];
+                        if v > best_desire {
+                            best_desire = v;
+                            best_dir = d;
+                        }
+                    }
+                    c.desire_dir = best_dir;
                 }
                 // A copy, so the behaviour helpers can still change the
                 // creature while they read its decision.
@@ -626,7 +665,6 @@ impl CreatureSystem {
                 let (steer_x, steer_y, speed_mult_extra) = act_steer(
                     c,
                     &out,
-                    &scan,
                     &agents,
                     &grid,
                     &centroids,
@@ -667,8 +705,12 @@ impl CreatureSystem {
                     1.0
                 };
                 let speed_cap = speed_cap * climbing * daylight;
-                c.vx = (out[0] * 0.8 + steer_x * 0.8).clamp(-speed_cap, speed_cap);
-                c.vy = (out[1] * 0.8 + steer_y * 0.8 + 0.2).clamp(-speed_cap, speed_cap);
+                // The movement comes from the desires. The old "move x"
+                // and "move y" outputs are still there, but they are now
+                // only a small correction on top: the creature goes where
+                // its desires point, which is what the perceptions feed.
+                c.vx = (steer_x * 1.0 + out[0] * 0.25).clamp(-speed_cap, speed_cap);
+                c.vy = (steer_y * 1.0 + out[1] * 0.25 + 0.2).clamp(-speed_cap, speed_cap);
 
 
                 act_move(world, c, speed_mult_extra);
@@ -857,7 +899,15 @@ impl CreatureSystem {
                 }
 
                 // Rest (output[10] = rest) - recover stamina/energy but vulnerable
-                if out[10] > 0.5 && c.stamina < c.max_stamina * 0.5 {
+                //
+                // The network may choose to rest, and it usually will once
+                // it has learnt what resting is for. But an animal that is
+                // simply exhausted lies down whatever its mind says: that
+                // is the body, not the brain, and no amount of thinking
+                // makes an exhausted creature any less tired.
+                let spent = c.stamina < c.max_stamina * 0.2
+                    || c.energy < c.max_energy * 0.15;
+                if (out[10] > 0.05 && c.stamina < c.max_stamina * 0.5) || spent {
                     c.resting = true;
                 } else {
                     c.resting = false;
@@ -865,12 +915,18 @@ impl CreatureSystem {
 
                 // ---- What the mind learned from what it did ----
                 //
-                // A decision that worked is pushed a little further in that
-                // direction, so the same situation is a little more likely
-                // to end the same way next time. Only the last layer moves,
-                // so it costs almost nothing, and it is slow: a brain
-                // changes over a life, not over a tick.
-                if ate_something || built_something || wants_attack || traded || cast_spell {
+                // This is the whole point of the new senses. The creature
+                // is given raw impressions - a green something that smells
+                // sweet - and nothing else. What it does with them has to
+                // be worked out from what happens: it walks towards the
+                // sweet smell, it eats, and it is fed. That is a good
+                // outcome, so the connection between "sweet smell that
+                // way" and "go that way" is strengthened.
+                //
+                // The credit is pushed back through the whole network, not
+                // just the last layer, so the brain learns the *perception*
+                // and not only the action.
+                {
                     let disc = discoveries_by_species
                         .get(c.species as usize)
                         .copied()
@@ -887,21 +943,132 @@ impl CreatureSystem {
                     if place.mind {
                         learn *= 2.0;
                     }
+
+                    // ---- The lesson ----
+                    //
+                    // What happened, as a list of the decisions that
+                    // should have been stronger (or weaker). This is the
+                    // only channel between what happened and what the
+                    // brain believes.
+                    let mut targets: Vec<(usize, f32)> = Vec::new();
+                    // The lesson is taken every fourth tick, not every
+                    // tick. The traces keep the last few thoughts, so a
+                    // decision that is four ticks old is still in there
+                    // to be credited, and the arithmetic is a quarter
+                    // of what it would be.
+                    if self.tick % 4 == 0 {
+                    let mut targets: [(usize, f32); 6] = [(0, 0.0); 6];
+                    let mut n = 0usize;
+                    let mut push = |out: usize, amount: f32| {
+                        if n < targets.len() {
+                            targets[n] = (out, amount);
+                            n += 1;
+                        }
+                    };
                     if ate_something {
-                        c.net.reinforce(2, learn);
+                        // Eating was the right thing to do.
+                        push(2, learn * 1.5);
+                        // And it was the direction it was heading in that
+                        // brought it to the food.
+                        push(outputs::DESIRE + c.desire_dir, learn * 2.5);
                     }
                     if built_something {
-                        c.net.reinforce(5, learn);
+                        push(5, learn * 1.0);
                     }
-                    if wants_attack {
-                        c.net.reinforce(4, learn * 0.5);
+                    // A kill is the one lesson that cannot be got wrong:
+                    // the strike landed, and the prey is dead. So the
+                    // attack is reinforced - and so is the direction the
+                    // prey was in, because that is the direction the
+                    // creature went to get it.
+                    if killed {
+                        push(4, learn * 1.6);
+                        if c.kill_dir >= 0 {
+                            push(
+                                outputs::DESIRE + c.kill_dir as usize,
+                                learn * 2.0,
+                            );
+                        }
+                    } else if wants_attack {
+                        // An attack that did not kill anything is worth
+                        // very little: the creature swung at the air.
+                        push(4, learn * 0.3);
                     }
                     if traded {
-                        c.net.reinforce(9, learn * 0.5);
+                        push(9, learn * 0.8);
                     }
                     if cast_spell {
-                        c.net.reinforce(7, learn * 0.5);
+                        push(7, learn * 0.8);
                     }
+                    // Being hurt is the clearest lesson of all: run, and
+                    // do not walk towards whatever did it.
+                    //
+                    // The direction it came from is remembered, so the
+                    // credit goes to *that* direction and not to whatever
+                    // the creature happened to want most when it happened.
+                    if hurt {
+                        push(15, learn * 1.2);
+                        push(2, -learn * 0.8);
+                        if c.hurt_dir >= 0 {
+                            push(
+                                outputs::DESIRE + c.hurt_dir as usize,
+                                -learn * 1.5,
+                            );
+                        }
+                    }
+                    // Going hungry teaches it to want to eat.
+                    if c.hunger > 70.0 {
+                        push(2, learn * 0.5);
+                    }
+
+                    if !targets.is_empty() {
+                    if n > 0 {
+                        c.net.learn(&targets[..n], learn);
+                    }
+                    }
+                    }
+
+                    // ---- The shaping ----
+                    //
+                    // Learning only from meals is learning from a very
+                    // rare event: the creature has to find food before it
+                    // learns how. So the creature is also rewarded for
+                    // *wanting* the right thing.
+                    //
+                    // A hungry creature that smells something sweet gets
+                    // a credit for the direction it smells it in. It does
+                    // not know the smell is food - that is the whole point
+                    // - but the credit teaches it that wanting that
+                    // direction is a good idea, and over many meals the
+                    // connection between "sweet" and "food" is made.
+                    //
+                    // Only the strongest smell is credited, and only every
+                    // few ticks: the lesson is the same either way, and
+                    // the credit is not cheap.
+                    if c.hunger > 25.0 && self.tick % 4 == 0 {
+                        let drive = ((c.hunger - 25.0) / 75.0).min(1.0);
+                        let (best, best_strength) =
+                            strongest_direction(&percept, |_, smell| smell[crate::creature::senses::smell::SWEET]);
+                        // The smell has to point one way and not all of them.
+                        // A sweet smell that is everywhere is no smell at
+                        // all, and crediting a direction on a tie teaches
+                        // the animal to walk in circles.
+                        if best_strength > 0.08 {
+                            c.net.credit_desire(best, learn * 2.0 * drive, learn);
+                        }
+                    }
+                    // A thirsty creature is drawn to the wet.
+                    if c.thirst > 30.0 && self.tick % 8 == 0 {
+                        let drive = ((c.thirst - 30.0) / 70.0).min(1.0);
+                        let (best, best_strength) =
+                            strongest_direction(&percept, |sight, _| {
+                                sight[crate::creature::senses::sight::WET]
+                                    * sight[crate::creature::senses::sight::BLUE]
+                            });
+                        if best_strength > 0.05 {
+                            c.net.credit_desire(best, learn * 1.6 * drive, learn);
+                        }
+                    }
+
                     // Now and then the brain settles, so a life of
                     // reinforcement cannot turn a few weights into
                     // everything.
@@ -953,16 +1120,26 @@ impl CreatureSystem {
                 // and scholars all get a chance to contribute to the next
                 // generation. Without this the lineage stalls: only the
                 // queens ever have enough energy to breed.
+                //
+                // They also move with the difficulty. A creature that is
+                // still learning to feed itself burns its energy walking
+                // about looking for food, and asking it to have a full
+                // tank before it can breed is asking the impossible. So
+                // early on a creature needs less of itself to start a
+                // family, and by the end of the run it has to be in good
+                // shape to do it.
+                let need = |base: f32| base * (0.45 + 0.55 * hardship);
+                let well_fed = 60.0 + 35.0 * (1.0 - hardship);
                 let can_reproduce = match c.role {
-                    Role::Queen => c.energy > 300.0,
-                    Role::Worker => c.energy > 430.0 && c.hunger < 60.0 && (c.age * 17 + c.id * 23) % 220 < 2,
-                    Role::Soldier => c.energy > 460.0 && c.hunger < 60.0 && (c.age * 19 + c.id * 29) % 220 < 2,
-                    Role::Priest => c.energy > 440.0 && c.hunger < 60.0 && (c.age * 13 + c.id * 17) % 220 < 2,
-                    Role::Merchant => c.energy > 460.0 && c.hunger < 60.0 && (c.age * 19 + c.id * 23) % 220 < 2,
-                    Role::Builder => c.energy > 430.0 && c.hunger < 60.0 && (c.age * 11 + c.id * 13) % 220 < 2,
-                    Role::Explorer => c.energy > 410.0 && c.hunger < 60.0 && (c.age * 7 + c.id * 11) % 220 < 2,
-                    Role::Shaman => c.energy > 440.0 && c.hunger < 60.0 && (c.age * 17 + c.id * 19) % 220 < 2,
-                    Role::Envoy => c.energy > 420.0 && c.hunger < 60.0 && (c.age * 11 + c.id * 29) % 220 < 2,
+                    Role::Queen => c.energy > need(300.0),
+                    Role::Worker => c.energy > need(430.0) && c.hunger < well_fed && (c.age * 17 + c.id * 23) % 220 < 2,
+                    Role::Soldier => c.energy > need(460.0) && c.hunger < well_fed && (c.age * 19 + c.id * 29) % 220 < 2,
+                    Role::Priest => c.energy > need(440.0) && c.hunger < well_fed && (c.age * 13 + c.id * 17) % 220 < 2,
+                    Role::Merchant => c.energy > need(460.0) && c.hunger < well_fed && (c.age * 19 + c.id * 23) % 220 < 2,
+                    Role::Builder => c.energy > need(430.0) && c.hunger < well_fed && (c.age * 11 + c.id * 13) % 220 < 2,
+                    Role::Explorer => c.energy > need(410.0) && c.hunger < well_fed && (c.age * 7 + c.id * 11) % 220 < 2,
+                    Role::Shaman => c.energy > need(440.0) && c.hunger < well_fed && (c.age * 17 + c.id * 19) % 220 < 2,
+                    Role::Envoy => c.energy > need(420.0) && c.hunger < well_fed && (c.age * 11 + c.id * 29) % 220 < 2,
                 };
                 // The litter size and the cost of each young follow the
                 // species' life history: a prolific species raises several
@@ -973,7 +1150,14 @@ impl CreatureSystem {
                 // not a flood that ends every run on its own. The litter is
                 // counted before the young are born, so the cap is a real
                 // cap and not a mark they sail straight past.
-                let zorg_room = zorg_pop + litter as u32 <= ZORG_POP_CAP;
+                //
+                // The cap grows with the difficulty: the deep starts as a
+                // handful of beasts and becomes a swarm by the end of the
+                // run. A colony has to be able to live with the deep
+                // before the deep is worth fighting.
+                let zorg_cap =
+                    (30.0 + hardship * (ZORG_POP_CAP - 30) as f32) as u32;
+                let zorg_room = zorg_pop + litter as u32 <= zorg_cap;
                 if can_reproduce
                     && (nn_wants_reproduce || exploratory_reproduce)
                     && c.energy > 340.0
@@ -1124,6 +1308,10 @@ impl CreatureSystem {
 
                 c.last_x = c.x;
                 c.last_y = c.y;
+                // Remember what it looks like now, so that the next turn
+                // can tell what has happened to it in the meantime.
+                c.health_seen = c.health;
+                c.kills_seen = c.kills;
 
                 if wants_child {
                     // A litter of several small ones, or a single strong
@@ -1143,6 +1331,11 @@ impl CreatureSystem {
             }
             if ate_something {
                 self.eats_total += 1;
+                // What it ate, for the diagnostic.
+                let meal = self.list[index].last_meal as usize;
+                if meal < self.eats_by_elem.len() {
+                    self.eats_by_elem[meal] += 1;
+                }
             }
             if built_something {
                 self.builds_total += 1;
@@ -1255,3 +1448,4 @@ impl CreatureSystem {
         }
     }
 }
+

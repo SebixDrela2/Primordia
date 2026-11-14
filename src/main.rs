@@ -147,6 +147,14 @@ async fn main() {
     {
         ui.tech_open = true;
     }
+    // PRIMORDIA_PANEL=minds opens the mind inspector straight away.
+    if std::env::var("PRIMORDIA_PANEL")
+        .ok()
+        .as_deref()
+        .map_or(false, |p| p.eq_ignore_ascii_case("minds"))
+    {
+        ui.minds_open = true;
+    }
     // PRIMORDIA_SNAPSHOT=out.png writes a picture of the game after
     // PRIMORDIA_SNAPSHOT_AFTER seconds and closes the window.
     let snapshot = std::env::var("PRIMORDIA_SNAPSHOT").ok();
@@ -269,6 +277,11 @@ async fn main() {
             ui.diplomacy_open = !ui.diplomacy_open;
         }
 
+        // M: toggle the mind inspector
+        if is_key_pressed(KeyCode::M) {
+            ui.minds_open = !ui.minds_open;
+        }
+
         // + / - : adjust simulation speed
         if is_key_pressed(KeyCode::Equal) || is_key_pressed(KeyCode::KpAdd) {
             sim_speed = (sim_speed * 2.0).min(48.0);
@@ -294,7 +307,11 @@ async fn main() {
         let (_, wheel_y) = mouse_wheel();
         let (mx, my) = mouse_position();
         let over_tech = ui.tech_open && tech_tree_under_pointer(mx, my);
-        if wheel_y != 0.0 && !over_tech {
+        // The wheel over the mind inspector walks from one of the cleverest
+        // animals to the next instead of zooming.
+        if ui.minds_open && wheel_y != 0.0 {
+            ui.minds_index = (ui.minds_index - wheel_y.signum()).max(0.0);
+        } else if wheel_y != 0.0 && !over_tech {
             let direction = wheel_y.signum();
             let old_sx = screen_width() / view_w;
             let old_sy = screen_height() / view_h;
@@ -735,6 +752,11 @@ async fn main() {
             draw_tech_tree(&creatures, &mut ui);
         }
         draw_tech_panel(&creatures);
+
+        // The mind inspector: what the cleverest animals are thinking.
+        if ui.minds_open {
+            draw_minds(&creatures, ui.minds_index);
+        }
 
         // Victory / extinction overlay sits on top of everything.
         if let Some(v) = &victory {

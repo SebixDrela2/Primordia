@@ -8,6 +8,7 @@
 //! - victory.rs    the victory / extinction screen
 //! - actors.rs     creatures, projectiles and world overlays
 //! - atmosphere.rs the dust, the embers and the spores in the air
+//! - minds.rs      the inspector: what the cleverest animals are thinking
 //! - diplomacy.rs  the relations between species and their treaties
 //! - tech.rs       the tech tree window and the tech panel
 
@@ -17,6 +18,7 @@ pub mod diplomacy;
 pub mod effects;
 pub mod hud;
 pub mod knowledge;
+pub mod minds;
 pub mod minimap;
 pub mod tech;
 pub mod victory;
@@ -27,6 +29,7 @@ pub use diplomacy::*;
 pub use effects::*;
 pub use hud::*;
 pub use knowledge::*;
+pub use minds::*;
 pub use minimap::*;
 pub use tech::*;
 pub use victory::*;

@@ -3,10 +3,14 @@ use super::*;
 // The individual behaviours a creature can pick during its turn.
 
 /// How strongly the creature wants to move in each direction.
+///
+/// Note that the percept is *not* an argument: the steering reads the
+/// network's desires, and the network has already read the percept. The
+/// hard-coded rules below (flee, hunt, the pull of the colony) are about
+/// the creature's situation, not about what the world looks like.
 pub(crate) fn act_steer(
     c: &Creature,
     out: &[f32],
-    scan: &LocalScan,
     agents: &[(u32, f32, f32, u32, u8, f32)],
     grid: &SpatialGrid,
     foreign_bases: &[(u32, f32, f32)],
@@ -20,10 +24,30 @@ pub(crate) fn act_steer(
                 // [5]=build, [6]=craft, [7]=cast_spell, [8]=mount/dismount, [9]=trade,
                 // [10]=rest, [11]=switch_spell, [12]=dig/mine, [13]=gather_water,
                 // [14]=shoot, [15]=flee, [16]=seek, [17]=forage, [18]=rally,
-                // [19]=defend
+                // [19]=defend, [20..24]=diplomacy, [25..32]=desire per direction
                 let mut steer_x = 0.0f32;
                 let mut steer_y = 0.0f32;
                 let mut speed_mult_extra = 1.0f32;
+
+                // ---- The desires ----
+                //
+                // The network says which of the eight directions it wants
+                // to go in, and the creature goes that way. This is where
+                // the perception pays off: a direction that smells sweet
+                // and looks green is worth walking towards, and the
+                // network has to work that out for itself.
+                for d in 0..outputs::DESIRE_COUNT {
+                    let v = out[outputs::DESIRE + d];
+                    if v <= 0.0 {
+                        continue;
+                    }
+                    let (dx, dy) = DIRS8[d];
+                    steer_x += dx as f32 * v;
+                    steer_y += dy as f32 * v;
+                    if v > 0.5 {
+                        speed_mult_extra = speed_mult_extra.max(1.15);
+                    }
+                }
 
                 // ---- The ZORGs ----
                 //
@@ -133,49 +157,19 @@ pub(crate) fn act_steer(
 
                 // --- Seek: head for whatever the creature needs most ---
                 //
-                // A curious creature will range further to find what it
-                // needs; a cautious one settles for what is close by.
-                let range_bonus = c.personality.curiosity * 8.0 - wary * 4.0;
-                let seek_target: Option<(f32, f32, f32)> = if c.thirst > 45.0 && scan.water.2 < 30.0 + range_bonus {
-                    Some(scan.water)
-                } else if c.hunger > 45.0 && scan.food.2 < 30.0 + range_bonus {
-                    Some(scan.food)
-                } else if c.energy < c.max_energy * 0.5 && scan.food.2 < 30.0 + range_bonus {
-                    Some(scan.food)
-                } else {
-                    None
-                };
-
-                // --- Forage: head for wood or ore to build with ---
-                let forage_target: Option<(f32, f32, f32)> = {
-                    let wood = scan.wood;
-                    let ore = scan.ore;
-                    if wood.2 <= ore.2 { Some(wood) } else { Some(ore) }
-                };
+                // The *direction* is no longer looked up. Before, the code
+                // asked the world where the nearest food was and walked
+                // there, which meant the creature never had to notice that
+                // the food was there at all. Now the direction comes from
+                // the network's own desires, and what it wants is decided
+                // by what it can smell and see.
 
                 if out[15] > 0.35 {
                     if let Some((dx, dy, d)) = flee_target {
                         if d > 0.1 {
                             steer_x -= dx / d;
                             steer_y -= dy / d;
-                            speed_mult_extra = 1.4;
-                        }
-                    }
-                }
-                if out[16] > 0.3 {
-                    if let Some((dx, dy, d)) = seek_target {
-                        if d > 0.1 && d < f32::MAX {
-                            steer_x += dx / d;
-                            steer_y += dy / d;
-                            speed_mult_extra = speed_mult_extra.max(1.15);
-                        }
-                    }
-                }
-                if out[17] > 0.3 {
-                    if let Some((dx, dy, d)) = forage_target {
-                        if d > 0.1 && d < f32::MAX {
-                            steer_x += dx / d;
-                            steer_y += dy / d;
+                            speed_mult_extra = speed_mult_extra.max(1.4);
                         }
                     }
                 }
@@ -188,6 +182,17 @@ pub(crate) fn act_steer(
                 }
 
                 // --- The pull of the colony ---
+                //
+                // Where the colony is: not a thing the creature perceives,
+                // but a thing it knows the way a bird knows its nest -
+                // the body knows the way home and the legs do the rest.
+                //
+                // The *herd* pull is different, and it is not here: that
+                // one is the smell of your own kind, which is a weight in
+                // the brain, so it is bred like everything else - a
+                // species that lives off on its own drifts towards a
+                // weaker pull, and one that cannot do without its herd
+                // drifts towards a stronger one.
                 //
                 // A sociable creature does not like to be alone, and a
                 // juvenile has no business wandering off: both are pulled
@@ -420,133 +425,212 @@ pub(crate) fn act_eat(world: &mut World, c: &mut Creature, out: &[f32]) -> bool 
     let mut ate_something = false;
                     let gx = c.x.round() as i32;
                     let gy = c.y.round() as i32;
-                    // Hungry creatures actively search a little further for food.
-                    let hungry = c.hunger > 55.0 || c.energy < c.max_energy * 0.45;
-                    // Hungry creatures actively search a little further for food.
-                    // Scavengers have a much better nose for food, and keen
-                    // senses extend the search radius.
-                    let scavenger = c.traits & trait_bits::SCAVENGER != 0;
-                    let keen = c.traits & trait_bits::KEEN_SENSES != 0;
-                    let radius = if out[2] > 0.3 || out[16] > 0.3 {
-                        6 + if scavenger { 3 } else { 0 } + if keen { 2 } else { 0 }
-                    } else if hungry {
-                        5 + if scavenger { 2 } else { 0 } + if keen { 1 } else { 0 }
-                    } else {
-                        2
-                    };
-                    // Geodesy: the colony knows where the food is, and
-                    // finds it further off.
-                    let radius = if c.knows_tech(Discovery::Geodesy) {
-                        (radius as f32 * 1.3) as i32
-                    } else {
-                        radius
-                    };
-                    if c.faction == Faction::Zorg {
-                        // A ZORG has its own ecology: it eats the rock and
-                        // the poison of the deep, and nothing it eats is
-                        // ever bad for it.
-                        ate_something = zorg_act_eat(world, c, hungry);
-                    } else if let Some((fx, fy)) = world.find_food(gx, gy, radius) {
-                        let eaten_elem = world.get(fx, fy);
-                        if let Some((nutrition, toxicity)) = world.eat(fx, fy) {
-                            // Modest returns: food is a real resource, so a
-                            // colony has to keep foraging instead of trivially
-                            // maxing out after a couple of bites.
-                            //
-                            // A colony that has hunted for generations gets
-                            // more out of the same carcass.
-                            let mut nutrition = nutrition * c.hunting_bonus();
-                            // Herbalism: the colony knows which plants are
-                            // worth eating.
-                            if c.knows_tech(Discovery::Herbalism) && eaten_elem.is_organic() {
-                                nutrition *= 1.15;
-                            }
-                            c.energy = (c.energy + nutrition * 4.0).min(c.max_energy);
-                            c.hunger = (c.hunger - nutrition * 4.0).max(0.0);
-                            if eaten_elem == Elem::Water {
-                                c.thirst = (c.thirst - 40.0).max(0.0);
-                            } else if eaten_elem.nutrition() > 0.0 {
-                                c.thirst = (c.thirst - nutrition * 4.0).max(0.0);
-                            }
-                            // Gathering resources gives inventory
-                            match eaten_elem {
-                                Elem::Stone | Elem::Brick | Elem::Concrete | Elem::Wall => {
-                                    c.inventory[0] = (c.inventory[0].saturating_add(5)).min(255);
-                                    c.carried = (c.carried + 30.0).min(c.carry_cap());
-                                }
-                                Elem::Metal | Elem::Wire => {
-                                    c.inventory[1] = (c.inventory[1].saturating_add(3)).min(255);
-                                    c.carried = (c.carried + 40.0).min(c.carry_cap());
-                                }
-                                Elem::Copper => {
-                                    c.inventory[2] = (c.inventory[2].saturating_add(3)).min(255);
-                                    c.carried = (c.carried + 40.0).min(c.carry_cap());
-                                }
-                                Elem::Gold => {
-                                    c.inventory[3] = (c.inventory[3].saturating_add(2)).min(255);
-                                    c.carried = (c.carried + 50.0).min(c.carry_cap());
-                                }
-                                Elem::Crystal => {
-                                    c.inventory[4] = (c.inventory[4].saturating_add(2)).min(255);
-                                    c.carried = (c.carried + 30.0).min(c.carry_cap());
-                                }
-                                Elem::Gem => {
-                                    c.inventory[5] = (c.inventory[5].saturating_add(1)).min(255);
-                                    c.carried = (c.carried + 60.0).min(c.carry_cap());
-                                }
-                                Elem::Wood | Elem::Plant | Elem::Fungus => {
-                                    c.inventory[6] = (c.inventory[6].saturating_add(4)).min(255);
-                                    c.carried = (c.carried + 20.0).min(c.carry_cap());
-                                }
-                                Elem::Crop => {
-                                    // A harvested crop is stored as grain: it can
-                                    // be planted again or eaten later.
-                                    c.inventory[10] = (c.inventory[10].saturating_add(3)).min(255);
-                                    c.carried = (c.carried + 15.0).min(c.carry_cap());
-                                }
-                                Elem::Energy => {
-                                    c.inventory[7] = (c.inventory[7].saturating_add(10)).min(255);
-                                }
-                                Elem::Glass | Elem::Circuit | Elem::Tool | Elem::Machine => {
-                                    c.carried = (c.carried + 30.0).min(c.carry_cap());
-                                }
-                                Elem::Water => {
-                                    c.inventory[8] = (c.inventory[8].saturating_add(5)).min(255);
-                                }
-                                _ => {}
-                            }
-                            if toxicity > 0.0 {
-                                // Antitoxins: the colony can hold its own
-                                // against poison. Deepdiving: the deep does
-                                // no harm at all.
-                                let mut harm = 0.25;
-                                if c.knows_tech(Discovery::Antitoxins) {
-                                    harm *= 0.5;
-                                }
-                                if c.knows_tech(Discovery::Deepdiving) {
-                                    harm = 0.0;
-                                }
-                                c.health -= toxicity * harm;
-                            }
-                            if c.energy > c.max_energy * 0.75 {
-                                c.health = (c.health + 0.5).min(100.0);
-                            }
-                            ate_something = true;
+                    // ---- Eat ----
+                    //
+                    // The creature eats what is **next to it**. Before, it
+                    // could reach anything edible within six cells without
+                    // knowing where it was, which meant the network never
+                    // had to perceive food at all: the hard-coded action
+                    // did the finding. Now the creature has to walk to the
+                    // food first, which means the network has to want to
+                    // walk towards it.
+                    // The creature bites what is next to it when it has any
+                    // inclination to eat at all. The threshold is low
+                    // because the network's outputs sit near zero most of
+                    // the time, and a mind that has to *insist* before it
+                    // will try anything never learns to try.
+                    //
+                    // What the creature learns is *when* eating is a good
+                    // idea, and what is worth eating: the reward for a
+                    // good meal strengthens the bite, and the punishment
+                    // for a bad one weakens it.
+                    if out[2] > 0.05 || out[16] > 0.05 {
+                        if c.faction == Faction::Zorg {
+                            // A ZORG has its own ecology: it eats the rock and
+                            // the poison of the deep, and nothing it eats is
+                            // ever bad for it.
+                            ate_something = zorg_act_eat(world, c, c.hunger > 55.0);
+                        } else {
+                            ate_something = eat_adjacent(world, c, gx, gy);
                         }
                     }
-                    // Drink: look for nearby water when thirsty, rather than
-                    // requiring the creature to already stand on a water cell.
-                    if c.thirst > 40.0 {
-                        let drink_radius = if out[13] > 0.5 { 6 } else { 4 };
-                        if let Some((wx, wy)) = world.find_water(gx, gy, drink_radius) {
-                            world.set_xy(wx, wy, Elem::Empty);
-                            c.thirst = (c.thirst - 60.0).max(0.0);
-                            c.energy = (c.energy + 5.0).min(c.max_energy);
-                            c.inventory[8] = (c.inventory[8].saturating_add(2)).min(255);
-                            ate_something = true;
+                    // ---- Drink ----
+                    //
+                    // Likewise: the creature drinks the water it is
+                    // standing next to, not any water within six cells.
+                    if c.thirst > 40.0 && out[13] > 0.05 {
+                        for (dx, dy) in DIRS8.iter() {
+                            let wx = gx + dx;
+                            let wy = gy + dy;
+                            if world.get(wx, wy) == Elem::Water {
+                                world.set_xy(wx, wy, Elem::Empty);
+                                c.thirst = (c.thirst - 60.0).max(0.0);
+                                c.energy = (c.energy + 5.0).min(c.max_energy);
+                                c.inventory[8] = (c.inventory[8].saturating_add(2)).min(255);
+                                // A drink is a meal too, and the census of
+                                // what the colony lives on should say so.
+                                c.last_meal = Elem::Water;
+                                ate_something = true;
+                                break;
+                            }
                         }
                     }
     ate_something
+}
+
+/// Eat whatever is next to the creature.
+///
+/// The creature tastes what is around it and eats the best thing it finds.
+/// This is the whole eating mechanic now: the mouth knows what food is
+/// (that is a mouth, not a brain), but the creature has to have walked
+/// there first. Where it walked to is a decision the network made.
+fn eat_adjacent(world: &mut World, c: &mut Creature, gx: i32, gy: i32) -> bool {
+    // Look at the eight neighbours *and* the cell it is standing on, and
+    // take the most nourishing thing it can reach. The cell it is standing
+    // on matters: a creature that walks into a patch of plants is
+    // standing in the middle of the food.
+    let mut best: Option<(i32, i32, Elem)> = None;
+    for (dx, dy) in DIRS8.iter().copied().chain([(0, 0)]) {
+        let ex = gx + dx;
+        let ey = gy + dy;
+        let e = world.get(ex, ey);
+        if e == Elem::Empty || e.nutrition() <= 0.0 {
+            continue;
+        }
+        // A ZORG's food is different, but a player creature only eats
+        // what is edible.
+        if !e.is_edible() {
+            continue;
+        }
+        // Water is drunk, not eaten. A creature that nibbles at the water
+        // it is standing in fills neither its belly nor its thirst, and a
+        // colony that has learned to do that starves beside a lake.
+        if e == Elem::Water {
+            continue;
+        }
+        let better = match best {
+            None => true,
+            Some((_, _, be)) => e.nutrition() > be.nutrition(),
+        };
+        if better {
+            best = Some((ex, ey, e));
+        }
+    }
+    let Some((ex, ey, eaten_elem)) = best else {
+        return false;
+    };
+    let Some((nutrition, toxicity)) = world.eat(ex, ey) else {
+        return false;
+    };
+    // What it ate, for the census of meals.
+    c.last_meal = eaten_elem;
+
+    // Modest returns: food is a real resource, so a colony has to keep
+    // foraging instead of trivially maxing out after a couple of bites.
+    //
+    // A colony that has hunted for generations gets more out of the same
+    // carcass.
+    let mut nutrition = nutrition * c.hunting_bonus();
+    // Herbalism: the colony knows which plants are worth eating.
+    if c.knows_tech(Discovery::Herbalism) && eaten_elem.is_organic() {
+        nutrition *= 1.15;
+    }
+    c.energy = (c.energy + nutrition * 4.0).min(c.max_energy);
+    c.hunger = (c.hunger - nutrition * 4.0).max(0.0);
+    if eaten_elem == Elem::Water {
+        c.thirst = (c.thirst - 40.0).max(0.0);
+    } else if eaten_elem.nutrition() > 0.0 {
+        c.thirst = (c.thirst - nutrition * 4.0).max(0.0);
+    }
+    // Gathering resources gives inventory
+    match eaten_elem {
+        Elem::Stone | Elem::Brick | Elem::Concrete | Elem::Wall => {
+            c.inventory[0] = (c.inventory[0].saturating_add(5)).min(255);
+            c.carried = (c.carried + 30.0).min(c.carry_cap());
+        }
+        Elem::Metal | Elem::Wire => {
+            c.inventory[1] = (c.inventory[1].saturating_add(3)).min(255);
+            c.carried = (c.carried + 40.0).min(c.carry_cap());
+        }
+        Elem::Copper => {
+            c.inventory[2] = (c.inventory[2].saturating_add(3)).min(255);
+            c.carried = (c.carried + 40.0).min(c.carry_cap());
+        }
+        Elem::Gold => {
+            c.inventory[3] = (c.inventory[3].saturating_add(2)).min(255);
+            c.carried = (c.carried + 50.0).min(c.carry_cap());
+        }
+        Elem::Crystal => {
+            c.inventory[4] = (c.inventory[4].saturating_add(2)).min(255);
+            c.carried = (c.carried + 30.0).min(c.carry_cap());
+        }
+        Elem::Gem | Elem::Diamond => {
+            c.inventory[5] = (c.inventory[5].saturating_add(1)).min(255);
+            c.carried = (c.carried + 60.0).min(c.carry_cap());
+        }
+        Elem::Wood | Elem::Plant | Elem::Fungus => {
+            c.inventory[6] = (c.inventory[6].saturating_add(4)).min(255);
+            c.carried = (c.carried + 20.0).min(c.carry_cap());
+        }
+        Elem::Crop => {
+            // A harvested crop is stored as grain: it can be planted again
+            // or eaten later.
+            c.inventory[10] = (c.inventory[10].saturating_add(3)).min(255);
+            c.carried = (c.carried + 15.0).min(c.carry_cap());
+        }
+        Elem::Energy => {
+            c.inventory[7] = (c.inventory[7].saturating_add(10)).min(255);
+        }
+        Elem::Glass | Elem::Circuit | Elem::Tool | Elem::Machine => {
+            c.carried = (c.carried + 30.0).min(c.carry_cap());
+        }
+        Elem::Water => {
+            c.inventory[8] = (c.inventory[8].saturating_add(5)).min(255);
+        }
+        _ => {}
+    }
+    if toxicity > 0.0 {
+        // Antitoxins: the colony can hold its own against poison.
+        // Deepdiving: the deep does no harm at all.
+        let mut harm = 0.25;
+        if c.knows_tech(Discovery::Antitoxins) {
+            harm *= 0.5;
+        }
+        if c.knows_tech(Discovery::Deepdiving) {
+            harm = 0.0;
+        }
+        c.health -= toxicity * harm;
+    }
+    if c.energy > c.max_energy * 0.75 {
+        c.health = (c.health + 0.5).min(100.0);
+    }
+    true
+}
+
+/// The neighbour cell the creature most wants to dig into.
+///
+/// The creature picks the direction it is most drawn to and digs the cell
+/// next to it in that direction. It is not told where the ore is: it has
+/// to have seen the glint of it and walked over.
+fn desired_neighbour(world: &World, gx: i32, gy: i32, out: &[f32]) -> Option<(i32, i32)> {
+    // Find the direction the creature wants most, and take the cell next
+    // to it in that direction.
+    let mut best_dir = 0usize;
+    let mut best = f32::MIN;
+    for d in 0..outputs::DESIRE_COUNT {
+        let v = out[outputs::DESIRE + d];
+        if v > best {
+            best = v;
+            best_dir = d;
+        }
+    }
+    let (dx, dy) = DIRS8[best_dir];
+    let (mx, my) = (gx + dx, gy + dy);
+    let e = world.get(mx, my);
+    if e == Elem::Empty || !e.is_solid() {
+        return None;
+    }
+    Some((mx, my))
 }
 
 /// Mine ore out of the rock (never food).
@@ -574,13 +658,15 @@ pub(crate) fn act_mine(world: &mut World, c: &mut Creature, out: &[f32], company
                 if (wants_mine || (exploratory_mine && world.mine_budget > 0)) && c.stamina > 5.0 {
                     let gx = c.x.round() as i32;
                     let gy = c.y.round() as i32;
-                    // A metallophilic creature reaches further for the ore,
-                    // and a deep digger digs further still.
-                    let deep = c.traits & trait_bits::DEEP_DIGGER != 0;
-                    let reach = 8
-                        + if c.traits & trait_bits::METALLOPHILIC != 0 { 5 } else { 0 }
-                        + if deep { 4 } else { 0 };
-                    if let Some((mx, my)) = world.find_resource(gx, gy, reach) {
+                    // The creature digs in the direction it wants to go.
+                    // It can only reach what is next to it: to mine an ore
+                    // vein it has to walk up to it first, and the walk is
+                    // the network's decision.
+                    let (mx, my) = match desired_neighbour(world, gx, gy, out) {
+                        Some(p) => p,
+                        None => return,
+                    };
+                    {
                         world.mine_budget -= 1;
                         let me = world.get(mx, my);
                         world.set_xy(mx, my, Elem::Empty);
@@ -623,6 +709,7 @@ pub(crate) fn act_mine(world: &mut World, c: &mut Creature, out: &[f32], company
                         }
                         // A deep digger sometimes breaks through into a pocket
                         // of something better than plain rock.
+                        let deep = c.traits & trait_bits::DEEP_DIGGER != 0;
                         if deep && world.rng.chance(0.06) {
                             let prize = match world.rng.range(4) {
                                 0 => Elem::Crystal,

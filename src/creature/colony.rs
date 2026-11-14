@@ -6,12 +6,15 @@ impl CreatureSystem {
             list: Vec::new(),
             rng: Rng::new(seed ^ 0xA5A5_1234_9E37_79B9),
             next_id: 1,
-            next_species: 1,
+            // The ZORGs are species zero; the first colony of the run is
+            // species one, and it is the first colour of the wheel.
+            next_species: 0,
             tick: 0,
             stats: CreatureStats::default(),
             births_total: 0,
             deaths_total: 0,
             eats_total: 0,
+            eats_by_elem: [0; 128],
             builds_total: 0,
             trades_total: 0,
             spells_cast: 0,
@@ -347,7 +350,12 @@ impl CreatureSystem {
         // Dominion: a colony that has worked out how to close the deep
         // holds it closed. The ZORGs breed far more slowly, and the floor
         // of their numbers is lower.
-        let mut floor = ZORG_MIN;
+        //
+        // The floor also rises with the difficulty: the deep starts as a
+        // handful of beasts and becomes a proper threat as the run goes
+        // on. A colony has to be able to learn to live with the deep
+        // before the deep is worth fighting.
+        let mut floor = ZORG_MIN + (world.hardship() * (ZORG_POP_CAP / 2) as f32) as u32;
         let mut slow = false;
         for (_, d) in self.discoveries.iter() {
             if *d & discovery_bits::DOMINION != 0 {
@@ -417,17 +425,16 @@ impl CreatureSystem {
                 for gi in g.iter_mut() {
                     *gi = rng.f32();
                 }
+                // The colour of a species is the colour of the palette:
+                // every colony in a run is a different colour of the
+                // wheel, and the ZORGs are always purple.
+                self.next_species += 1;
+                let species = self.next_species;
+                let color = species_team_color(&mut rng, species);
                 (
                     Net::random(&brain_sizes(), &mut rng),
-                    [
-                        rng.range_i(90, 256) as u8,
-                        rng.range_i(100, 256) as u8,
-                        rng.range_i(120, 256) as u8,
-                    ],
-                    {
-                        self.next_species += 1;
-                        self.next_species
-                    },
+                    color,
+                    species,
                     0,
                     1.0 + rng.f32() * 1.3,
                     g,
@@ -448,11 +455,20 @@ impl CreatureSystem {
                 if rng.chance(0.12) {
                     net.mutate_shape(&mut rng);
                 }
-                let color = [
-                    (parent.color[0] as i32 + rng.range_i(-18, 19)).clamp(30, 255) as u8,
-                    (parent.color[1] as i32 + rng.range_i(-18, 19)).clamp(30, 255) as u8,
-                    (parent.color[2] as i32 + rng.range_i(-18, 19)).clamp(30, 255) as u8,
-                ];
+                // The instincts are bred too, and this is where evolution
+                // gets its teeth: the bias towards the sweet smell is
+                // stronger in a line that survived on it, and weaker in a
+                // line that starved. Over the generations the whole
+                // species drifts towards whatever actually fed it.
+                for s in net.skip.iter_mut() {
+                    *s += (rng.f32() * 2.0 - 1.0) * 0.04;
+                    *s = s.clamp(-1.5, 1.5);
+                }
+                // A child is of its mother's species, so it is of her
+                // colour exactly: the colour belongs to the species, not
+                // to the individual, and a ZORG's young are purple like
+                // their mother.
+                let color = species_team_color(&mut rng, parent.species);
                 // No ongoing speciation: species only disappear through
                 // extinction, so a run can actually converge on one survivor.
                 // New diversity is injected between runs by `Revival`.
@@ -476,13 +492,11 @@ impl CreatureSystem {
                 // Stronger shake-up: the winning lineage diverges into several
                 // new species that then compete again.
                 net.mutate(&mut rng, 0.14, 0.22);
-                let color = [
-                    (base.color[0] as i32 + rng.range_i(-32, 33)).clamp(40, 255) as u8,
-                    (base.color[1] as i32 + rng.range_i(-32, 33)).clamp(40, 255) as u8,
-                    (base.color[2] as i32 + rng.range_i(-32, 33)).clamp(40, 255) as u8,
-                ];
+                // A revived lineage is a new species, so it takes a new
+                // colour from the wheel.
                 self.next_species += 1;
                 let species = self.next_species;
+                let color = species_team_color(&mut rng, species);
                 let size = (base.size + rng.f32() * 0.4 - 0.2).clamp(1.0, 2.4);
                 let mut g = base.genes;
                 for gi in g.iter_mut() {
@@ -759,7 +773,13 @@ impl CreatureSystem {
             fire_cooldown: 0,
             out_cache: [0.0; OUTPUTS],
             brain_ready: false,
-            scan_cache: LocalScan::empty(),
+            percept_cache: Percept::empty(),
+            desire_dir: 0,
+            hurt_dir: -1,
+            kill_dir: -1,
+            health_seen: 100.0,
+            kills_seen: 0,
+            last_meal: Elem::Empty,
             size,
             last_x: x,
             last_y: y,
@@ -883,7 +903,13 @@ impl Creature {
             fire_cooldown: 0,
             out_cache: [0.0; OUTPUTS],
             brain_ready: false,
-            scan_cache: LocalScan::empty(),
+            percept_cache: Percept::empty(),
+            desire_dir: 0,
+            hurt_dir: -1,
+            kill_dir: -1,
+            health_seen: 100.0,
+            kills_seen: 0,
+            last_meal: Elem::Empty,
             size: self.size,
             last_x: self.x,
             last_y: self.y,
@@ -1045,5 +1071,9 @@ impl Creature {
         child
     }
 }
+
+
+
+
 
 

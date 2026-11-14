@@ -86,6 +86,7 @@ impl World {
             volcano: None,
             season: 0,
             daylight: 0.5,
+            difficulty: 0.0,
             volcano_state: Volcano::Sleeping,
             volcano_timer: 1200,
             weather: Weather::Clear,

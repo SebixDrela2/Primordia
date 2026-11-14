@@ -3,12 +3,16 @@
 //! Split by responsibility:
 //! - mod.rs        the element enum plus the lookup tables
 //! - properties.rs the per-element behaviour, colours and descriptions
+//! - percept.rs    what each element looks like to an animal
 //!
 //! `Elem` is `#[repr(u8)]`, so the discriminant *is* the byte stored in a
 //! world cell. The lookup tables in this module turn those bytes into
 //! properties without ever matching on the enum inside a per-cell loop.
 
+mod percept;
 mod properties;
+
+pub use percept::{Look, look_table};
 
 /// Number of element bytes the lookup tables cover. It is larger than the
 /// number of elements so the tables stay a fixed size even when new

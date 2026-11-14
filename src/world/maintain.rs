@@ -298,21 +298,29 @@ impl World {
             for _ in 0..batches {
                 let x = self.rng.range((w - 4) as u32) as i32 + 2;
                 let sy = self.surface_y(x);
-                // Plants grow on the ground, not floating above it.
-                let y = sy + self.rng.range(3) as i32;
-                if self.get(x, y) == Elem::Empty {
-                    // Slightly favour spots near moisture.
-                    if !self.has_water_near(x, y, 5) && !self.rng.chance(0.5) {
-                        continue;
-                    }
-                    let e = if self.rng.chance(0.12) {
-                        Elem::Spore
-                    } else if self.rng.chance(0.10) {
-                        Elem::Fungus
-                    } else {
-                        Elem::Plant
-                    };
-                    self.set_xy(x, y, e);
+                // Plants grow on the ground, not floating above it and not
+                // buried under it: the seedling takes the first free cell
+                // above the surface, and a bush grows one cell higher on
+                // top of it.
+                let mut y = sy - 1;
+                if self.get(x, y) != Elem::Empty {
+                    continue;
+                }
+                // Slightly favour spots near moisture.
+                if !self.has_water_near(x, y, 5) && !self.rng.chance(0.5) {
+                    continue;
+                }
+                let e = if self.rng.chance(0.12) {
+                    Elem::Spore
+                } else if self.rng.chance(0.10) {
+                    Elem::Fungus
+                } else {
+                    Elem::Plant
+                };
+                self.set_xy(x, y, e);
+                // A thicket: sometimes a second plant on top of the first.
+                if self.rng.chance(0.3) && self.get(x, y - 1) == Elem::Empty {
+                    self.set_xy(x, y - 1, e);
                 }
             }
         }
@@ -320,7 +328,12 @@ impl World {
         // Hard cap: thin out vegetation if it starts smothering the world.
         // NOTE: compare decoded elements, never raw byte ranges.
         if frame % 20 == 0 && self.census.plants > 2000 {
-            for _ in 0..60 {
+            // The thicker the mat, the harder it is thinned: a world that is
+            // only a little over the line loses a few plants, a world that
+            // has run away with the surface loses a lot.
+            let over = (self.census.plants - 2000) as f32 / 1000.0;
+            let n = (60.0 + over * 240.0) as u32;
+            for _ in 0..n {
                 let i = self.rng.range((self.w * self.h) as u32) as usize;
                 if matches!(
                     Elem::from_u8(self.kind[i]),
@@ -571,6 +584,37 @@ impl World {
         if frame % 1200 == 0 && frame > 0 {
             p.volcanic = (p.volcanic + 0.09).min(1.0);
         }
+
+        // --- The difficulty ramp -------------------------------------------
+        //
+        // The world starts forgiving and gets harder, for two reasons.
+        //
+        // The first is the run itself: a colony that has just begun has
+        // creatures that have not yet worked out how to feed themselves,
+        // and a world that is cruel from the first step kills every line
+        // before any of them can learn. The second is the environment: the
+        // pressures above all rise with time.
+        //
+        // So the difficulty is the run's own progress, plus what the world
+        // has become. A young world in good condition is gentle; a world
+        // that has been picked clean and battered is not.
+        //
+        // The ramp is slow on purpose. A world that gets cruel too early
+        // kills the colony before it has had time to learn how to live in
+        // it, and then there is nothing left to evolve.
+        let progress = (frame as f32 / 60_000.0).min(1.0);
+        let strain = p.overall();
+        self.difficulty = (progress * 0.6 + strain * 0.4).clamp(0.0, 1.0);
+    }
+
+    /// How hard the world is on a creature right now.
+    ///
+    /// This is what the hunger, the thirst and the deep's hunger for the
+    /// surface all read. At the start of a run it is near zero and the
+    /// world is gentle; by the end of a long run it is near one and
+    /// nothing is easy any more.
+    pub fn hardship(&self) -> f32 {
+        self.difficulty
     }
 
     // Removes some airborne noise so the world cannot jam completely.

@@ -438,7 +438,7 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         crate::world::Volcano::Sleeping => {}
     }
 
-    let help = "WASD/Arrows: move  |  scroll: zoom  |  P: pause  |  R: reroll  |  K: knowledge  |  G: diplomacy  |  +/-: sim speed  |  hover: inspect  |  ESC: quit";
+    let help = "WASD/Arrows: move  |  scroll: zoom  |  P: pause  |  R: reroll  |  K: knowledge  |  G: diplomacy  |  M: minds  |  +/-: sim speed  |  hover: inspect  |  ESC: quit";
     let dims = measure_text(help, None, 15, 1.0);
     draw_text(
         help,

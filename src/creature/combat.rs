@@ -182,6 +182,13 @@ impl CreatureSystem {
             }
             if let Some(j) = hit {
                 self.list[j].health -= p.damage;
+                // Remember where the shot came from. This is the lesson
+                // the creature has to learn: it was hurt, and the hurt came
+                // from over there.
+                self.list[j].hurt_dir = crate::creature::senses::direction_of(
+                    p.x - self.list[j].x,
+                    p.y - self.list[j].y,
+                ) as i8;
                 self.events.push(SimEvent::Hit {
                     x: p.x,
                     y: p.y,
@@ -393,6 +400,12 @@ impl CreatureSystem {
                     // The victim's own build decides how much of it lands.
                     let dmg = self.list[j].damage_taken(dmg);
                     self.list[j].health -= dmg;
+                    // Remember where the blow came from, so that the
+                    // creature can learn which way to run.
+                    self.list[j].hurt_dir = crate::creature::senses::direction_of(
+                        self.list[a].x - self.list[j].x,
+                        self.list[a].y - self.list[j].y,
+                    ) as i8;
                     // Melee costs energy: swinging is work, and it used to
                     // hand the attacker energy instead.
                     self.list[a].energy =
@@ -430,6 +443,13 @@ impl CreatureSystem {
                     }
                     if self.list[j].health <= 0.0 {
                         self.list[a].kills += 1;
+                        // Remember which way the prey was in. The strike
+                        // landed because the creature went that way, and
+                        // that is what it has to learn.
+                        self.list[a].kill_dir = crate::creature::senses::direction_of(
+                            self.list[j].x - self.list[a].x,
+                            self.list[j].y - self.list[a].y,
+                        ) as i8;
                         self.list[a].energy = (self.list[a].energy + 140.0).min(self.list[a].max_energy);
                         // A hunter feeds on what it has killed: the kill is
                         // the meal, and the carcass is only what is left.

@@ -138,9 +138,9 @@ fn main() {
     println!("--- the cost of stale air ---");
     let stale = stale_cost(false);
     let fresh = stale_cost(true);
-    println!("  tiring in stale air: {:.3}", stale);
-    println!("  tiring in fresh air:  {:.3}", fresh);
-    if stale <= fresh {
+    println!("  the wind recovered in stale air: {:.3}", stale);
+    println!("  the wind recovered in fresh air:  {:.3}", fresh);
+    if fresh <= stale {
         println!("FAIL: stale air costs nothing");
         failures += 1;
     }
@@ -163,6 +163,9 @@ fn fire_lifetime(with_air: bool) -> u32 {
     // down there makes any oxygen of its own.
     let mut w = World::new(64, 100, 77);
     w.seed();
+    // A tiny chamber, so the creature cannot walk about: the measurement
+    // has to be of the air and not of how much walking costs.
+    let (x0, x1) = (30i32, 33i32);
     let (x0, x1) = (24i32, 40i32);
     let (y0, y1) = (70i32, 78i32);
     // A chamber in the rock, sealed on every side. Everything in it and
@@ -227,8 +230,10 @@ fn stale_cost(fresh: bool) -> f32 {
     // down there makes any oxygen of its own.
     let mut w = World::new(64, 100, 99);
     w.seed();
-    let (x0, x1) = (24i32, 40i32);
-    let (y0, y1) = (70i32, 78i32);
+    // A tiny chamber, so the creature cannot walk about: the measurement
+    // has to be of the air and not of how much walking costs.
+    let (x0, x1) = (30i32, 33i32);
+    let (y0, y1) = (70i32, 73i32);
     // A chamber in the deep, sealed on every side. Everything around it is
     // cleared, so the world cannot have left any oxygen in it.
     for y in y0 - 3..y1 + 3 {
@@ -256,10 +261,19 @@ fn stale_cost(fresh: bool) -> f32 {
             }
         }
     }
+    // No mining and no tools: the creature must not dig its way out of
+    // the chamber, or the measurement would be of the rock outside and
+    // not of the air inside.
+    w.mine_budget = 0;
     w.daylight = 1.0;
 
     let mut creatures = CreatureSystem::new(4242);
     creatures.populate(&w, 8);
+    // No pick and no drill: the walls of the chamber stay walls.
+    for c in creatures.list.iter_mut() {
+        c.tool = creature::Tool::None;
+        c.tool_durability = 0;
+    }
     // Put every creature in the chamber.
     for c in creatures.list.iter_mut() {
         c.x = 30.0;
@@ -269,11 +283,41 @@ fn stale_cost(fresh: bool) -> f32 {
     for _ in 0..20 {
         creatures.step(&mut w);
     }
-    let before: f32 = creatures.list.iter().map(|c| c.energy).sum();
-    for _ in 0..100 {
-        creatures.step(&mut w);
+    // Make them all tired, so they lie down and recover their wind. The
+    // measurement is then of the wind they get back, which is what the
+    // air actually changes.
+    for c in creatures.list.iter_mut() {
+        c.energy = c.max_energy * 0.6;
+        c.stamina = 0.0;
     }
-    let after: f32 = creatures.list.iter().map(|c| c.energy).sum();
-    // The energy they burned, per creature per tick.
-    ((before - after) / creatures.list.len().max(1) as f32 / 100.0).max(0.0)
+    let before: f32 = creatures.list.iter().map(|c| c.stamina).sum();
+    for _ in 0..60 {
+        // Put them back in the chamber and fill it with air again, so the
+        // measurement is of the air and not of what the creatures do to
+        // the room they are in: a creature that digs a tunnel, or a fire
+        // that eats the floor, would otherwise take the whole chamber
+        // away and the two cases would measure the same stale rock.
+        for c in creatures.list.iter_mut() {
+            c.x = 30.0;
+            c.y = (y1 - 1) as f32;
+        }
+        if fresh {
+            for y in y0..y1 - 1 {
+                for x in x0..x1 {
+                    if w.get(x, y) == Elem::Empty {
+                        w.set_xy(x, y, Elem::Oxygen);
+                    }
+                }
+            }
+        }
+        creatures.step(&mut w);
+        // Keep them lying down, so the measurement is of the recovery and
+        // not of a creature that got up.
+        for c in creatures.list.iter_mut() {
+            c.stamina = c.stamina.min(c.max_stamina * 0.5);
+        }
+    }
+    let after: f32 = creatures.list.iter().map(|c| c.stamina).sum();
+    // The wind they got back, per creature per tick.
+    ((after - before) / creatures.list.len().max(1) as f32 / 60.0).max(0.0)
 }

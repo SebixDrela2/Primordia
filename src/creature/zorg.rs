@@ -116,9 +116,12 @@ pub fn zorg_act_eat(world: &mut World, c: &mut Creature, hungry: bool) -> bool {
     let Some((fx, fy)) = world.find_zorg_food(gx, gy, zradius) else {
         return false;
     };
+    let eaten_elem = world.get(fx, fy);
     let Some((nutrition, toxicity)) = world.eat_zorg(fx, fy) else {
         return false;
     };
+    // What it ate, for the census of meals.
+    c.last_meal = eaten_elem;
     c.energy = (c.energy + nutrition * 4.0).min(c.max_energy);
     c.hunger = (c.hunger - nutrition * 4.0).max(0.0);
     // The acid of the deep is a feast to a ZORG: it heals it as well as

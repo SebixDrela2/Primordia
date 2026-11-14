@@ -707,7 +707,8 @@ impl CreatureSystem {
     }
 
     /// Has a species finished a whole tier?
-    pub fn tier_complete(&self, known: u32, tier: u8) -> bool {        discovery_tier(tier)
+    pub fn tier_complete(&self, known: u32, tier: u8) -> bool {
+        discovery_tier(tier)
             .iter()
             .all(|d| known & d.bit() != 0)
     }

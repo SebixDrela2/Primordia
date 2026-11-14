@@ -1,5 +1,12 @@
 use super::*;
 
+/// How likely a plant is to put out a seedling beside it, per tick.
+///
+/// Slow on purpose: the surface has to recover at about the rate a colony
+/// eats it, not faster, or the world turns into one green carpet and the
+/// crowding rule is the only thing holding it back.
+const PLANT_SPREAD: f32 = 0.0015;
+
 impl World {
     pub(crate) fn decay(&mut self, i: usize, e: Elem) {
         match e {
@@ -153,6 +160,24 @@ impl World {
             for (dx, dy) in [(1, 0), (-1, 0), (0, -1)] {
                 if self.get(x + dx, y + dy) == Elem::Empty {
                     self.set_xy(x + dx, y + dy, e);
+                    return;
+                }
+            }
+        }
+
+        // ---- A plant spreads onto the bare ground beside it ----
+        //
+        // A seedling only takes root where there is ground under it, and
+        // only beside a plant that already grows there: the ground does
+        // not sprout, the plants do. A plant that already has five
+        // neighbours is on its way out, so a thicket does not spread for
+        // ever.
+        if self.rng.chance(PLANT_SPREAD) && self.get(x, y + 1) != Elem::Empty {
+            for (dx, dy) in [(1, 0), (-1, 0)] {
+                let nx = x + dx;
+                let ny = y + dy;
+                if self.get(nx, ny) == Elem::Empty && self.get(nx, ny + 1) != Elem::Empty {
+                    self.set_xy(nx, ny, e);
                     return;
                 }
             }
