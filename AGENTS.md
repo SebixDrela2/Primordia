@@ -3,7 +3,7 @@
 ## Documentation
 - `docs/SIMULATION.md` - the full simulation reference.
 - `docs/BRAIN.md` - the complete reference for the creature brain: all
-  181 inputs, all 33 outputs, the architecture, and exactly what is
+  182 inputs, all 33 outputs, the architecture, and exactly what is
   random, what is evolved and what is hard-coded. Read this before
   changing anything in `src/creature/brain.rs` or `src/creature/senses.rs`.
 
@@ -189,12 +189,24 @@
   grass - and a colony with no firewood goes cold, and the cold comes
   in. A colony that does nothing but sit by its own fire goes hungry.
 - **A heap breeds sickness.** Ten creatures packed onto the same spot is
-  how a plague starts: the risk is `0.00008 x (the heap size - 9)` per
+  how a plague starts: the risk is `0.00003 x (the heap size - 9)` per
   creature per tick. The victim catches the **plague**, which catches
   easily and kills, and the ground under the heap turns to **virus**,
   which spreads through the organic matter around it. This is the oldest
   way for a colony to die, and it is why the herds are worth spreading
   out over.
+- **The herd has to be unlearned**. The body block carries **how
+  crowded the animal is**, so the network can tell a crowd from company.
+  And there is a lesson that undoes the clumping: an animal pressed in
+  among its own kind and still going hungry has its direction of desire
+  penalised. Without it the network learns the opposite - it eats, the
+  direction it was heading gets the credit, and that direction was the
+  direction of the crowd - so the crowd grows and every meal makes it
+  grow again.
+- **Sickness wears the body down**. Every disease has a *debility*: the
+  hunger rate goes up by `0.45 x debility`, the stamina drain goes up by
+  `0.7 x debility` and the wind comes back `40%` slower. A sick animal
+  burns through what it has, and a sick colony cannot feed itself.
 - **No magnet**. The pull of the hunt only reaches as far as a hunt does
   (fourteen cells) and it is a gentle one: a hunter that could smell
   prey from across the valley would bring the whole colony with it, and

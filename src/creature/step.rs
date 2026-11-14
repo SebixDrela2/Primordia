@@ -315,7 +315,7 @@ impl CreatureSystem {
                     // The chance goes up steeply with the size of the heap:
                     // a dozen animals in one spot is a certainty over a
                     // few hundred ticks, twenty is worse.
-                    let risk = 0.00008 * (crowd - 9) as f32;
+                    let risk = 0.00003 * (crowd - 9) as f32;
                     if self.rng.chance(risk) {
                         c.disease = Disease::Plague;
                         c.disease_timer = Plague::from(Disease::Plague).duration();
@@ -353,6 +353,18 @@ impl CreatureSystem {
                 // if the two drift apart then a colony that is eating well
                 // still goes hungry, which is not a difficulty but a bug.
                 let hardship = world.hardship();
+                // How badly the sickness wears the body down.
+                //
+                // A sick animal burns through what it has: it eats more
+                // than it would otherwise and it tires sooner. This is
+                // what makes a sick colony a colony that cannot feed
+                // itself, and it is why a plague that breaks out in a
+                // crowd finishes the crowd off.
+                let debility = if c.disease == Disease::None {
+                    0.0
+                } else {
+                    Plague::from(c.disease).debility()
+                };
                 // The hunger follows the hardship: a young world is gentle
                 // and a colony can afford to be slow to learn, and a world
                 // that has been picked clean and battered is not.
@@ -361,7 +373,8 @@ impl CreatureSystem {
                 // plant fills a creature for a fixed number of ticks, and
                 // if the two drift apart then a colony that is eating well
                 // still goes hungry, which is not a difficulty but a bug.
-                let hunger_rate = 0.06 * hardy * stores * (0.8 + 0.55 * hardship);
+                let hunger_rate =
+                    0.06 * hardy * stores * (0.8 + 0.55 * hardship) * (1.0 + 0.45 * debility);
                 c.hunger = (c.hunger + hunger_rate).clamp(0.0, 100.0);
                 // A colony without a queen loses heart: the animals burn
                 // their energy faster and the colony falls apart.
@@ -405,11 +418,16 @@ impl CreatureSystem {
                 }
                 // A juvenile grows instead of working: it burns less energy
                 // and tires less, but it also needs feeding.
+                //
+                // A sick animal tires faster whatever its age: the
+                // sickness is what takes the strength out of the legs.
                 if c.stage == Stage::Juvenile {
-                    c.stamina = (c.stamina - 0.02).clamp(0.0, c.max_stamina);
+                    c.stamina =
+                        (c.stamina - 0.02 * (1.0 + 0.7 * debility)).clamp(0.0, c.max_stamina);
                     c.hunger = (c.hunger - 0.02).clamp(0.0, 100.0);
                 } else {
-                    c.stamina = (c.stamina - 0.05).clamp(0.0, c.max_stamina);
+                    c.stamina =
+                        (c.stamina - 0.05 * (1.0 + 0.7 * debility)).clamp(0.0, c.max_stamina);
                 }
                 // Elders tire more easily than the young.
                 if c.stage == Stage::Elder {
@@ -501,8 +519,11 @@ impl CreatureSystem {
                 // The cost of breathing in bad air, per tick.
                 let breath = 0.05 * (1.0 - air);
                 if c.resting {
-                    c.stamina =
-                        (c.stamina + STAMINA_REGEN * air_factor).clamp(0.0, c.max_stamina);
+                    // A sick animal sleeps and does not get better: the
+                    // wind comes back slower.
+                    let heal = (1.0 - 0.4 * debility).max(0.2);
+                    c.stamina = (c.stamina + STAMINA_REGEN * air_factor * heal)
+                        .clamp(0.0, c.max_stamina);
                     // A resting creature recovers what it is missing, not a
                     // fixed crumb. A tired animal that sleeps wakes up
                     // fit; one that only gets a little back never does.
@@ -697,6 +718,12 @@ impl CreatureSystem {
                         self.temperature,
                         &mut input_buf,
                     );
+                    // How crowded the animal is: the bodies pressing in
+                    // on it. This is the sense that lets the network work
+                    // out that a heap is a bad place to be.
+                    input_buf[crate::creature::senses::BODY_BASE
+                        + crate::creature::senses::BODY_CROWDED] =
+                        (crowd as f32 / 16.0).clamp(0.0, 1.0);
                     write_kin(c, &agents, &grid, &mut input_buf);
                     c.net.forward_into(&input_buf, &mut net_act, &mut net_next);
                     c.out_cache.copy_from_slice(&net_act);
@@ -1100,6 +1127,25 @@ impl CreatureSystem {
                             );
                         }
                     }
+                    // A crowd is not a good place to be, and the animal
+                    // can feel it.
+                    //
+                    // This is the lesson that breaks the herd. Without it
+                    // the network learns the opposite: it eats, the
+                    // direction it was heading gets the credit, and the
+                    // direction it was heading was the direction of the
+                    // crowd - so the crowd gets stronger, and every meal
+                    // makes it stronger still. A creature pressed in
+                    // among its own kind and still going hungry has
+                    // learned the wrong thing, and the wrong thing is
+                    // undone here: the direction of the crowd is the
+                    // wrong one.
+                    if crowd >= 8 && c.hunger > 40.0 && !ate_something {
+                        push(
+                            outputs::DESIRE + c.desire_dir,
+                            -learn * 1.4,
+                        );
+                    }
                     // Going hungry teaches it to want to eat.
                     if c.hunger > 70.0 {
                         push(2, learn * 0.5);
@@ -1213,7 +1259,7 @@ impl CreatureSystem {
                 // early on a creature needs less of itself to start a
                 // family, and by the end of the run it has to be in good
                 // shape to do it.
-                let need = |base: f32| base * (0.45 + 0.55 * hardship);
+                let need = |base: f32| base * (0.6 + 0.9 * hardship);
                 let well_fed = 60.0 + 35.0 * (1.0 - hardship);
                 let can_reproduce = match c.role {
                     Role::Queen => c.energy > need(300.0),

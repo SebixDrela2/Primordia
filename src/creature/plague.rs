@@ -130,6 +130,25 @@ impl Plague {
         matches!(self, Plague::Madness)
     }
 
+    /// How hard the disease wears the body down.
+    ///
+    /// A sick animal burns through what it has: it eats more than it
+    /// would otherwise, and it tires sooner. This is the difference
+    /// between a disease that is a label and one that is a real illness,
+    /// and it is what makes a sick colony a colony that cannot feed
+    /// itself.
+    pub fn debility(self) -> f32 {
+        match self {
+            Plague::Flu => 0.35,
+            Plague::Plague => 1.0,
+            Plague::Poison => 0.55,
+            Plague::Curse => 0.45,
+            Plague::Infection => 0.7,
+            Plague::Parasite => 0.8,
+            Plague::Madness => 0.5,
+        }
+    }
+
     /// How long the disease lasts, in ticks.
     ///
     /// A disease with no duration never ends on its own: it has to be

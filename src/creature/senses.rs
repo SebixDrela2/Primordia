@@ -109,7 +109,15 @@ pub const PERCEPT_BASE: usize = 0;
 pub const BODY_BASE: usize = PERCEPT_BASE + DIRS * DIR_CHANNELS;
 
 /// How many channels the body has.
-pub const BODY_CHANNELS: usize = 30;
+pub const BODY_CHANNELS: usize = 31;
+
+/// The body channel that says how crowded the animal is.
+///
+/// An animal in a heap feels the bodies pressing in on it. This is
+/// proprioception like any other: it is what the animal knows about its
+/// own situation and not about the world. It is the sense that lets the
+/// network work out that a crowd is a bad place to be.
+pub const BODY_CROWDED: usize = 30;
 
 /// The body channel that says whether there is open sky above.
 pub const BODY_OPEN_SKY: usize = 28;

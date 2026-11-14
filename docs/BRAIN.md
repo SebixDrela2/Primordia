@@ -36,9 +36,9 @@ drives it, and the difference between what is **evolved**, what is
 
 | | |
 |---|---|
-| **Inputs** | **181** = 136 perception (8 directions × 17 channels) + 30 body + 15 kin |
+| **Inputs** | **182** = 136 perception (8 directions × 17 channels) + 31 body + 15 kin |
 | **Outputs** | **33** = 25 behaviours + 8 desires |
-| **First layer** | 181 senses + 12 recurrent memory units = **193** |
+| **First layer** | 182 senses + 12 recurrent memory units = **194** |
 | **Hidden layers** | 3, sized `56/40/24`, `72/52/32` or `88/64/40` by tier |
 | **Architecture** | fully connected, input-major weights, one activation function per brain, plus a **direct path** from the senses to the desires |
 | **Activation functions** | 6 (threshold, tanh, leaky, sine, sigmoid, smooth) |
@@ -197,7 +197,7 @@ receiving species grows its minds too.
 
 ---
 
-## 3. The inputs: all 181 of them
+## 3. The inputs: all 182 of them
 
 Source: `src/creature/senses.rs`. The vector is zeroed and filled every
 time a creature thinks.
@@ -207,7 +207,7 @@ time a creature thinks.
 | Slots | Count | Block |
 |-------|-------|-------|
 | 0–135 | 136 | **Perception** — 8 directions × 17 channels |
-| 136–165 | 30 | **Body** (proprioception) |
+| 136–166 | 31 | **Body** (proprioception) |
 | 166–180 | 15 | **Kin** |
 
 ### 3.2 Perception (0–135) — 17 channels per direction
@@ -263,7 +263,7 @@ stone in between does not hide the sweet thing behind it.
 Fire and lava roar (0.9), water and acid hiss (0.5), gunpowder bangs
 (1.0). Sound carries as far as smell.
 
-### 3.3 Body (136–165) — what the creature knows about itself
+### 3.3 Body (136–166) — what the creature knows about itself
 
 This is proprioception, not knowledge of the world: every animal knows how
 hungry it is and which way it is going. It is the only place the network
@@ -301,6 +301,7 @@ is told a fact outright.
 | 163 | the wind | 0..1 (storm, sandstorm, rain) |
 | 164 | **open sky above** | 0 or 1 |
 | 165 | **how much light reaches here** | 0..1 — it knows it is dark, not that it is deep |
+| 166 | **how crowded it is** | 0..1 — the bodies pressing in on it |
 
 ### 3.4 Kin (166–180) — what it can see of its own kind, and of others
 
@@ -455,7 +456,20 @@ if hurt            { targets.push((15, learn * 1.2));      // run!
                      targets.push((2, -learn * 0.8));      // do not bite
                      targets.push((DESIRE + hurt_dir, -learn * 1.5)); }  // do not walk towards it
 if c.hunger > 70   { targets.push((2, learn * 0.5)); }    // going hungry teaches it to want to eat
+if crowded && hungry && !ate { targets.push((DESIRE + desire_dir, -learn * 1.4)); }  // the crowd was the wrong way
 ```
+
+The last of these is the lesson that breaks the herd, and it is the
+interesting one. Without it the network learns the **opposite**: it eats,
+the direction it was heading gets the credit, and the direction it was
+heading was the direction of the crowd — so the crowd grows, and every
+meal makes it grow again. A creature pressed in among its own kind and
+still going hungry has learned the wrong thing, and this is where the
+wrong thing is undone: the direction of the crowd is the wrong one.
+
+It only works because the animal can *feel* the crowd: the body block
+carries how many bodies are pressed around it, so the network can tell
+"crowded" from "alone" and can learn the difference.
 
 Two of these lessons are about **where** something was, not only about
 what was done. The combat code remembers the direction a blow came from
@@ -849,7 +863,32 @@ finding. Now:
 - **Drink**: the creature drinks the water next to it.
 - **Dig**: the creature breaks the wall next to it.
 
-### 12.3 Survival rules
+### 12.3 Sickness wears the body down
+
+A disease is not a label on a creature. Every disease has a **debility**
+— how hard it wears the host down — and the host pays for it in three
+ways at once:
+
+| | Effect |
+|---|---|
+| **Hunger** | the hunger rate is multiplied by `1 + 0.45 × debility`: a sick animal burns through what it has |
+| **Stamina** | the drain is multiplied by `1 + 0.7 × debility`: a sick animal tires sooner |
+| **Recovery** | the wind comes back `40%` slower: a sick animal sleeps and does not get better |
+
+| Disease | Debility | What it is |
+|---|---|---|
+| Flu | 0.35 | catches easily, weakens and burns out |
+| **Plague** | **1.0** | catches easily and kills |
+| Poison | 0.55 | enters through wounds |
+| Curse | 0.45 | wears the victim down |
+| Infection | 0.7 | spreads through the flesh and kills slowly |
+| Parasite | 0.8 | drinks the host's energy |
+| Madness | 0.5 | drives the host to attack its own kind |
+
+This is what makes a sick colony a colony that cannot feed itself, and
+it is why a plague that breaks out in a crowd finishes the crowd off.
+
+### 12.4 Survival rules
 
 | Rule | Numbers |
 |------|---------|
@@ -863,7 +902,7 @@ finding. Now:
 | Health regen | towards `max_health()`, which traits and affinity modify |
 | Death | energy ≤ 0, health ≤ 0, or age over the lifespan (+0–1400 per id) |
 
-### 12.4 Action gating
+### 12.5 Action gating
 
 Every network output is gated by hard conditions before it does anything:
 
@@ -878,7 +917,7 @@ Every network output is gated by hard conditions before it does anything:
 - **Mine** needs a `world.mine_budget` — the world limits how much can be
   dug out per tick, so creatures cannot strip-mine it.
 
-### 12.5 The difficulty ramp
+### 12.6 The difficulty ramp
 
 The world starts forgiving and gets harder. The ramp is the run's own
 progress plus what the world has become, and it is a **smoothstep** over
@@ -899,7 +938,7 @@ Hunger, thirst, the cold, the cost of breeding and the size of the ZORG
 swarm all read it. A young world in good condition is gentle; a world
 that has been picked clean and battered is not.
 
-### 12.6 The late world is a lean world
+### 12.7 The late world is a lean world
 
 The vegetation slows down as the run wears on:
 
@@ -912,7 +951,7 @@ colonies have to fight over. This, more than anything else, is what ends
 a run: the field narrows to two, the ground cannot carry both, and one
 of them wins.
 
-### 12.7 Idling is punished
+### 12.8 Idling is punished
 
 A colony that sits in one place does not harvest and does not explore,
 and the world takes it at its word:
@@ -931,7 +970,7 @@ and the world takes it at its word:
   winter does not bite the colony. That is the whole of the reward for
   gathering: a warm nest is worth going out for.
 - **A heap breeds sickness.** Ten animals packed onto the same spot is
-  how a plague starts: the risk is `0.00008 × (the size of the heap − 9)`
+  how a plague starts: the risk is `0.00003 × (the size of the heap − 9)`
   per creature per tick, so a dozen in one place is an outbreak within a
   few hundred ticks and twenty is worse. The victim catches the **plague**
   — which catches easily and kills — and the ground under the heap turns
@@ -943,7 +982,7 @@ and the world takes it at its word:
   over: the animals that pile onto the same carcass are the ones that
   bring the sickness home.
 
-### 12.8 The pull of the hunt
+### 12.9 The pull of the hunt
 
 A colony that has learned to hunt stalks the nearest animal of another
 kind — but only as far as a hunt reaches, and gently:
@@ -961,7 +1000,7 @@ the whole colony would pile onto one animal in the middle of open
 ground. The creature's own wanting is what carries it the rest of the
 way.
 
-### 12.9 The world
+### 12.10 The world
 
 Everything about the world is hard-coded: the cellular automaton, the
 reactions between elements, the weather table, the seasons, the volcano,
@@ -975,7 +1014,7 @@ already grows there puts out a seedling beside itself. The world is kept
 from turning into one green mat by a hard cap that thins the vegetation
 when it gets too thick.
 
-### 12.10 Diplomatic negotiation
+### 12.11 Diplomatic negotiation
 
 The outcome of a negotiation is computed by hard rules in
 `diplomacy/negotiation.rs` using the network's outputs 20–23 as *inputs*
