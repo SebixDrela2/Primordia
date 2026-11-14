@@ -376,13 +376,10 @@ impl DiplomaticSense {
 pub fn diplomacy_reach(role: Role) -> f32 {
     match role {
         Role::Envoy => 22.0,
-        Role::Queen => 14.0,
-        Role::Merchant => 14.0,
-        Role::Priest => 12.0,
-        Role::Explorer => 12.0,
+        Role::Queen | Role::Merchant => 14.0,
+        Role::Priest | Role::Explorer => 12.0,
         Role::Shaman => 10.0,
-        Role::Soldier => 8.0,
-        Role::Builder => 8.0,
+        Role::Soldier | Role::Builder => 8.0,
         Role::Worker => 8.0,
     }
 }

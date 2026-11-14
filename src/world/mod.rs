@@ -158,8 +158,7 @@ impl Weather {
     #[must_use]
     pub fn fear_factor(self) -> f32 {
         match self {
-            Weather::Clear => 0.0,
-            Weather::Rain => 0.0,
+            Weather::Clear | Weather::Rain => 0.0,
             Weather::Storm => 8.0,
             Weather::Snow => 2.0,
             Weather::Meteor => 22.0,

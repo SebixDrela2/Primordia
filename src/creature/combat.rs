@@ -523,8 +523,7 @@ impl CreatureSystem {
                     .list
                     .iter()
                     .find(|t| t.id == target_id)
-                    .map(|t| t.species)
-                    .unwrap_or(0);
+                    .map_or(0, |t| t.species);
                 if self.species_discoveries(species) & discovery_bits::MEDICINE != 0 {
                     1.5
                 } else {

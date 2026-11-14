@@ -10,8 +10,7 @@ impl World {
             }
             c.particles += 1;
             match Elem::from_u8(k) {
-                Elem::Plant => c.plants += 1,
-                Elem::Fungus => c.plants += 1,
+                Elem::Plant | Elem::Fungus => c.plants += 1,
                 Elem::Water => c.water += 1,
                 Elem::Energy => c.energy += 1,
                 Elem::Stone => c.stone += 1,

@@ -1129,7 +1129,7 @@ impl CreatureSystem {
 
                 if c.energy <= 0.0
                     || c.health <= 0.0
-                    || c.age > lifespan + c.id.wrapping_mul(2654435761) % 1400
+                    || c.age > lifespan + c.id.wrapping_mul(2654_435_761) % 1400
                 {
                     died = true;
                 }

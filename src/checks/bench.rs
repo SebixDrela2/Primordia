@@ -13,8 +13,8 @@ fn get_random_seed() -> u64 {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
     let nanos = now.as_nanos() as u64;
     let mut seed = nanos;
-    seed = seed.wrapping_mul(0x9E3779B97F4A7C15).wrapping_add(process::id() as u64);
-    seed = seed.wrapping_mul(0xBF58476D1CE4E5B9).wrapping_add(now.as_secs());
+    seed = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(process::id() as u64);
+    seed = seed.wrapping_mul(0xBF58_476D_1CE4_E5B9).wrapping_add(now.as_secs());
     eprintln!("SEED: {}", seed);
     seed
 }

@@ -162,8 +162,7 @@ impl CreatureSystem {
         self.list
             .iter()
             .find(|c| c.species == species)
-            .map(|c| c.team_color)
-            .unwrap_or([200, 200, 200])
+            .map_or([200, 200, 200], |c| c.team_color)
     }
 
     #[must_use]
@@ -367,8 +366,7 @@ impl CreatureSystem {
         let state = self
             .diplomacy
             .get(sp_a, sp_b)
-            .map(|r| r.state)
-            .unwrap_or(RelationState::Neutral);
+            .map_or(RelationState::Neutral, |r| r.state);
         let actor_rep = self.list[actor].reputation as f32;
         let partner_rep = self.list[partner].reputation as f32;
         let actor_peaceful = self.list[actor].traits & trait_bits::PEACEFUL != 0;
@@ -390,8 +388,7 @@ impl CreatureSystem {
                 let weariness = self
                     .diplomacy
                     .get(sp_a, sp_b)
-                    .map(|r| r.war_weariness)
-                    .unwrap_or(0.0);
+                    .map_or(0.0, |r| r.war_weariness);
                 chance = 0.08 + weariness * 0.45 + trust / 300.0;
             }
             DiplomaticAction::Tribute => {

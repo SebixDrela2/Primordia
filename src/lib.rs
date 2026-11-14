@@ -32,6 +32,18 @@
     clippy::get_last_with_len,
     clippy::inefficient_to_string,
 )]
+// The game's own conversions - pixel coordinates, colour components, index
+// arithmetic - and the format strings that name their arguments. Clippy's
+// advice for an intentional cast is to allow the lint: the alternative is
+// try_from everywhere, which adds a branch to the hot loops.
+#![allow(
+    clippy::cast_possible_wrap,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_lossless,
+    clippy::uninlined_format_args
+)]
 #![deny(warnings)]
 
 pub mod checks;

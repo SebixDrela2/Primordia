@@ -61,11 +61,9 @@ impl World {
             Behavior::Burn => self.step_burn(i),
             Behavior::Grow => self.step_grow(i, e),
             Behavior::Energy => self.step_energy(i),
-            Behavior::Conduct => {},
-            Behavior::Spread => {},
+            Behavior::Conduct | Behavior::Spread => {},
             Behavior::Cultivate => self.step_cultivate(i),
-            Behavior::Hatch => {},
-            Behavior::Decay => {},
+            Behavior::Hatch | Behavior::Decay => {},
         }
     }
 

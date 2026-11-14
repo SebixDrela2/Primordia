@@ -64,8 +64,7 @@ impl Plague {
         match self {
             Plague::Flu => 0.010,
             Plague::Plague => 0.014,
-            Plague::Poison => 0.0,
-            Plague::Curse => 0.0,
+            Plague::Poison | Plague::Curse => 0.0,
             Plague::Infection => 0.004,
             Plague::Parasite => 0.002,
             Plague::Madness => 0.003,
@@ -80,8 +79,7 @@ impl Plague {
             Plague::Poison => 0.12,
             Plague::Curse => 0.08,
             Plague::Infection => 0.10,
-            Plague::Parasite => 0.0,
-            Plague::Madness => 0.0,
+            Plague::Parasite | Plague::Madness => 0.0,
         }
     }
 

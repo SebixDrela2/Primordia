@@ -77,7 +77,7 @@ impl CreatureSystem {
 
         if broken > 0 || wounded > 0 {
             self.diplomacy.stats.raids += broken;
-            let color = self.species_color(self.structures.first().map(|s| s.species).unwrap_or(0));
+            let color = self.species_color(self.structures.first().map_or(0, |s| s.species));
             self.diplomacy.log_event(
                 format!(
                     "RAID: {} buildings broken, {} under attack",
