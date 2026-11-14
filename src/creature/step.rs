@@ -272,6 +272,28 @@ impl CreatureSystem {
                     1.0
                 };
 
+                // How crowded the place is.
+                //
+                // A creature that spends its life in a heap on top of its
+                // own kind gets nothing done: it cannot find anything to
+                // eat, it cannot see what is coming, and it burns more of
+                // itself for want of room. That is the cost of idling in
+                // one place, and it is what sends a colony out into the
+                // world instead of letting it sit by its own fire.
+                let mut crowd = 0u32;
+                grid.near(c.x, c.y, 4, |idx| {
+                    let a = &agents[idx as usize];
+                    if a.0 == c.id {
+                        return;
+                    }
+                    let dx = a.1 - c.x;
+                    let dy = a.2 - c.y;
+                    if dx * dx + dy * dy <= 16.0 {
+                        crowd += 1;
+                    }
+                });
+                let crowding = 1.0 + 0.08 * crowd.min(16) as f32;
+
 
                 // The land under its feet.
                 //
@@ -298,7 +320,15 @@ impl CreatureSystem {
                 // if the two drift apart then a colony that is eating well
                 // still goes hungry, which is not a difficulty but a bug.
                 let hardship = world.hardship();
-                let hunger_rate = 0.06 * hardy * stores;
+                // The hunger follows the hardship: a young world is gentle
+                // and a colony can afford to be slow to learn, and a world
+                // that has been picked clean and battered is not.
+                //
+                // The rate is kept in step with what a meal is worth: a
+                // plant fills a creature for a fixed number of ticks, and
+                // if the two drift apart then a colony that is eating well
+                // still goes hungry, which is not a difficulty but a bug.
+                let hunger_rate = 0.06 * hardy * stores * (0.8 + 0.55 * hardship);
                 c.hunger = (c.hunger + hunger_rate).clamp(0.0, 100.0);
                 // A colony without a queen loses heart: the animals burn
                 // their energy faster and the colony falls apart.
@@ -451,10 +481,13 @@ impl CreatureSystem {
                     // The weather makes every day harder, and stale air
                     // makes it harder still. So does the run itself: early
                     // on, the world lets a creature live a little easier.
+                    // And a crowd is hard work: the more of them there are
+                    // on the same spot, the more each of them burns.
                     c.energy -= 0.08
                         * world.weather.energy_factor()
                         * (1.4 - 0.4 * air)
                         * (0.55 + 0.45 * hardship)
+                        * crowding
                         + breath;
                 }
                 // A bonded pair looks after each other: a creature with a
@@ -519,9 +552,28 @@ impl CreatureSystem {
                 // The cold is part of the difficulty: the first winters of
                 // a run are mild, and by the end of a long one the cold is
                 // the thing that decides which colonies survive.
-                if self.temperature < 4.0 && !place.warmth {
+                //
+                // A lit fire at the colony's base keeps it out. That is
+                // what the wood is for: a colony that huddles by a dead
+                // fire finds the winter coming in, and a colony that
+                // gathers its wood keeps the cold at the gate.
+                let fire_warmth = self
+                    .fire_lit
+                    .get((c.species as usize).min(self.fire_lit.len().saturating_sub(1)))
+                    .copied()
+                    .unwrap_or(false)
+                    && (c.x - c.base_x).abs() < 14.0
+                    && (c.y - c.base_y).abs() < 14.0;
+                if self.temperature < 4.0 && !place.warmth && !fire_warmth {
                     let chill = (4.0 - self.temperature) * c.affinity.cold_vulnerability();
                     c.health -= chill * 0.012 * (0.3 + 0.7 * hardship);
+                }
+                if fire_warmth {
+                    // The warmth of a fire puts the wind back into an
+                    // animal faster, but it is not a reason to sit in it:
+                    // a colony that does nothing but huddle by its own
+                    // fire goes hungry.
+                    c.stamina = (c.stamina + 0.015).min(c.max_stamina);
                 }
                 // Fire does not hurt a creature that was born to it.
                 let (fx, fy) = (c.x.round() as i32, c.y.round() as i32);
@@ -1348,6 +1400,16 @@ impl CreatureSystem {
             }
         }
 
+        // ---- The colony fires are fed ----
+        //
+        // A campfire burns wood, and the wood has to be carried home by
+        // somebody. This is what punishes a colony that does nothing but
+        // sit by its own fire: the fire goes out, and a colony in the cold
+        // finds out that a warm nest is worth going out for.
+        if self.tick % 60 == 0 {
+            self.tend_the_fires();
+        }
+
         // Combat resolution (see combat.rs).
         self.resolve_turrets(world, &mut shots);
         self.resolve_bombs(world);
@@ -1445,6 +1507,96 @@ impl CreatureSystem {
 
         if self.tick % 15 == 0 {
             self.update_stats();
+        }
+    }
+
+    /// Feed the colony fires, and put out the ones that have no wood.
+    ///
+    /// A colony's fire burns a piece of wood every minute of the world's
+    /// time, and the wood comes from the animals of that colony that are
+    /// standing at home with it. A colony that has no wood left goes cold:
+    /// the fire is out, and the animals feel it.
+    fn tend_the_fires(&mut self) {
+        // The base of every colony that still has members.
+        let mut bases: Vec<(u32, f32, f32)> = Vec::new();
+        for c in &self.list {
+            if c.faction == Faction::Zorg {
+                continue;
+            }
+            match bases.iter_mut().find(|(sp, _, _)| *sp == c.species) {
+                Some(e) => {
+                    e.1 = c.base_x;
+                    e.2 = c.base_y;
+                }
+                None => bases.push((c.species, c.base_x, c.base_y)),
+            }
+        }
+        for (sp, bx, by) in bases {
+            let sidx = sp as usize;
+            if sidx >= self.fire_lit.len() {
+                self.fire_lit.resize(sidx + 8, false);
+            }
+            // The wood of the colony: what the animals have brought home.
+            let mut wood: u32 = 0;
+            for c in self.list.iter() {
+                if c.species != sp {
+                    continue;
+                }
+                if (c.x - bx).abs() + (c.y - by).abs() > 40.0 {
+                    continue;
+                }
+                wood += c.inventory[6] as u32;
+            }
+            if wood == 0 {
+                // Nothing to burn: the fire is out.
+                self.fire_lit[sidx] = false;
+                continue;
+            }
+            // The fire burns wood, and a big colony burns a lot of it:
+            // the bigger the heap round the fire, the more the fire eats.
+            let mut burn = 1u32 + (self.list.iter().filter(|c| c.species == sp).count() as u32) / 8;
+            // The fire burns a piece of wood, taken from whoever is
+            // standing nearest to the fire with some in their pack.
+            let mut best: Option<(f32, usize)> = None;
+            for (i, c) in self.list.iter().enumerate() {
+                if c.species != sp || c.inventory[6] == 0 {
+                    continue;
+                }
+                if (c.x - bx).abs() + (c.y - by).abs() > 40.0 {
+                    continue;
+                }
+                let d = (c.x - bx).abs() + (c.y - by).abs();
+                if best.map_or(true, |(bd, _)| d < bd) {
+                    best = Some((d, i));
+                }
+            }
+            let mut fed = false;
+            if let Some((_, i)) = best {
+                let take = burn.min(self.list[i].inventory[6] as u32) as u16;
+                self.list[i].inventory[6] = self.list[i].inventory[6].saturating_sub(take);
+                burn -= take as u32;
+                fed = true;
+            }
+            // Any wood left in the pack of anybody else at home is fed to
+            // the fire as well.
+            if burn > 0 {
+                for i in 0..self.list.len() {
+                    if burn == 0 {
+                        break;
+                    }
+                    if self.list[i].species != sp || self.list[i].inventory[6] == 0 {
+                        continue;
+                    }
+                    if (self.list[i].x - bx).abs() + (self.list[i].y - by).abs() > 40.0 {
+                        continue;
+                    }
+                    let take = burn.min(self.list[i].inventory[6] as u32) as u16;
+                    self.list[i].inventory[6] = self.list[i].inventory[6].saturating_sub(take);
+                    burn -= take as u32;
+                    fed = true;
+                }
+            }
+            self.fire_lit[sidx] = fed && burn == 0;
         }
     }
 }

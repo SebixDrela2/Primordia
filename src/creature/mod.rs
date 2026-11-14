@@ -493,6 +493,14 @@ pub struct CreatureSystem {
     /// The species that are without a queen: (species, tick the crisis
     /// started). A colony in crisis holds no ground and builds nothing.
     pub succession: Vec<(u32, u64)>,
+    /// Whether each colony's fire is lit.
+    ///
+    /// A campfire has to be fed with wood, and the wood has to be
+    /// carried home by somebody. A colony that sits by its own fire and
+    /// gathers nothing goes cold: the fire goes out, the cold comes in,
+    /// and the animals that huddle around a dead fire find out what it is
+    /// worth to be out in the world.
+    pub fire_lit: Vec<bool>,
     /// Events for the renderer, drained every frame by the UI.
     pub events: Vec<SimEvent>,
     /// Bombs currently in flight.

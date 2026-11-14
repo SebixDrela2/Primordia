@@ -255,10 +255,10 @@ fn stale_cost(fresh: bool) -> f32 {
         w.set_xy(x, y1, Elem::Stone);
     }
     if fresh {
-        for y in y0..y1 - 1 {
-            for x in x0..x1 {
-                w.set_xy(x, y, Elem::Oxygen);
-            }
+        // The air is in the roof of the chamber, not in the creatures'
+        // own cells: they breathe it, but they are not standing in it.
+        for x in x0..x1 {
+            w.set_xy(x, y0, Elem::Oxygen);
         }
     }
     // No mining and no tools: the creature must not dig its way out of
@@ -269,10 +269,14 @@ fn stale_cost(fresh: bool) -> f32 {
 
     let mut creatures = CreatureSystem::new(4242);
     creatures.populate(&w, 8);
-    // No pick and no drill: the walls of the chamber stay walls.
+    // No pick and no drill: the walls of the chamber stay walls. And no
+    // spells: a fire in a room full of oxygen is a bomb, and the
+    // measurement is of the air and not of an explosion.
     for c in creatures.list.iter_mut() {
         c.tool = creature::Tool::None;
         c.tool_durability = 0;
+        c.known_spells = 0;
+        c.active_spell = creature::Spell::None;
     }
     // Put every creature in the chamber.
     for c in creatures.list.iter_mut() {
@@ -300,13 +304,24 @@ fn stale_cost(fresh: bool) -> f32 {
         for c in creatures.list.iter_mut() {
             c.x = 30.0;
             c.y = (y1 - 1) as f32;
+            // Nothing kills them and nothing tires them: the measurement
+            // is of the wind they get back, and of nothing else. They are
+            // kept healthy, fed and lying down, so that the only thing
+            // that can change the number is the air they are breathing.
+            c.health = c.max_health();
+            c.energy = c.max_energy * 0.6;
+            c.disease = creature::Disease::None;
+            // The deep is a sick place and the plague is in it: a creature
+            // that catches it cannot be measured on its wind.
+            for i in 0..c.immunity.len() {
+                c.immunity[i] = 2;
+            }
+            c.resting = true;
         }
         if fresh {
-            for y in y0..y1 - 1 {
-                for x in x0..x1 {
-                    if w.get(x, y) == Elem::Empty {
-                        w.set_xy(x, y, Elem::Oxygen);
-                    }
+            for x in x0..x1 {
+                if w.get(x, y0) == Elem::Empty {
+                    w.set_xy(x, y0, Elem::Oxygen);
                 }
             }
         }

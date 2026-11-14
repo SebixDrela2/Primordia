@@ -294,7 +294,19 @@ impl World {
                 _ => 0.3,
             };
             // Under pressure, fewer seedlings take root.
-            let batches = ((base as f32) * (1.0 - scarcity * 0.75) * season_growth) as u32;
+            //
+            // And the later the run, the less the ground gives back. A
+            // world at the end of a run is a lean world: the seasons have
+            // turned, the soil is worn out, and what grows back grows back
+            // slowly. This is what ends a run: a surface that can only
+            // ever feed one colony is a surface the last two colonies
+            // have to fight over.
+            let lean = 1.0 - 0.75 * self.difficulty;
+            let batches = ((base as f32)
+                * (1.0 - scarcity * 0.75)
+                * season_growth
+                * lean.max(0.05))
+                as u32;
             for _ in 0..batches {
                 let x = self.rng.range((w - 4) as u32) as i32 + 2;
                 let sy = self.surface_y(x);
@@ -599,12 +611,16 @@ impl World {
         // has become. A young world in good condition is gentle; a world
         // that has been picked clean and battered is not.
         //
-        // The ramp is slow on purpose. A world that gets cruel too early
-        // kills the colony before it has had time to learn how to live in
-        // it, and then there is nothing left to evolve.
-        let progress = (frame as f32 / 60_000.0).min(1.0);
+        // The curve is a **smoothstep** over twenty thousand ticks: it
+        // barely moves at first, so that a colony of poor brains has the
+        // time to work out how to eat, and then it climbs hard in the
+        // middle of the run, which is exactly when the field has narrowed
+        // to a handful of species and the survivors have to fight for what
+        // is left. By the end it is at full strength and nothing is easy.
+        let t = (frame as f32 / 20_000.0).min(1.0);
+        let ease = t * t * (3.0 - 2.0 * t);
         let strain = p.overall();
-        self.difficulty = (progress * 0.6 + strain * 0.4).clamp(0.0, 1.0);
+        self.difficulty = (ease * 0.65 + strain * 0.35).clamp(0.0, 1.0);
     }
 
     /// How hard the world is on a creature right now.

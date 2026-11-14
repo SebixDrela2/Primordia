@@ -218,14 +218,16 @@ pub(crate) fn act_steer(
                 // --- Shelter from the weather ---
                 //
                 // A storm sends the colony home: the animals huddle near
-                // their base instead of going out in it.
+                // their base instead of going out in it. The pull is a
+                // gentle one: a colony that packs itself into one spot
+                // cannot forage, and a colony that cannot forage loses.
                 if weather.shelters() && !c.migrating {
                     let bx = c.base_x - c.x;
                     let by = c.base_y - c.y;
                     let bd = (bx * bx + by * by).sqrt();
                     if bd > 6.0 {
-                        steer_x += (bx / bd) * 1.1;
-                        steer_y += (by / bd) * 1.1;
+                        steer_x += (bx / bd) * 0.6;
+                        steer_y += (by / bd) * 0.6;
                     }
                 }
 
@@ -568,8 +570,16 @@ fn eat_adjacent(world: &mut World, c: &mut Creature, gx: i32, gy: i32) -> bool {
             c.inventory[5] = (c.inventory[5].saturating_add(1)).min(255);
             c.carried = (c.carried + 60.0).min(c.carry_cap());
         }
-        Elem::Wood | Elem::Plant | Elem::Fungus => {
-            c.inventory[6] = (c.inventory[6].saturating_add(4)).min(255);
+        Elem::Wood => {
+            // A tree is the fuel of a campfire, and the only thing in the
+            // world that is worth carrying home for one.
+            c.inventory[6] = (c.inventory[6].saturating_add(8)).min(255);
+            c.carried = (c.carried + 20.0).min(c.carry_cap());
+        }
+        Elem::Plant | Elem::Fungus => {
+            // A mouthful of green is a mouthful of green: it fills the
+            // belly, and it is not firewood.
+            c.inventory[6] = (c.inventory[6].saturating_add(1)).min(255);
             c.carried = (c.carried + 20.0).min(c.carry_cap());
         }
         Elem::Crop => {

@@ -36,14 +36,14 @@ drives it, and the difference between what is **evolved**, what is
 
 | | |
 |---|---|
-| **Inputs** | **161** = 120 perception (8 directions × 15 channels) + 30 body + 11 kin |
+| **Inputs** | **181** = 136 perception (8 directions × 17 channels) + 30 body + 15 kin |
 | **Outputs** | **33** = 25 behaviours + 8 desires |
-| **First layer** | 161 senses + 12 recurrent memory units = **173** |
+| **First layer** | 181 senses + 12 recurrent memory units = **193** |
 | **Hidden layers** | 3, sized `56/40/24`, `72/52/32` or `88/64/40` by tier |
 | **Architecture** | fully connected, input-major weights, one activation function per brain, plus a **direct path** from the senses to the desires |
 | **Activation functions** | 6 (threshold, tanh, leaky, sine, sigmoid, smooth) |
 | **Think rate** | every other tick; the decision is cached in between |
-| **Sight range** | 8 cells · **Smell range** | 30 cells, falling off gently |
+| **Sight range** | 8 cells · **Smell range** | 30 cells, falling off gently · **Own kind** | 70 cells |
 | **Genes** | 32 floats → 23 traits + affinity + immunity |
 | **Practices** | 8 bits, inherited and multiplied by the colony |
 | **Discoveries** | 32, in 10 tiers, earned by practice + generations + luck |
@@ -197,7 +197,7 @@ receiving species grows its minds too.
 
 ---
 
-## 3. The inputs: all 161 of them
+## 3. The inputs: all 181 of them
 
 Source: `src/creature/senses.rs`. The vector is zeroed and filled every
 time a creature thinks.
@@ -206,11 +206,11 @@ time a creature thinks.
 
 | Slots | Count | Block |
 |-------|-------|-------|
-| 0–119 | 120 | **Perception** — 8 directions × 15 channels |
-| 120–149 | 30 | **Body** (proprioception) |
-| 150–160 | 11 | **Kin** |
+| 0–135 | 136 | **Perception** — 8 directions × 17 channels |
+| 136–165 | 30 | **Body** (proprioception) |
+| 166–180 | 15 | **Kin** |
 
-### 3.2 Perception (0–119) — 15 channels per direction
+### 3.2 Perception (0–135) — 17 channels per direction
 
 The eight directions run clockwise from south, so **up is the fifth**
 (`DIR_UP = 4`). Each direction has the same fifteen channels:
@@ -228,6 +228,7 @@ The eight directions run clockwise from south, so **up is the fifth**
 | +6 | **soft** | how yielding it is (0 hard rock, 1 soft enough to eat) |
 | +7 | **wet** | how wet it is |
 | +8 | **sheen** | how glossy it is |
+| +9 | **alive** | something alive is over there — a shape that moves |
 
 The first thing in the direction is the thing it *sees*: its colour, its
 warmth, its texture. Anything further along the ray only adds its glow
@@ -242,6 +243,7 @@ and its heat, behind the nearer one. The sight range is **8 cells**.
 | +11 | **acid** | acrid, corrosive |
 | +12 | **mineral** | stone, metal, salt |
 | +13 | **smoke** | burning, ash, gunpowder |
+| +14 | **own kind** | the smell of my own kind — it carries up to seventy cells |
 
 The smell range is **30 cells**, and the falloff is *gentle*
 (`1 / (1 + distance / 8)`), because a nose does not stop working when
@@ -256,12 +258,12 @@ stone in between does not hide the sweet thing behind it.
 
 | Offset | Channel | Meaning |
 |--------|---------|---------|
-| +14 | **loud** | how loud something is over there |
+| +15 | **loud** | how loud something is over there |
 
 Fire and lava roar (0.9), water and acid hiss (0.5), gunpowder bangs
 (1.0). Sound carries as far as smell.
 
-### 3.3 Body (120–149) — what the creature knows about itself
+### 3.3 Body (136–165) — what the creature knows about itself
 
 This is proprioception, not knowledge of the world: every animal knows how
 hungry it is and which way it is going. It is the only place the network
@@ -269,53 +271,61 @@ is told a fact outright.
 
 | Slot | Meaning | Range |
 |------|---------|-------|
-| 120 | energy | 0..1 of max |
-| 121 | health | 0..1 of max |
-| 122 | hunger | 0..1 |
-| 123 | thirst | 0..1 |
-| 124 | stamina | 0..1 |
-| 125 | mana | 0..1 |
-| 126 | resting | 0 or 1 |
-| 127 | how much it is carrying | 0..1 of capacity |
-| 128 | age | 0..1 of `MAX_AGE` |
-| 129 | velocity x | −1..1 |
-| 130 | velocity y | −1..1 |
-| 131 | how fast it is going | 0..1 |
-| 132 | which tool is held | 0–15, ÷15 |
-| 133 | tool durability | ÷2000 |
-| 134 | tech level | ÷4 |
-| 135 | total inventory | ÷2000 |
-| 136 | craft cooldown | ÷70 |
-| 137 | spell cooldown | ÷60 |
-| 138 | fire cooldown | ÷60 |
-| 139 | build cooldown | ÷10 |
-| 140 | has a disease | 0 or 1 |
-| 141 | disease timer | ÷300 |
-| 142 | mood | 0–9, ÷9 |
-| 143 | how much daylight there is | 0..1 |
-| 144 | temperature | ÷40, clamped −1..1 |
-| 145 | how fresh the air is | 0..1 (oxygen within three cells) |
-| 146 | rain on the skin | 0 or 1 |
-| 147 | the wind | 0..1 (storm, sandstorm, rain) |
-| 148 | **open sky above** | 0 or 1 |
-| 149 | how deep it is | below the surface, ÷240 |
+| 136 | energy | 0..1 of max |
+| 137 | health | 0..1 of max |
+| 138 | hunger | 0..1 |
+| 139 | thirst | 0..1 |
+| 140 | stamina | 0..1 |
+| 141 | mana | 0..1 |
+| 142 | resting | 0 or 1 |
+| 143 | how much it is carrying | 0..1 of capacity |
+| 144 | age | 0..1 of `MAX_AGE` |
+| 145 | velocity x | −1..1 |
+| 146 | velocity y | −1..1 |
+| 147 | how fast it is going | 0..1 |
+| 148 | which tool is held | 0–15, ÷15 |
+| 149 | tool durability | ÷2000 |
+| 150 | tech level | ÷4 |
+| 151 | total inventory | ÷2000 |
+| 152 | craft cooldown | ÷70 |
+| 153 | spell cooldown | ÷60 |
+| 154 | fire cooldown | ÷60 |
+| 155 | build cooldown | ÷10 |
+| 156 | has a disease | 0 or 1 |
+| 157 | disease timer | ÷300 |
+| 158 | mood | 0–9, ÷9 |
+| 159 | how much daylight there is | 0..1 |
+| 160 | temperature | ÷40, clamped −1..1 |
+| 161 | how fresh the air is | 0..1 (oxygen within three cells) |
+| 162 | rain on the skin | 0 or 1 |
+| 163 | the wind | 0..1 (storm, sandstorm, rain) |
+| 164 | **open sky above** | 0 or 1 |
+| 165 | **how much light reaches here** | 0..1 — it knows it is dark, not that it is deep |
 
-### 3.4 Kin (150–160) — what it can see of its own kind, and of others
+### 3.4 Kin (166–180) — what it can see of its own kind, and of others
 
 | Slot | Meaning |
 |------|---------|
-| 150 | how close its own kind is (1 − distance/30) |
-| 151 | how many of its own kind are near (÷10) |
-| 152 | how close the nearest stranger is |
-| 153 | how many strangers are near (÷10) |
-| 154–156 | the colour of the nearest stranger |
-| 157 | how big the nearest stranger is |
-| 158–160 | the colour of its own species |
+| 166 | how close its own kind is (1 − distance/30) |
+| 167 | how many of its own kind are near (÷10) |
+| 168 | how close the nearest stranger is |
+| 169 | how many strangers are near (÷10) |
+| 170–172 | the colour of the nearest stranger |
+| 173 | how big the nearest stranger is |
+| 174–176 | the colour of its own species |
+| 177–178 | which way the nearest of its own kind is |
+| 179–180 | which way the nearest stranger is |
 
 A creature recognises its own kind by how they look, and it can see the
 colour of a stranger. It cannot see a treaty, and it is not told one:
 whether the red ones are friends or enemies is something it has to work
 out for itself.
+
+The last four channels are the two directions: which way the nearest of
+its own kind lies, and which way the nearest stranger lies. Without them
+the network could see a colour and a bearing but could not join the two
+up, and could never learn that *the red ones over there* are the ones to
+run from.
 
 ---
 
@@ -436,14 +446,24 @@ if ate_something {
     targets.push((DESIRE + desire_dir, learn * 2.5));     // and so was that way
 }
 if built_something { targets.push((5, learn * 1.0)); }
-if wants_attack    { targets.push((4, learn * 0.8)); }
+if killed          { targets.push((4, learn * 1.6));       // the strike landed
+                     targets.push((DESIRE + kill_dir, learn * 2.0)); }  // and so was that way
+if wants_attack    { targets.push((4, learn * 0.3)); }    // a swing at the air is worth little
 if traded          { targets.push((9, learn * 0.8)); }
 if cast_spell      { targets.push((7, learn * 0.8)); }
-if hurt            { targets.push((15, learn * 1.0));      // run!
-                     targets.push((2, -learn * 1.0));      // do not bite
-                     targets.push((DESIRE + desire_dir, -learn * 2.0)); }
+if hurt            { targets.push((15, learn * 1.2));      // run!
+                     targets.push((2, -learn * 0.8));      // do not bite
+                     targets.push((DESIRE + hurt_dir, -learn * 1.5)); }  // do not walk towards it
 if c.hunger > 70   { targets.push((2, learn * 0.5)); }    // going hungry teaches it to want to eat
 ```
+
+Two of these lessons are about **where** something was, not only about
+what was done. The combat code remembers the direction a blow came from
+and the direction the prey was in, and the credit goes to *that*
+direction — so the network learns "the thing over there is the one that
+hurts me, run the other way" and "the thing over there was worth
+walking towards", instead of learning a direction that has nothing to do
+with what happened.
 
 The credit is **proper back-propagation**: the error at the output is
 walked back through the hidden layers, each input blamed in proportion to
@@ -526,6 +546,7 @@ desire[d] = squash( network_output[d] + Σ_c skip[c] · percept[d][c] )
 | `skip[SWEET]` | +1.15 | the smell of something sweet pulls |
 | `skip[ACID]` | −0.90 | the smell of something acrid pushes away |
 | `skip[GREEN]` | +0.08 | a green thing is worth a look, but only a little |
+| `skip[KIN]` | +0.40 | the smell of your own kind pulls — a herd stays together |
 | `skip_up` | +0.55 | the open sky pulls, in the direction that is up |
 
 This lives in the **weights, not in the code**. The action layer knows
@@ -860,19 +881,57 @@ Every network output is gated by hard conditions before it does anything:
 ### 12.5 The difficulty ramp
 
 The world starts forgiving and gets harder. The ramp is the run's own
-progress plus what the world has become:
+progress plus what the world has become, and it is a **smoothstep** over
+twenty thousand ticks:
 
 ```rust
-let progress = (frame as f32 / 60_000.0).min(1.0);
-let strain = pressure.overall();
-self.difficulty = (progress * 0.6 + strain * 0.4).clamp(0.0, 1.0);
+let t = (frame as f32 / 20_000.0).min(1.0);
+let ease = t * t * (3.0 - 2.0 * t);
+self.difficulty = (ease * 0.65 + strain * 0.35).clamp(0.0, 1.0);
 ```
 
-Hunger, thirst, the cold and the cost of breeding all read it. A young
-world in good condition is gentle; a world that has been picked clean and
-battered is not.
+The curve barely moves at first, so that a colony of poor brains has the
+time to work out how to eat, and then it climbs hard in the middle of
+the run — which is exactly when the field has narrowed to a handful of
+species and the survivors have to fight for what is left.
 
-### 12.6 The world
+Hunger, thirst, the cold, the cost of breeding and the size of the ZORG
+swarm all read it. A young world in good condition is gentle; a world
+that has been picked clean and battered is not.
+
+### 12.6 The late world is a lean world
+
+The vegetation slows down as the run wears on:
+
+```rust
+let lean = 1.0 - 0.75 * self.difficulty;
+```
+
+A surface that can only ever feed one colony is a surface the last two
+colonies have to fight over. This, more than anything else, is what ends
+a run: the field narrows to two, the ground cannot carry both, and one
+of them wins.
+
+### 12.7 Idling is punished
+
+A colony that sits in one place does not harvest and does not explore,
+and the world takes it at its word:
+
+- **The crowd costs.** A creature with its neighbours pressed all around
+  it burns more energy: the drain is multiplied by `1 + 0.08 × (the
+  number within four cells, up to sixteen)`. A heap of fifty animals
+  round the fire burns nearly twice what the same animals would burn
+  spread out over the ground.
+- **The fire has to be fed.** A colony's fire burns wood every minute of
+  the world's time, and the wood has to be *carried home* by somebody. The
+  fuel is trees, not grass: a mouthful of green fills the belly and is no
+  firewood at all. A colony with no wood goes cold, and the cold comes
+  in.
+- **The fire keeps the cold out.** A lit fire at the base means the
+  winter does not bite the colony. That is the whole of the reward for
+  gathering: a warm nest is worth going out for.
+
+### 12.8 The world
 
 Everything about the world is hard-coded: the cellular automaton, the
 reactions between elements, the weather table, the seasons, the volcano,
@@ -886,7 +945,7 @@ already grows there puts out a seedling beside itself. The world is kept
 from turning into one green mat by a hard cap that thins the vegetation
 when it gets too thick.
 
-### 12.7 Diplomatic negotiation
+### 12.9 Diplomatic negotiation
 
 The outcome of a negotiation is computed by hard rules in
 `diplomacy/negotiation.rs` using the network's outputs 20–23 as *inputs*

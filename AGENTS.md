@@ -3,7 +3,7 @@
 ## Documentation
 - `docs/SIMULATION.md` - the full simulation reference.
 - `docs/BRAIN.md` - the complete reference for the creature brain: all
-  161 inputs, all 33 outputs, the architecture, and exactly what is
+  181 inputs, all 33 outputs, the architecture, and exactly what is
   random, what is evolved and what is hard-coded. Read this before
   changing anything in `src/creature/brain.rs` or `src/creature/senses.rs`.
 
@@ -160,6 +160,17 @@
   how it says what it wants to do about what it perceives, and the
   actions are **local**: it bites the cell next to it, not the best thing
   within six cells.
+- The creature senses **other creatures** the same way: a sight channel
+  for "something alive is over there" and a smell channel for "my own kind
+  is over there", which carries seventy cells. The kin block also says
+  which way the nearest of its own kind and the nearest stranger are, so
+  the network can join a colour up with a bearing and learn that the red
+  ones over there are the ones to run from.
+- The **lessons are about where, not only what**. A kill reinforces the
+  attack and the direction the prey was in; being hurt reinforces
+  fleeing and penalises the direction the blow came from. The combat code
+  remembers both directions, so the credit goes to the thing that
+  actually happened.
 - The **instincts are weights, not code**. A newborn mind is born with a
   direct path from the raw senses to the desires: the sweet smell pulls,
   the acrid smell pushes away, and the open sky pulls upward. Evolution
@@ -169,7 +180,14 @@
   grazes its neighbourhood bare finds the green coming back - and a
   creature that has learnt to walk towards a sweet smell is walking
   towards something that is there again. A hard cap keeps the world from
-  turning into one green mat.
+  turning into one green mat, and the regrowth slows as the run wears on:
+  the late world is a lean world, and a surface that can only feed one
+  colony is what ends a run.
+- **Idling is punished**. A crowd burns energy, so a heap of animals on
+  one spot costs more than the same animals spread over the ground. A
+  colony's fire has to be fed with **wood** - and wood is trees, not
+  grass - and a colony with no firewood goes cold, and the cold comes
+  in. A colony that does nothing but sit by its own fire goes hungry.
 - The **tech tree** (`src/creature/tech.rs`) has **ten tiers** and holds
   both kinds of thing: the **tools** a creature carries (the pickaxe, the
   bow, the sunfire) and the **discoveries** a species knows (how to work

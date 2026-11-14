@@ -9,6 +9,8 @@ impl CreatureSystem {
             // The ZORGs are species zero; the first colony of the run is
             // species one, and it is the first colour of the wheel.
             next_species: 0,
+            // The colony fires start cold: somebody has to bring the wood.
+            fire_lit: vec![false; 64],
             tick: 0,
             stats: CreatureStats::default(),
             births_total: 0,

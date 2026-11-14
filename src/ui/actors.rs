@@ -28,10 +28,19 @@ pub fn draw_actors(
 
         // Colony campfires: every species that still has a queen burns a light
         // at its nest, so settlements are visible from across the world.
+        // A colony without wood does not have a fire, and its nest is dark.
         {
             let mut fires: Vec<(f32, f32, [u8; 3])> = Vec::new();
             for c in &creatures.list {
                 if c.role == crate::creature::Role::Queen {
+                    let lit = creatures
+                        .fire_lit
+                        .get(c.species as usize)
+                        .copied()
+                        .unwrap_or(false);
+                    if !lit {
+                        continue;
+                    }
                     if !fires.iter().any(|(_, _, col)| col == &c.team_color) {
                         fires.push((c.base_x, c.base_y, c.team_color));
                     }

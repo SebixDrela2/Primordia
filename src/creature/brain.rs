@@ -535,10 +535,12 @@ impl Net {
         // full of green things that are not food, and a creature that
         // chased every one of them would never eat.
         self.skip[crate::creature::senses::sight::GREEN] = 0.08;
-        // The smell of your own kind pulls. An animal that can smell its
-        // own kind walks towards it: that is how a herd stays together,
-        // and how a creature that has wandered off finds its way back.
-        self.skip[crate::creature::senses::smell::KIN] = 0.9;
+        // The smell of your own kind pulls, but only a little. An animal
+        // that can smell its own kind walks towards it: that is how a herd
+        // stays together. But a strong pull would pack the whole colony
+        // into one heap round the fire, and a heap that cannot spread out
+        // cannot forage, cannot explore and cannot fight.
+        self.skip[crate::creature::senses::smell::KIN] = 0.4;
         // The open sky pulls. Every animal can feel whether it is under
         // the sky or shut in the rock, and every animal that lives on the
         // ground stays near it. This is not knowledge of the world: it is

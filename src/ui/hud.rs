@@ -357,14 +357,19 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
     // The environmental pressure, shown as separate bars. Each one rises for
     // its own reason, so the player can see which part of the world is
     // turning against them.
+    //
+    // The difficulty is the sum of all of them plus the run's own
+    // progress, and it is the number that decides how hard the world is
+    // on a creature right now, so it is worth watching.
     let p = &world.pressure;
     let line7 = format!(
-        "pressure: scarcity {:.0}%  depletion {:.0}%  harshness {:.0}%  extremes {:.0}%  volcanic {:.0}%",
+        "pressure: scarcity {:.0}%  depletion {:.0}%  harshness {:.0}%  extremes {:.0}%  volcanic {:.0}%   difficulty {:.0}%",
         p.scarcity * 100.0,
         p.depletion * 100.0,
         p.harshness * 100.0,
         p.extremes * 100.0,
-        p.volcanic * 100.0
+        p.volcanic * 100.0,
+        world.hardship() * 100.0
     );
     // The diplomatic state of the world, in one line.
     let line8 = diplomacy_summary(creatures);
