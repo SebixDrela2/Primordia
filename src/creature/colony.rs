@@ -44,6 +44,7 @@ impl CreatureSystem {
             plagues_started: 0,
             discoveries: Vec::new(),
             deepest: Vec::new(),
+            activity: Vec::new(),
 
             last_discovery: None,
         }

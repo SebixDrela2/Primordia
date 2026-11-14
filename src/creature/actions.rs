@@ -162,13 +162,18 @@ pub(crate) fn act_steer(
                         }
                     }
                 }
-                if out[18] > 0.3 && !c.migrating {
-                    let bx = c.base_x - c.x;
-                    let by = c.base_y - c.y;
-                    let bd = (bx * bx + by * by).sqrt().max(0.1);
-                    steer_x += bx / bd;
-                    steer_y += by / bd;
-                }
+                // --- Rally: no rule at all ---
+                //
+                // There used to be a rule here too, and it was a
+                // coordinate: when the network said "rally", the code
+                // steered the creature towards `base_x` and `base_y`. The
+                // creature was told where home was.
+                //
+                // Now the only way home is the smell of your own kind,
+                // which is a sense and not a map reference, and which the
+                // network reads like anything else. A creature that wants
+                // to be with its colony knows it by the nose.
+                let _ = out[18];
 
                 // --- The pull of the colony: no rule at all ---
                 //
@@ -244,38 +249,18 @@ pub(crate) fn act_steer(
                     speed_mult_extra = speed_mult_extra.max(1.2);
                 }
 
-                // --- Diplomacy: walk to the foreign colony to open talks ---
+                // --- Diplomacy: no walk any more ---
                 //
-                // A diplomat that wants to negotiate does not wait for a
-                // stranger to bump into it: it travels to the nearest colony
-                // of another species. This is what makes an embassy a real
-                // journey across the map instead of a chance encounter.
-                if out[outputs::NEGOTIATE] > 0.4 {
-                    if let Some(partner) = ds.partner {
-                        // A colony that is at war with us is a target, not a
-                        // negotiating partner: head for it with intent.
-                        let mut best: Option<(f32, f32, f32)> = None;
-                        for (sp, bx, by) in foreign_bases {
-                            if *sp != partner {
-                                continue;
-                            }
-                            let dx = bx - c.x;
-                            let dy = by - c.y;
-                            let d = (dx * dx + dy * dy).sqrt();
-                            if best.map_or(true, |t| d < t.2) {
-                                best = Some((dx, dy, d));
-                            }
-                        }
-                        if let Some((dx, dy, d)) = best {
-                            if d > 1.0 {
-                                let inv = 1.0 / d;
-                                steer_x += dx * inv;
-                                steer_y += dy * inv;
-                                speed_mult_extra = speed_mult_extra.max(1.15);
-                            }
-                        }
-                    }
-                }
+                // There used to be a rule here as well: a creature that
+                // wanted to negotiate was steered to the other colony's
+                // coordinates. The animal was given a destination.
+                //
+                // Now it has to find the other colony itself, by the same
+                // things everything else is found by - its nose and its own
+                // wanting. Two colonies that want to talk will walk towards
+                // each other because they smell each other's kind, or they
+                // will not talk at all.
+                let _ = (out[outputs::NEGOTIATE], ds.partner, foreign_bases);
 
     (steer_x, steer_y, speed_mult_extra)
 }
@@ -1157,7 +1142,7 @@ pub(crate) fn act_combat(
                     ranged_range *= 1.25;
                     shot_damage = 1.25;
                 }
-                let wants_shoot = out[14] > 0.3 || (out[4] > 0.6 && c.role == Role::Soldier);
+                let wants_shoot = out[14] > 0.3;
                 if ranged_range > 0.0 && wants_shoot && c.fire_cooldown == 0 && c.energy > 40.0 {
                     let mut target: Option<(f32, f32, f32)> = None;
                     grid.near(c.x, c.y, 32, |idx| {

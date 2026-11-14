@@ -529,6 +529,11 @@ pub struct CreatureSystem {
     pub plagues_started: u32,
     /// What each species has worked out for itself, by species id.
     pub discoveries: Vec<(u32, u32)>,
+    /// What each species has been doing: (species, the activity bits).
+    ///
+    /// This is the record of the network's own decisions — what the
+    /// creatures actually chose to do — and the tech tree is gated on it.
+    pub activity: Vec<(u32, u32)>,
     /// How deep each species has been: (species, the deepest it has gone).
     ///
     /// This is the record the tech tree is gated on. A colony that has

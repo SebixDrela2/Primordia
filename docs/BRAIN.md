@@ -729,7 +729,17 @@ Every 300 ticks, for every species with at least 3 members:
 2. The required **practices** must be in the culture bitmask.
 3. The species must have lived through enough **generations**.
 4. The species must have **been deep enough** — see below.
-5. A **22%** chance (34% if the colony sits beside the drowned temple).
+5. The species must have actually **been doing it**. A colony works out
+   the mine because its creatures have been digging, and works out the
+   war because its creatures have been fighting: the record of what the
+   network decided to do is the evidence. Tier by tier the gate is craft,
+   craft, build, trade, gather, mine, cast, cast, fight, build.
+6. A **22%** chance (34% if the colony sits beside the drowned temple).
+
+Point 5 is the important one. The tech tree used to be a coin flip that
+landed in a species' lap: the practices were earned by the creatures, but
+the knowledge that grew out of them was handed over. Now the knowledge
+needs the doing as well as the practice.
 
 A species gets **one** discovery per check, and the discoveries are
 tried in tree order.
@@ -972,7 +982,31 @@ means the tech. An animal in the open at night is dark but breathes
 fresh air and has the sky over it, so it does not go wandering up into
 the stars either.
 
-### 12.4 Sickness wears the body down
+### 12.4 Who decides what a creature does
+
+Everything a player creature does is its own mind's decision. There are
+no rules left in the steering:
+
+- the network decides whether to eat, drink, mine, build, craft, trade,
+  cast, shoot, attack, rest, mate, talk, flee;
+- the network decides which of the eight directions to go in;
+- the only things the code still owns are the **ZORGs** (the deep's own
+  ecology, not a lineage ✓) and the **emigrants of a colony that has
+  split** (a life-cycle event ✓).
+
+What used to be rules, and what replaced them:
+
+| It was | Now |
+|---|---|
+| a soldier went for the queen, a hunter for the worker | the swing goes into whatever is nearest |
+| an envoy always wanted talks | the network wants talks |
+| a peaceful creature traded when it was not afraid | the network wants to trade |
+| a soldier shot when it was angry enough | the network wants to shoot |
+| a diplomat walked to the other colony's coordinates | it finds the other colony by its nose |
+| the colony was pulled to `base_x`, `base_y` | it smells its own kind |
+| the tech tree was a coin flip | the colony has to have been doing it |
+
+### 12.5 Sickness wears the body down
 
 A disease is not a label on a creature. Every disease has a **debility**
 — how hard it wears the host down — and the host pays for it in three
@@ -997,7 +1031,7 @@ ways at once:
 This is what makes a sick colony a colony that cannot feed itself, and
 it is why a plague that breaks out in a crowd finishes the crowd off.
 
-### 12.5 Survival rules
+### 12.6 Survival rules
 
 | Rule | Numbers |
 |------|---------|
@@ -1011,7 +1045,7 @@ it is why a plague that breaks out in a crowd finishes the crowd off.
 | Health regen | towards `max_health()`, which traits and affinity modify |
 | Death | energy ≤ 0, health ≤ 0, or age over the lifespan (+0–1400 per id) |
 
-### 12.6 Action gating
+### 12.7 Action gating
 
 Every network output is gated by hard conditions before it does anything:
 
@@ -1026,7 +1060,7 @@ Every network output is gated by hard conditions before it does anything:
 - **Mine** needs a `world.mine_budget` — the world limits how much can be
   dug out per tick, so creatures cannot strip-mine it.
 
-### 12.7 The difficulty ramp
+### 12.8 The difficulty ramp
 
 The world starts forgiving and gets harder. The ramp is the run's own
 progress plus what the world has become, and it is a **smoothstep** over
@@ -1047,7 +1081,7 @@ Hunger, thirst, the cold, the cost of breeding and the size of the ZORG
 swarm all read it. A young world in good condition is gentle; a world
 that has been picked clean and battered is not.
 
-### 12.8 The late world is a lean world
+### 12.9 The late world is a lean world
 
 The vegetation slows down as the run wears on:
 
@@ -1060,7 +1094,7 @@ colonies have to fight over. This, more than anything else, is what ends
 a run: the field narrows to two, the ground cannot carry both, and one
 of them wins.
 
-### 12.9 Idling is punished
+### 12.10 Idling is punished
 
 A colony that sits in one place does not harvest and does not explore,
 and the world takes it at its word:
@@ -1091,7 +1125,7 @@ and the world takes it at its word:
   over: the animals that pile onto the same carcass are the ones that
   bring the sickness home.
 
-### 12.10 The pull of the hunt
+### 12.11 The pull of the hunt
 
 A colony that has learned to hunt stalks the nearest animal of another
 kind — but only as far as a hunt reaches, and gently:
@@ -1109,7 +1143,7 @@ the whole colony would pile onto one animal in the middle of open
 ground. The creature's own wanting is what carries it the rest of the
 way.
 
-### 12.11 The world
+### 12.12 The world
 
 Everything about the world is hard-coded: the cellular automaton, the
 reactions between elements, the weather table, the seasons, the volcano,
@@ -1123,7 +1157,7 @@ already grows there puts out a seedling beside itself. The world is kept
 from turning into one green mat by a hard cap that thins the vegetation
 when it gets too thick.
 
-### 12.12 Diplomatic negotiation
+### 12.13 Diplomatic negotiation
 
 The outcome of a negotiation is computed by hard rules in
 `diplomacy/negotiation.rs` using the network's outputs 20–23 as *inputs*

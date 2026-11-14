@@ -728,6 +728,46 @@ impl CreatureSystem {
                     c.net.forward_into(&input_buf, &mut net_act, &mut net_next);
                     c.out_cache.copy_from_slice(&net_act);
                     c.brain_ready = true;
+                    // ---- What the creature actually did ----
+                    //
+                    // This is the record of what the network decided, and
+                    // it is what the tech tree is gated on: a colony works
+                    // out the mine because its creatures have been
+                    // digging, not because a coin said so.
+                    {
+                        let mut bits = 0u32;
+                        if net_act[2] > 0.05 {
+                            bits |= crate::creature::technology::activity::EAT;
+                        }
+                        if net_act[6] > 0.25 {
+                            bits |= crate::creature::technology::activity::CRAFT;
+                        }
+                        if net_act[5] > 0.2 {
+                            bits |= crate::creature::technology::activity::BUILD;
+                        }
+                        if net_act[9] > 0.4 {
+                            bits |= crate::creature::technology::activity::TRADE;
+                        }
+                        if net_act[12] > 0.35 {
+                            bits |= crate::creature::technology::activity::MINE;
+                        }
+                        if net_act[7] > 0.5 {
+                            bits |= crate::creature::technology::activity::CAST;
+                        }
+                        if net_act[4] > 0.3 {
+                            bits |= crate::creature::technology::activity::ATTACK;
+                        }
+                        if bits != 0 {
+                            match self
+                                .activity
+                                .iter_mut()
+                                .find(|(sp, _)| *sp == c.species)
+                            {
+                                Some(e) => e.1 |= bits,
+                                None => self.activity.push((c.species, bits)),
+                            }
+                        }
+                    }
                     // Remember which direction the creature most wanted to
                     // go in, so that a reward can be given to it later.
                     let mut best_dir = 0usize;
@@ -749,10 +789,17 @@ impl CreatureSystem {
 
                 // ---- Diplomacy: the creature decides whether it wants to
                 // talk, and to whom ----
-                let wants_talks = out[outputs::NEGOTIATE] > 0.3
-                    || c.role == Role::Envoy
-                    || (c.role == Role::Merchant && out[9] > 0.25)
-                    || (c.role == Role::Priest && out[7] > 0.4);
+                //
+                // There used to be a rule here: an envoy always wanted
+                // talks, whatever its mind said, and a merchant and a
+                // priest wanted them at lower thresholds. The role is a
+                // genetic accident, not a decision, and it was making the
+                // decisions for the animal.
+                //
+                // Now the only thing that makes a creature want to talk
+                // is its own mind wanting to. A species that is good at
+                // diplomacy gets there by evolving a mind that says so.
+                let wants_talks = out[outputs::NEGOTIATE] > 0.3;
                 // A ZORG never talks. It only fights.
                 let wants_talks = wants_talks && c.faction != Faction::Zorg;
                 diplo_willing[index] = if wants_talks { 1.0 } else { 0.0 };
@@ -974,10 +1021,12 @@ impl CreatureSystem {
                 }
 
                 // Trade (output[9] = trade) - with nearby creature
-                // Peaceful species actively seek out trade partners instead
-                // of fighting.
-                let trade_wanted = out[9] > 0.4
-                    || (c.traits & trait_bits::PEACEFUL != 0 && out[15] < 0.3);
+                //
+                // The only thing that makes a creature want to trade is
+                // its mind wanting to. A peaceful species gets its
+                // peaceful ways by evolving a mind that is peaceful, not
+                // by a rule that overrides what the mind said.
+                let trade_wanted = out[9] > 0.4;
                 if trade_wanted && c.craft_cooldown == 0 {
                     // The trade partner is looked for through the spatial
                     // grid: scanning the whole population for every trader

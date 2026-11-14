@@ -249,24 +249,20 @@ impl CreatureSystem {
                 if self.diplomacy.are_allied(a_species, other.species) {
                     return;
                 }
-                let priority = match (a_role, other.role) {
-                    (Role::Soldier, Role::Queen) => 0.0,
-                    (Role::Soldier, Role::Soldier) => 10.0,
-                    (Role::Soldier, Role::Worker) => 20.0,
-                    (Role::Worker, _) => 50.0,
-                    _ => 30.0,
-                };
-                // A hunter prefers the easy prey: a worker or a young animal
-                // is a meal, a soldier is a fight.
-                let priority = if hunter {
-                    match other.role {
-                        Role::Worker => priority * 0.4,
-                        Role::Queen => priority * 1.5,
-                        _ => priority,
-                    }
-                } else {
-                    priority
-                };
+                // Who to hit.
+                //
+                // There used to be a rule here: a soldier went for the
+                // queen, a hunter went for the worker, and a colony at war
+                // went for anyone. The code was choosing the victim, so
+                // the animal never had to work out what it was attacking
+                // or why.
+                //
+                // Now the swing goes into whatever is nearest. Which
+                // creature that is, and what it is worth, is something the
+                // network's own decisions have to earn: the creature that
+                // keeps finding itself next to the enemy learns that
+                // going that way is what the killing is for.
+                let priority = 0.0;
                 // A species we are formally at war with comes first: the
                 // war is the reason the creature is swinging at all.
                 let war_penalty = if self.diplomacy.at_war(a_species, other.species) {

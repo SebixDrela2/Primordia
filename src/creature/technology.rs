@@ -483,6 +483,50 @@ pub fn discovery_tier(tier: u8) -> Vec<Discovery> {
         .collect()
 }
 
+/// What a species has actually been doing.
+///
+/// The tech tree is not a gift and not a coin flip: a colony works out
+/// something when its creatures are *doing* it. These bits are the record
+/// of that — what the network has actually decided to do — and a discovery
+/// needs the right one before it can happen.
+pub mod activity {
+    /// The creatures have been eating and gathering.
+    pub const EAT: u32 = 1;
+    /// The creatures have been making things.
+    pub const CRAFT: u32 = 1 << 1;
+    /// The creatures have been building.
+    pub const BUILD: u32 = 1 << 2;
+    /// The creatures have been trading.
+    pub const TRADE: u32 = 1 << 3;
+    /// The creatures have been digging and mining.
+    pub const MINE: u32 = 1 << 4;
+    /// The creatures have been working the old rites.
+    pub const CAST: u32 = 1 << 5;
+    /// The creatures have been fighting.
+    pub const ATTACK: u32 = 1 << 6;
+
+    /// What a species has to have been doing for a tier of the tree.
+    ///
+    /// The tier is the gate: a colony that has never dug cannot work out
+    /// the mine, and a colony that has never fought cannot work out the
+    /// war. What it takes to dig, to fight and to build is the network's
+    /// own decision.
+    pub fn for_tier(tier: u8) -> u32 {
+        match tier {
+            0 | 1 => CRAFT,
+            2 => CRAFT,
+            3 => BUILD,
+            4 => TRADE,
+            5 => EAT,
+            6 => MINE,
+            7 => CAST,
+            8 => CAST,
+            9 => ATTACK,
+            _ => BUILD,
+        }
+    }
+}
+
 impl CreatureSystem {
     /// What a species has worked out for itself.
     pub fn species_discoveries(&self, species: u32) -> u32 {
@@ -490,6 +534,15 @@ impl CreatureSystem {
             .iter()
             .find(|(id, _)| *id == species)
             .map(|(_, d)| *d)
+            .unwrap_or(0)
+    }
+
+    /// What a species has been doing.
+    pub fn species_activity(&self, species: u32) -> u32 {
+        self.activity
+            .iter()
+            .find(|(sp, _)| *sp == species)
+            .map(|(_, a)| *a)
             .unwrap_or(0)
     }
 
@@ -688,6 +741,17 @@ impl CreatureSystem {
                 }
                 // The tier below has to be finished first.
                 if d.tier() > 1 && !self.tier_complete(known, d.tier() - 1) {
+                    continue;
+                }
+                // And the colony has to have been doing it.
+                //
+                // The knowledge is not a coin flip that lands in the
+                // species' lap: a colony works out the mine because its
+                // creatures have been digging, and works out the war
+                // because its creatures have been fighting. What they
+                // chose to do is the evidence.
+                let doing = self.species_activity(sp);
+                if doing & activity::for_tier(d.tier()) == 0 {
                     continue;
                 }
                 // The practice has to be there.
