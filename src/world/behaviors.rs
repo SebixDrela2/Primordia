@@ -195,6 +195,7 @@ impl World {
         }
     }
 
+    #[must_use]
     pub fn has_water_near(&self, x: i32, y: i32, radius: i32) -> bool {
         for dy in -radius..=radius {
             for dx in -radius..=radius {
@@ -217,6 +218,7 @@ impl World {
         }
     }
 
+    #[must_use]
     pub fn rng_sign(&mut self) -> i32 {
         if self.rng.next_u32() & 1 == 0 {
             -1

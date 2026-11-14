@@ -19,6 +19,7 @@ fn behavior_name(b: Behavior) -> &'static str {
     }
 }
 
+#[must_use]
 pub fn run(_args: &[String]) -> i32 {
     println!("| # | Element | Category | Behaviour | Density | Nutrition | Toxicity | Lifetime | Solid | Edible | Emits light | Description |");
     println!("|---|---------|----------|-----------|---------|-----------|----------|----------|-------|--------|------------|-------------|");

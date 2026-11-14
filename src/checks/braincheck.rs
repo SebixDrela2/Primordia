@@ -6,6 +6,7 @@ use crate::world::World;
 const W: usize = 1280;
 const H: usize = 720;
 
+#[must_use]
 pub fn run(args: &[String]) -> i32 {
     let mut args = args.iter();
     let steps: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(12000);
@@ -58,7 +59,7 @@ pub fn run(args: &[String]) -> i32 {
 
         world.step();
         creatures.step(&mut world);
-        if i % 300 == 0 {
+        if i.is_multiple_of(300) {
             let pop = creatures.list.len().max(1) as f32;
             let hunger: f32 = creatures.list.iter().map(|c| c.hunger).sum::<f32>() / pop;
             println!(

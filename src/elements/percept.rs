@@ -18,10 +18,12 @@ pub struct Look {
 
 impl Look {
 
+    #[must_use]
     pub fn greenness(&self) -> f32 {
         self.rgb[1] - self.rgb[0]
     }
 
+    #[must_use]
     pub fn colourfulness(&self) -> f32 {
         let r = self.rgb[0];
         let g = self.rgb[1];
@@ -36,6 +38,7 @@ impl Look {
     }
 }
 
+#[must_use]
 pub fn look_table() -> [Look; Elem::TABLE_LEN] {
     let mut t = [Look::default(); Elem::TABLE_LEN];
     let mut i = 0;

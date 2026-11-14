@@ -31,6 +31,7 @@ pub struct Migration {
 
 impl Migration {
 
+    #[must_use]
     pub fn is_ready(&self) -> bool {
         self.distance > SPLIT_DISTANCE && self.elapsed > SPLIT_ELAPSED
     }
@@ -50,12 +51,13 @@ impl CreatureSystem {
         };
         for sp in species {
             if self.rng.chance(0.06) {
-                self.begin_migration(sp, pressure);
+                let _ = self.begin_migration(sp, pressure);
             }
         }
         self.update_migrations(120);
     }
 
+    #[must_use]
     pub fn begin_migration(&mut self, species: u32, pressure: f32) -> Option<Migration> {
 
         if species == ZORG_SPECIES {
@@ -145,7 +147,7 @@ impl CreatureSystem {
 
             let mut far = 0.0f32;
             let mut members = 0u32;
-            for c in self.list.iter() {
+            for c in &self.list {
                 if c.species == species && c.migrating {
                     let d = ((c.x - origin_x).powi(2) + (c.y - origin_y).powi(2)).sqrt();
                     far += d;
@@ -204,6 +206,7 @@ impl CreatureSystem {
         }
     }
 
+    #[must_use]
     pub fn new_species_id(&mut self) -> u32 {
         self.next_species += 1;
         self.next_species

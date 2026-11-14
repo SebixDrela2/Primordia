@@ -30,7 +30,7 @@ impl World {
         }
 
         self.maintain();
-        if self.frame % 30 == 0 {
+        if self.frame.is_multiple_of(30) {
             self.census = self.count();
         }
     }

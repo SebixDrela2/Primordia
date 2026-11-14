@@ -1,6 +1,7 @@
 use super::*;
 
 impl World {
+    #[must_use]
     pub fn new(w: usize, h: usize, seed: u64) -> Self {
         let n = w * h;
         World {
@@ -175,6 +176,7 @@ impl World {
         mover.density() > target.density() && target_movable
     }
 
+    #[must_use]
     pub fn try_move(&mut self, i: usize, dx: i32, dy: i32) -> Option<usize> {
         if dx == 0 && dy == 0 {
             return None;

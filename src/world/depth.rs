@@ -16,6 +16,7 @@ pub enum DepthZone {
 
 impl DepthZone {
 
+    #[must_use]
     pub fn name(self) -> &'static str {
         match self {
             DepthZone::Shallows => "The Shallows",
@@ -26,6 +27,7 @@ impl DepthZone {
         }
     }
 
+    #[must_use]
     pub fn blurb(self) -> &'static str {
         match self {
             DepthZone::Shallows => "ordinary rock and the odd seam of ore",
@@ -36,6 +38,7 @@ impl DepthZone {
         }
     }
 
+    #[must_use]
     pub const fn of(depth: i32) -> DepthZone {
         if depth < 58 {
             DepthZone::Shallows
@@ -50,6 +53,7 @@ impl DepthZone {
         }
     }
 
+    #[must_use]
     pub const fn tint(self) -> [f32; 3] {
         match self {
             DepthZone::Shallows => [1.0, 1.0, 1.0],
@@ -64,6 +68,7 @@ impl DepthZone {
         }
     }
 
+    #[must_use]
     pub fn rock(self, rng: &mut crate::rng::Rng) -> Elem {
         match self {
             DepthZone::Shallows => Elem::Stone,
@@ -98,6 +103,7 @@ impl DepthZone {
         }
     }
 
+    #[must_use]
     pub fn treasure(self, rng: &mut crate::rng::Rng) -> Option<Elem> {
         match self {
             DepthZone::Shallows => {
@@ -165,6 +171,7 @@ impl DepthZone {
         }
     }
 
+    #[must_use]
     pub fn treasure_chance(self) -> f32 {
         match self {
             DepthZone::Shallows => 0.04,

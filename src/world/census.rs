@@ -1,6 +1,7 @@
 use super::*;
 
 impl World {
+    #[must_use]
     pub fn count(&self) -> Census {
         let mut c = Census::default();
         for &k in &self.kind {

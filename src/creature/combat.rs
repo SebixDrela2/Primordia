@@ -3,7 +3,7 @@ use super::*;
 impl CreatureSystem {
     pub fn resolve_turrets(&mut self, world: &mut World, shots: &mut Vec<Projectile>) {
 
-        if self.tick % 60 == 0 {
+        if self.tick.is_multiple_of(60) {
             let alive: Vec<u32> = self.list.iter().map(|c| c.species).collect();
             let mut removed: Vec<Structure> = Vec::new();
             self.structures.retain(|s| {
@@ -39,7 +39,7 @@ impl CreatureSystem {
                 continue;
             }
             let mut target: Option<(f32, f32, f32)> = None;
-            for other in self.list.iter() {
+            for other in &self.list {
                 if other.species == s.species { continue; }
 
                 if self.diplomacy.are_allied(s.species, other.species) { continue; }

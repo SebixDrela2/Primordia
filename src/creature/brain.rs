@@ -1,5 +1,6 @@
 use super::*;
 
+#[must_use]
 pub fn segment_distance(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
     let dx = bx - ax;
     let dy = by - ay;
@@ -35,6 +36,7 @@ pub mod activation {
 
     pub const COUNT: u8 = 6;
 
+    #[must_use]
     pub fn name(a: u8) -> &'static str {
         match a {
             TANH => "tanh",
@@ -66,10 +68,12 @@ pub mod activation {
     }
 }
 
+#[must_use]
 pub fn brain_sizes() -> [usize; 5] {
     brain_sizes_for(0)
 }
 
+#[must_use]
 pub fn brain_sizes_for(arch: u8) -> [usize; 5] {
     match arch {
         0 => [super::INPUTS + MEMORY, 56, 40, 24, super::OUTPUTS],
@@ -187,6 +191,7 @@ pub struct MindView {
 
 impl MindView {
 
+    #[must_use]
     pub fn weight(&self, hidden_unit: usize, output: usize) -> f32 {
         self.out_weights
             .get(hidden_unit * self.outputs + output)
@@ -194,10 +199,12 @@ impl MindView {
             .unwrap_or(0.0)
     }
 
+    #[must_use]
     pub fn drive(&self, output: usize) -> f32 {
         self.last_out.get(output).copied().unwrap_or(0.0)
     }
 
+    #[must_use]
     pub fn channel_value(&self, direction: usize, channel: usize) -> f32 {
         self.channels
             .get(direction * crate::creature::senses::DIR_CHANNELS + channel)
@@ -205,10 +212,12 @@ impl MindView {
             .unwrap_or(0.0)
     }
 
+    #[must_use]
     pub fn hidden_fire(&self, unit: usize) -> f32 {
         self.hidden_acts.get(unit).copied().unwrap_or(0.0)
     }
 
+    #[must_use]
     pub fn layer_fire(&self, layer: usize, unit: usize) -> f32 {
         self.layer_acts
             .get(layer)
@@ -217,6 +226,7 @@ impl MindView {
             .unwrap_or(0.0)
     }
 
+    #[must_use]
     pub fn layer_peak(&self, layer: usize) -> f32 {
         self.layer_acts
             .get(layer)
@@ -224,6 +234,7 @@ impl MindView {
             .unwrap_or(0.0)
     }
 
+    #[must_use]
     pub fn layer_weight(&self, layer: usize, from: usize, to: usize) -> f32 {
         let _in_n = self.sizes[layer];
         let out_n = self.sizes[layer + 1];
@@ -234,6 +245,7 @@ impl MindView {
             .unwrap_or(0.0)
     }
 
+    #[must_use]
     pub fn column_weight(&self, layer: usize, direction: usize, unit: usize) -> f32 {
         let in_n = self.sizes[layer];
         let out_n = self.sizes[layer + 1];
@@ -255,6 +267,7 @@ impl MindView {
         sum
     }
 
+    #[must_use]
     pub fn unit_pull(&self, layer: usize, from: usize, to: usize) -> f32 {
         let out_n = self.sizes[layer + 1];
         let w = self
@@ -272,6 +285,7 @@ impl MindView {
         w * a
     }
 
+    #[must_use]
     pub fn input_pull(&self, layer: usize, input: usize, unit: usize) -> f32 {
         let out_n = self.sizes[layer + 1];
         let w = self
@@ -284,6 +298,7 @@ impl MindView {
         w * v
     }
 
+    #[must_use]
     pub fn column_pull(&self, layer: usize, first: usize, count: usize, unit: usize) -> f32 {
         let mut sum = 0.0f32;
         for i in 0..count {
@@ -292,6 +307,7 @@ impl MindView {
         sum
     }
 
+    #[must_use]
     pub fn unit_drive(&self, layer: usize, unit: usize) -> f32 {
         if layer + 1 >= self.sizes.len() {
             return self.drive(unit);
@@ -305,6 +321,7 @@ impl MindView {
 }
 
 impl Net {
+    #[must_use]
     pub fn random(sizes: &[usize], rng: &mut Rng) -> Self {
         let mut w = Vec::new();
         let mut b = Vec::new();
@@ -366,6 +383,7 @@ impl Net {
         self.skip_up = 0.55;
     }
 
+    #[must_use]
     pub fn clone_net(&self) -> Net {
         Net {
             sizes: self.sizes.clone(),
@@ -385,6 +403,7 @@ impl Net {
         }
     }
 
+    #[must_use]
     pub fn forward(&mut self, input: &[f32]) -> Vec<f32> {
         let mut act = Vec::with_capacity(input.len() + MEMORY);
         let mut next = Vec::with_capacity(self.sizes[self.sizes.len() - 1]);
@@ -531,10 +550,12 @@ impl Net {
         }
     }
 
+    #[must_use]
     pub fn memory(&self) -> &[f32] {
         &self.memory
     }
 
+    #[must_use]
     pub fn shape(&self) -> (usize, usize, usize) {
         (
             self.sizes[1],
@@ -543,6 +564,7 @@ impl Net {
         )
     }
 
+    #[must_use]
     pub fn weight_count(&self) -> usize {
         self.w.iter().map(|r| r.len()).sum()
     }
@@ -568,6 +590,7 @@ impl Net {
         }
     }
 
+    #[must_use]
     pub fn grow_to(&mut self, arch: u8, rng: &mut Rng) -> bool {
         if arch <= self.arch {
             return false;
@@ -578,6 +601,7 @@ impl Net {
         true
     }
 
+    #[must_use]
     pub fn mutate_shape(&mut self, rng: &mut Rng) -> bool {
 
         let layer = 1 + rng.range(2) as usize;
@@ -729,6 +753,7 @@ impl Net {
         self.apply_target(&trace, out_idx, amount, lr, true);
     }
 
+    #[must_use]
     pub fn inspect(&self) -> MindView {
         MindView {
             sizes: self.sizes.clone(),

@@ -28,6 +28,7 @@ pub struct UiState {
 }
 
 impl UiState {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             hover: HoverTarget::None,
@@ -358,7 +359,7 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
             Color::new(0.85, 0.9, 0.95, 0.9),
         );
         yy += 22.0;
-        for l in world.landmarks.iter() {
+        for l in &world.landmarks {
 
             let mut occupants: Vec<(u32, u32)> = Vec::new();
             for c in &creatures.list {

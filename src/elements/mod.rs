@@ -139,6 +139,7 @@ impl Elem {
 
     pub const TABLE_LEN: usize = 96;
 
+    #[must_use]
     pub fn from_u8(v: u8) -> Elem {
         if v <= Elem::MAX {
 
@@ -150,6 +151,7 @@ impl Elem {
 
     pub const MAX: u8 = Elem::Totem as u8;
 
+    #[must_use]
     pub fn inert_table() -> [bool; TABLE_LEN] {
         let mut t = [false; TABLE_LEN];
         let mut i = 0;
@@ -160,6 +162,7 @@ impl Elem {
         t
     }
 
+    #[must_use]
     pub fn solid_table() -> [bool; TABLE_LEN] {
         let mut t = [false; TABLE_LEN];
         let mut i = 0;
@@ -170,6 +173,7 @@ impl Elem {
         t
     }
 
+    #[must_use]
     pub fn edible_table() -> [bool; TABLE_LEN] {
         let mut t = [false; TABLE_LEN];
         let mut i = 0;
@@ -180,6 +184,7 @@ impl Elem {
         t
     }
 
+    #[must_use]
     pub fn nutrition_table() -> [f32; TABLE_LEN] {
         let mut t = [0.0f32; TABLE_LEN];
         let mut i = 0;
@@ -190,6 +195,7 @@ impl Elem {
         t
     }
 
+    #[must_use]
     pub fn toxicity_table() -> [f32; TABLE_LEN] {
         let mut t = [0.0f32; TABLE_LEN];
         let mut i = 0;
@@ -200,6 +206,7 @@ impl Elem {
         t
     }
 
+    #[must_use]
     pub fn emissive_table() -> [bool; TABLE_LEN] {
         let mut t = [false; TABLE_LEN];
         let mut i = 0;
@@ -210,6 +217,7 @@ impl Elem {
         t
     }
 
+    #[must_use]
     pub fn emission_table() -> [[f32; 3]; TABLE_LEN] {
         let mut t = [[0.0f32; 3]; TABLE_LEN];
         let mut i = 0;
@@ -220,6 +228,7 @@ impl Elem {
         t
     }
 
+    #[must_use]
     pub fn behavior_table() -> [Behavior; TABLE_LEN] {
         let mut t = [Behavior::Static; TABLE_LEN];
         let mut i = 0;
@@ -230,6 +239,7 @@ impl Elem {
         t
     }
 
+    #[must_use]
     pub fn lifetime_table() -> [u32; TABLE_LEN] {
         let mut t = [u32::MAX; TABLE_LEN];
         let mut i = 0;
@@ -240,6 +250,7 @@ impl Elem {
         t
     }
 
+    #[must_use]
     pub fn reactive_table() -> [bool; TABLE_LEN] {
         let mut t = [false; TABLE_LEN];
         let mut i = 0;

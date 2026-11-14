@@ -5,6 +5,7 @@ use crate::world::World;
 const W: usize = 1280;
 const H: usize = 720;
 
+#[must_use]
 pub fn run(args: &[String]) -> i32 {
     let mut args = args.iter();
     let steps: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(9000);
@@ -51,7 +52,7 @@ pub fn run(args: &[String]) -> i32 {
             }
 
             let mut outside = 0;
-            for c in creatures.list.iter() {
+            for c in &creatures.list {
                 if c.faction != crate::creature::Faction::Zorg {
                     continue;
                 }
@@ -125,7 +126,7 @@ pub fn run(args: &[String]) -> i32 {
             }
         }
 
-        if i % 1500 == 0 && i > 0 {
+        if i.is_multiple_of(1500) && i > 0 {
             let s = &creatures.stats;
 
             let mut counts: std::collections::BTreeMap<u32, u32> =
@@ -204,7 +205,7 @@ pub fn run(args: &[String]) -> i32 {
             failures += 1;
         }
 
-        for r in creatures.diplomacy.relations.iter() {
+        for r in &creatures.diplomacy.relations {
             if r.a == first || r.b == first {
                 if r.has(crate::creature::Treaty::Alliance) {
                     println!("FAIL: a ZORG is allied with a species");
@@ -225,7 +226,7 @@ pub fn run(args: &[String]) -> i32 {
         failures += 1;
     }
 
-    for c in creatures.list.iter() {
+    for c in &creatures.list {
         if c.faction != crate::creature::Faction::Player {
             continue;
         }
@@ -320,7 +321,7 @@ pub fn run(args: &[String]) -> i32 {
 
     println!("\n--- landmarks ---");
     let mut owners: Vec<Vec<String>> = Vec::new();
-    for l in world.landmarks.iter() {
+    for l in &world.landmarks {
         let names: Vec<String> = landmark_claims
             .iter()
             .filter(|(lx, ly, _)| {
@@ -330,7 +331,7 @@ pub fn run(args: &[String]) -> i32 {
             .collect();
 
         let mut uniq: Vec<String> = Vec::new();
-        for n in names.iter() {
+        for n in &names {
             if !uniq.contains(n) {
                 uniq.push(n.clone());
             }

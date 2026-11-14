@@ -23,6 +23,7 @@ pub enum RelationState {
 }
 
 impl RelationState {
+    #[must_use]
     pub fn name(self) -> &'static str {
         match self {
             RelationState::War => "WAR",
@@ -35,6 +36,7 @@ impl RelationState {
         }
     }
 
+    #[must_use]
     pub fn blurb(self) -> &'static str {
         match self {
             RelationState::War => "banners raised, no talks",
@@ -47,6 +49,7 @@ impl RelationState {
         }
     }
 
+    #[must_use]
     pub fn color(self) -> [u8; 3] {
         match self {
             RelationState::War => [255, 74, 74],
@@ -59,6 +62,7 @@ impl RelationState {
         }
     }
 
+    #[must_use]
     pub fn bias(self) -> f32 {
         match self {
             RelationState::War => -1.0,
@@ -87,6 +91,7 @@ pub enum Treaty {
 }
 
 impl Treaty {
+    #[must_use]
     pub fn name(self) -> &'static str {
         match self {
             Treaty::Alliance => "Alliance",
@@ -97,6 +102,7 @@ impl Treaty {
         }
     }
 
+    #[must_use]
     pub fn blurb(self) -> &'static str {
         match self {
             Treaty::Alliance => "mutual defence, shared vision",
@@ -107,6 +113,7 @@ impl Treaty {
         }
     }
 
+    #[must_use]
     pub fn betrayal_penalty(self) -> f32 {
         match self {
             Treaty::Alliance => 70.0,
@@ -135,6 +142,7 @@ pub enum DiplomaticAction {
 }
 
 impl DiplomaticAction {
+    #[must_use]
     pub fn name(self) -> &'static str {
         match self {
             DiplomaticAction::Trade => "TRADE PACT",
@@ -171,6 +179,7 @@ pub struct Relation {
 }
 
 impl Relation {
+    #[must_use]
     pub fn new(a: u32, b: u32) -> Self {
         Relation {
             a: a.min(b),
@@ -186,6 +195,7 @@ impl Relation {
         }
     }
 
+    #[must_use]
     pub fn has(&self, t: Treaty) -> bool {
         self.treaties.contains(&t)
     }
@@ -225,6 +235,7 @@ pub struct Diplomacy {
 
 impl Diplomacy {
 
+    #[must_use]
     pub fn get(&self, a: u32, b: u32) -> Option<&Relation> {
         let (lo, hi) = (a.min(b), a.max(b));
         self.relations
@@ -232,6 +243,7 @@ impl Diplomacy {
             .find(|r| r.a == lo && r.b == hi)
     }
 
+    #[must_use]
     pub fn get_mut(&mut self, a: u32, b: u32) -> &mut Relation {
         let (lo, hi) = (a.min(b), a.max(b));
         if let Some(pos) = self.relations.iter().position(|r| r.a == lo && r.b == hi) {
@@ -241,6 +253,7 @@ impl Diplomacy {
         self.relations.last_mut().unwrap()
     }
 
+    #[must_use]
     pub fn are_allied(&self, a: u32, b: u32) -> bool {
 
         if a == ZORG_SPECIES || b == ZORG_SPECIES {
@@ -249,6 +262,7 @@ impl Diplomacy {
         self.get(a, b).map_or(false, |r| r.has(Treaty::Alliance))
     }
 
+    #[must_use]
     pub fn at_war(&self, a: u32, b: u32) -> bool {
 
         if a == ZORG_SPECIES || b == ZORG_SPECIES {
@@ -257,10 +271,12 @@ impl Diplomacy {
         self.get(a, b).map_or(false, |r| r.state == RelationState::War)
     }
 
+    #[must_use]
     pub fn has_treaty(&self, a: u32, b: u32, t: Treaty) -> bool {
         self.get(a, b).map_or(false, |r| r.has(t))
     }
 
+    #[must_use]
     pub fn allies_of(&self, species: u32) -> Vec<u32> {
         self.relations
             .iter()
@@ -277,6 +293,7 @@ impl Diplomacy {
             .collect()
     }
 
+    #[must_use]
     pub fn trust(&self, a: u32, b: u32) -> f32 {
         self.get(a, b).map_or(0.0, |r| r.trust)
     }
@@ -294,6 +311,7 @@ impl Diplomacy {
     }
 }
 
+#[must_use]
 pub fn negotiation_rate(role: Role) -> f32 {
     match role {
         Role::Envoy => 1.0,
@@ -340,6 +358,7 @@ pub struct DiplomaticSense {
 
 impl DiplomaticSense {
 
+    #[must_use]
     pub fn state_value(state: RelationState) -> f32 {
         match state {
             RelationState::War => -1.0,
@@ -353,6 +372,7 @@ impl DiplomaticSense {
     }
 }
 
+#[must_use]
 pub fn diplomacy_reach(role: Role) -> f32 {
     match role {
         Role::Envoy => 22.0,
@@ -404,7 +424,7 @@ pub fn diplomatic_sense(
         ds.treaties = rel.treaties.len() as f32;
     }
 
-    for rel in diplomacy.relations.iter() {
+    for rel in &diplomacy.relations {
         if rel.a == c.species || rel.b == c.species {
             if rel.state == RelationState::Allied {
                 ds.alliances += 1.0;

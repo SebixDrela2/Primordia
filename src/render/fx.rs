@@ -56,6 +56,7 @@ const NONE: FxEntry = FxEntry {
     gain: 0.0,
 };
 
+#[must_use]
 pub fn fx_table() -> [FxEntry; FX_TABLE_LEN] {
     let mut t = [NONE; FX_TABLE_LEN];
     let mut set = |e: Elem, kind: Fx, color: [f32; 3], speed: f32, gain: f32| {

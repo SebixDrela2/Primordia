@@ -222,7 +222,7 @@ pub fn act_move(world: &mut World, c: &mut Creature, behaviour_speed: f32) {
                 if world.is_blocked(cx, cy) {
                     let here = world.get(cx, cy);
                     if World::is_loose(here) || matches!(c.tool, Tool::Pickaxe | Tool::Drill) {
-                        world.clear_burrow(cx, cy);
+                        let _ = world.clear_burrow(cx, cy);
                         c.stamina = (c.stamina - 0.6).max(0.0);
                         c.energy -= 0.5;
                     } else if let Some((ex, ey)) = world.find_empty_passable_near(cx, cy, 4) {

@@ -8,6 +8,7 @@ const H: usize = 720;
 
 const RUN: u64 = 6000;
 
+#[must_use]
 pub fn run(_args: &[String]) -> i32 {
     let seed: u64 = std::env::args()
         .skip(1)
@@ -96,7 +97,7 @@ pub fn run(_args: &[String]) -> i32 {
     let mut outside = 0;
     let mut inside = 0;
     let mut buried = 0;
-    for c in creatures.list.iter() {
+    for c in &creatures.list {
         if c.faction != Faction::Zorg {
             continue;
         }
@@ -227,7 +228,7 @@ pub fn run(_args: &[String]) -> i32 {
         wards,
         sunfires
     );
-    for sp in sanctified.iter() {
+    for sp in &sanctified {
         let members = creatures.list.iter().filter(|c| c.species == *sp).count();
         let queen = creatures
             .list

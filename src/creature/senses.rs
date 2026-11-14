@@ -82,6 +82,7 @@ pub struct SpatialGrid {
 }
 
 impl SpatialGrid {
+    #[must_use]
     pub fn new(w: usize, h: usize, cell: usize) -> Self {
         let gw = w / cell + 2;
         let gh = h / cell + 2;
@@ -132,16 +133,19 @@ pub struct Percept {
 }
 
 impl Percept {
+    #[must_use]
     pub fn empty() -> Self {
         Percept {
             dir: [[0.0; DIR_CHANNELS]; DIRS],
         }
     }
 
+    #[must_use]
     pub fn sight_of(&self, d: usize) -> &[f32] {
         &self.dir[d][..sight::CHANNELS]
     }
 
+    #[must_use]
     pub fn smell_of(&self, d: usize) -> &[f32] {
         &self.dir[d][sight::CHANNELS..sight::CHANNELS + smell::CHANNELS]
     }
@@ -157,6 +161,7 @@ pub struct ElemTables {
 }
 
 impl ElemTables {
+    #[must_use]
     pub fn new() -> Self {
         ElemTables {
             look: crate::elements::look_table(),
@@ -245,6 +250,7 @@ thread_local! {
     static TABLES: ElemTables = ElemTables::new();
 }
 
+#[must_use]
 pub fn direction_of(dx: f32, dy: f32) -> usize {
     let mut best = 0usize;
     let mut best_dot = f32::MIN;
@@ -412,6 +418,7 @@ pub fn scan_percept_with(
     p
 }
 
+#[must_use]
 pub fn strongest_direction<F>(p: &Percept, f: F) -> (usize, f32)
 where
     F: Fn(&[f32], &[f32]) -> f32,

@@ -20,6 +20,7 @@ pub enum Plague {
 
 impl Plague {
 
+    #[must_use]
     pub fn all() -> [Plague; 7] {
         [
             Plague::Flu,
@@ -32,6 +33,7 @@ impl Plague {
         ]
     }
 
+    #[must_use]
     pub fn name(self) -> &'static str {
         match self {
             Plague::Flu => "flu",
@@ -44,6 +46,7 @@ impl Plague {
         }
     }
 
+    #[must_use]
     pub fn blurb(self) -> &'static str {
         match self {
             Plague::Flu => "catches easily, weakens and burns out",
@@ -56,6 +59,7 @@ impl Plague {
         }
     }
 
+    #[must_use]
     pub fn contagiousness(self) -> f32 {
         match self {
             Plague::Flu => 0.010,
@@ -68,6 +72,7 @@ impl Plague {
         }
     }
 
+    #[must_use]
     pub fn lethality(self) -> f32 {
         match self {
             Plague::Flu => 0.0,
@@ -80,6 +85,7 @@ impl Plague {
         }
     }
 
+    #[must_use]
     pub fn drain(self) -> f32 {
         match self {
             Plague::Flu => 0.10,
@@ -92,6 +98,7 @@ impl Plague {
         }
     }
 
+    #[must_use]
     pub fn slowness(self) -> f32 {
         match self {
             Plague::Flu => 0.7,
@@ -104,10 +111,12 @@ impl Plague {
         }
     }
 
+    #[must_use]
     pub fn maddens(self) -> bool {
         matches!(self, Plague::Madness)
     }
 
+    #[must_use]
     pub fn debility(self) -> f32 {
         match self {
             Plague::Flu => 0.35,
@@ -120,6 +129,7 @@ impl Plague {
         }
     }
 
+    #[must_use]
     pub fn duration(self) -> u16 {
         match self {
             Plague::Flu => 420,
@@ -132,6 +142,7 @@ impl Plague {
         }
     }
 
+    #[must_use]
     pub fn is_active(self) -> bool {
         true
     }
@@ -139,6 +150,7 @@ impl Plague {
 
 impl Creature {
 
+    #[must_use]
     pub fn apply_disease(&mut self) -> f32 {
         if self.disease == Disease::None {
             return 0.0;
@@ -154,6 +166,7 @@ impl Creature {
         harm
     }
 
+    #[must_use]
     pub fn disease_speed_factor(&self) -> f32 {
         if self.disease == Disease::None {
             return 1.0;
@@ -164,14 +177,17 @@ impl Creature {
         Plague::from(self.disease).slowness()
     }
 
+    #[must_use]
     pub fn is_mad(&self) -> bool {
         self.disease != Disease::None && Plague::from(self.disease).maddens()
     }
 
+    #[must_use]
     pub fn resistance(&self, disease: Disease) -> u8 {
         self.immunity[disease as usize]
     }
 
+    #[must_use]
     pub fn catch_chance(&self, disease: Disease) -> f32 {
         match self.resistance(disease) {
             0 => 1.0,
@@ -188,6 +204,7 @@ pub const IMMUNITY_GENES: [(usize, Disease); 4] = [
     (26, Disease::Madness),
 ];
 
+#[must_use]
 pub fn immunity_from_genes(genes: &[f32; 32]) -> [u8; 8] {
     let mut immunity = [0u8; 8];
     for (gene, disease) in IMMUNITY_GENES {
@@ -229,7 +246,7 @@ impl CreatureSystem {
             .count();
 
         let mut warren = 0.0f32;
-        for c in self.list.iter() {
+        for c in &self.list {
             if world.landmark_bonus(c.x, c.y).plague {
                 warren += 1.0;
             }

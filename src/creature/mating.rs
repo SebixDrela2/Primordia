@@ -4,6 +4,7 @@ pub const IDEAL_MATE_DISTANCE: f32 = 0.35;
 
 pub const IDEAL_GENE_DISTANCE: f32 = 0.12;
 
+#[must_use]
 pub fn compatibility(a: &Creature, b: &Creature) -> f32 {
     let pd = a.personality.distance(&b.personality);
     let gd = gene_distance(&a.genes, &b.genes);

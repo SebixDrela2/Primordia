@@ -31,6 +31,7 @@ pub enum Landmark {
 }
 
 impl Landmark {
+    #[must_use]
     pub fn name(self) -> &'static str {
         match self {
             Landmark::CrystalGrove => "Crystal Grove",
@@ -49,6 +50,7 @@ impl Landmark {
         }
     }
 
+    #[must_use]
     pub fn blurb(self) -> &'static str {
         match self {
             Landmark::CrystalGrove => "mana flows here",
@@ -67,6 +69,7 @@ impl Landmark {
         }
     }
 
+    #[must_use]
     pub fn radius(self) -> f32 {
         match self {
             Landmark::CrystalGrove => 26.0,
@@ -85,6 +88,7 @@ impl Landmark {
         }
     }
 
+    #[must_use]
     pub fn all() -> [Landmark; 13] {
         [
             Landmark::CrystalGrove,
@@ -113,10 +117,12 @@ pub struct LandmarkSite {
 
 impl LandmarkSite {
 
+    #[must_use]
     pub fn distance_to(&self, x: f32, y: f32) -> f32 {
         ((x - self.x).powi(2) + (y - self.y).powi(2)).sqrt()
     }
 
+    #[must_use]
     pub fn covers(&self, x: f32, y: f32) -> bool {
         self.distance_to(x, y) <= self.kind.radius()
     }
@@ -478,6 +484,7 @@ impl World {
         }
     }
 
+    #[must_use]
     pub fn landmark_at(&self, x: f32, y: f32) -> Option<Landmark> {
         self.landmarks
             .iter()
@@ -485,9 +492,10 @@ impl World {
             .map(|l| l.kind)
     }
 
+    #[must_use]
     pub fn landmark_bonus(&self, x: f32, y: f32) -> LandmarkBonus {
         let mut bonus = LandmarkBonus::default();
-        for l in self.landmarks.iter() {
+        for l in &self.landmarks {
             if !l.covers(x, y) {
                 continue;
             }

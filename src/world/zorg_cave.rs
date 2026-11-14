@@ -206,10 +206,12 @@ impl World {
         self.zorg_cave_floor = plateau_y;
     }
 
+    #[must_use]
     pub fn zorg_cave_floor_row(&self) -> i32 {
         self.zorg_cave_floor
     }
 
+    #[must_use]
     pub fn zorg_cave_center(&self) -> Option<(i32, i32)> {
         self.zorg_cave
     }
@@ -252,6 +254,7 @@ impl World {
         }
     }
 
+    #[must_use]
     pub fn in_zorg_cave(&self, x: i32, y: i32) -> bool {
         let Some((cx, cy)) = self.zorg_cave else {
             return false;
@@ -261,6 +264,7 @@ impl World {
         dx * dx + dy * dy <= 1.0
     }
 
+    #[must_use]
     pub fn find_zorg_cave_cell(&self, cx: i32, cy: i32) -> Option<(i32, i32)> {
         let w = self.w as i32;
         let h = self.h as i32;

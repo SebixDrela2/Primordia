@@ -5,6 +5,7 @@ use crate::world::World;
 const W: usize = 1280;
 const H: usize = 720;
 
+#[must_use]
 pub fn run(args: &[String]) -> i32 {
     let mut args = args.iter();
     let steps: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(6000);
@@ -52,7 +53,7 @@ pub fn run(args: &[String]) -> i32 {
     if d.relations.is_empty() {
         println!("  (no species ever met)");
     }
-    for r in d.relations.iter() {
+    for r in &d.relations {
         let an = creatures.species_name(r.a);
         let bn = creatures.species_name(r.b);
         println!(
@@ -91,14 +92,14 @@ pub fn run(args: &[String]) -> i32 {
 
     let mut failures = 0;
 
-    for r in d.relations.iter() {
+    for r in &d.relations {
         if r.state == RelationState::Allied && r.has(Treaty::Alliance) && r.state == RelationState::War {
             println!("FAIL: allied and at war at once");
             failures += 1;
         }
     }
 
-    for r in d.relations.iter() {
+    for r in &d.relations {
         if r.trust < -100.0 || r.trust > 100.0 {
             println!("FAIL: trust out of range: {}", r.trust);
             failures += 1;
@@ -106,15 +107,15 @@ pub fn run(args: &[String]) -> i32 {
     }
 
     let alive: Vec<u32> = creatures.list.iter().map(|c| c.species).collect();
-    for r in d.relations.iter() {
+    for r in &d.relations {
         if !alive.contains(&r.a) || !alive.contains(&r.b) {
             println!("FAIL: relation with an extinct species");
             failures += 1;
         }
     }
 
-    for c in creatures.list.iter() {
-        for other in creatures.list.iter() {
+    for c in &creatures.list {
+        for other in &creatures.list {
             if c.species == other.species {
                 continue;
             }
@@ -130,7 +131,7 @@ pub fn run(args: &[String]) -> i32 {
         failures += 1;
     }
 
-    for r in d.relations.iter() {
+    for r in &d.relations {
         if r.has(Treaty::Ceasefire) && r.state == RelationState::War {
             println!("FAIL: ceasefire signed while still at war");
             failures += 1;

@@ -32,6 +32,7 @@ const UNDERGROUND_ONLY: &[Elem] = &[
     Elem::Iron,
 ];
 
+#[must_use]
 pub fn run(args: &[String]) -> i32 {
     let frames: u64 = args.first()
         .and_then(|s| s.parse().ok())

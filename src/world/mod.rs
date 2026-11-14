@@ -54,6 +54,7 @@ pub enum Biome {
 }
 
 impl Biome {
+    #[must_use]
     pub fn name(self) -> &'static str {
         match self {
             Biome::Tundra => "Tundra",
@@ -67,6 +68,7 @@ impl Biome {
         }
     }
 
+    #[must_use]
     pub fn temperature_offset(self) -> f32 {
         match self {
             Biome::Tundra => -14.0,
@@ -80,6 +82,7 @@ impl Biome {
         }
     }
 
+    #[must_use]
     pub fn tint(self) -> [f32; 3] {
         match self {
             Biome::Tundra => [0.80, 0.93, 1.14],
@@ -110,6 +113,7 @@ pub enum Weather {
 }
 
 impl Weather {
+    #[must_use]
     pub fn name(self) -> &'static str {
         match self {
             Weather::Clear => "Clear",
@@ -123,6 +127,7 @@ impl Weather {
         }
     }
 
+    #[must_use]
     pub fn speed_factor(self) -> f32 {
         match self {
             Weather::Clear => 1.0,
@@ -136,6 +141,7 @@ impl Weather {
         }
     }
 
+    #[must_use]
     pub fn energy_factor(self) -> f32 {
         match self {
             Weather::Clear => 1.0,
@@ -149,6 +155,7 @@ impl Weather {
         }
     }
 
+    #[must_use]
     pub fn fear_factor(self) -> f32 {
         match self {
             Weather::Clear => 0.0,
@@ -162,6 +169,7 @@ impl Weather {
         }
     }
 
+    #[must_use]
     pub fn shelters(self) -> bool {
         matches!(
             self,
@@ -169,6 +177,7 @@ impl Weather {
         )
     }
 
+    #[must_use]
     pub fn thirst_factor(self) -> f32 {
         match self {
             Weather::Rain => 1.8,
@@ -179,6 +188,7 @@ impl Weather {
         }
     }
 
+    #[must_use]
     pub fn vision_factor(self) -> f32 {
         match self {
             Weather::Fog => 0.45,
@@ -191,6 +201,7 @@ impl Weather {
         }
     }
 
+    #[must_use]
     pub fn temperature_offset(self) -> f32 {
         match self {
             Weather::Snow => -6.0,
@@ -233,6 +244,7 @@ pub struct Pressure {
 
 impl Pressure {
 
+    #[must_use]
     pub fn overall(&self) -> f32 {
         let sum = self.scarcity + self.depletion + self.harshness + self.extremes + self.volcanic;
         (sum / 5.0).clamp(0.0, 1.0)

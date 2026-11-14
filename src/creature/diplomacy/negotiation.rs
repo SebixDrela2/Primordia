@@ -9,6 +9,7 @@ impl CreatureSystem {
             .retain(|r| alive.contains(&r.a) && alive.contains(&r.b));
     }
 
+    #[must_use]
     pub fn species_population(&self, species: u32) -> u32 {
         self.list.iter().filter(|c| c.species == species).count() as u32
     }
@@ -72,6 +73,7 @@ impl CreatureSystem {
         }
     }
 
+    #[must_use]
     pub fn sign_treaty(&mut self, a: u32, b: u32, treaty: Treaty, tick: u64) -> bool {
 
         if a == ZORG_SPECIES || b == ZORG_SPECIES {
@@ -155,6 +157,7 @@ impl CreatureSystem {
         }
     }
 
+    #[must_use]
     pub fn species_color(&self, species: u32) -> [u8; 3] {
         self.list
             .iter()
@@ -163,6 +166,7 @@ impl CreatureSystem {
             .unwrap_or([200, 200, 200])
     }
 
+    #[must_use]
     pub fn species_name(&self, species: u32) -> String {
         self.list
             .iter()
@@ -174,6 +178,7 @@ impl CreatureSystem {
             .unwrap_or_else(|| format!("species {}", species))
     }
 
+    #[must_use]
     pub fn lineage_name(&self, species: u32) -> String {
         species_name_for(species)
     }
@@ -425,7 +430,7 @@ impl CreatureSystem {
             DiplomaticAction::Trade => {
                 if accepted {
 
-                    self.sign_treaty(sp_a, sp_b, Treaty::TradePact, tick);
+                    let _ = self.sign_treaty(sp_a, sp_b, Treaty::TradePact, tick);
                 } else {
                     self.adjust_trust(sp_a, sp_b, -4.0);
                 }
@@ -433,8 +438,8 @@ impl CreatureSystem {
             DiplomaticAction::Alliance => {
                 if accepted {
                     if self.sign_treaty(sp_a, sp_b, Treaty::Alliance, tick) {
-                        self.sign_treaty(sp_a, sp_b, Treaty::NonAggression, tick);
-                        self.sign_treaty(sp_a, sp_b, Treaty::TradePact, tick);
+                        let _ = self.sign_treaty(sp_a, sp_b, Treaty::NonAggression, tick);
+                        let _ = self.sign_treaty(sp_a, sp_b, Treaty::TradePact, tick);
                         self.diplomacy.stats.alliances += 1;
                     }
                 } else {
@@ -444,8 +449,8 @@ impl CreatureSystem {
             DiplomaticAction::Peace => {
                 if accepted {
                     self.break_treaty(sp_a, sp_b, Treaty::Alliance, tick);
-                    self.sign_treaty(sp_a, sp_b, Treaty::Ceasefire, tick);
-                    self.sign_treaty(sp_a, sp_b, Treaty::NonAggression, tick);
+                    let _ = self.sign_treaty(sp_a, sp_b, Treaty::Ceasefire, tick);
+                    let _ = self.sign_treaty(sp_a, sp_b, Treaty::NonAggression, tick);
                     {
                         let rel = self.diplomacy.get_mut(sp_a, sp_b);
                         rel.state = RelationState::Cordial;
@@ -457,7 +462,7 @@ impl CreatureSystem {
             }
             DiplomaticAction::Tribute => {
                 if accepted {
-                    self.sign_treaty(sp_a, sp_b, Treaty::Tributary, tick);
+                    let _ = self.sign_treaty(sp_a, sp_b, Treaty::Tributary, tick);
                     self.diplomacy.stats.tributes += 1;
                 } else {
                     self.adjust_trust(sp_a, sp_b, -20.0);
@@ -492,7 +497,7 @@ impl CreatureSystem {
 
     pub fn tick_diplomacy(&mut self) {
 
-        if self.tick % 120 == 0 {
+        if self.tick.is_multiple_of(120) {
             self.prune_diplomacy();
         }
 
@@ -537,10 +542,10 @@ impl CreatureSystem {
             }
         }
 
-        if self.tick % 60 == 0 {
+        if self.tick.is_multiple_of(60) {
 
             let mut homes: Vec<(u32, f32, f32)> = Vec::new();
-            for c in self.list.iter() {
+            for c in &self.list {
                 if c.role == Role::Queen && !homes.iter().any(|(id, _, _)| *id == c.species) {
                     homes.push((c.species, c.base_x, c.base_y));
                 }
@@ -555,7 +560,7 @@ impl CreatureSystem {
 
             let mut trespass: Vec<(u32, u32, u32)> = Vec::new();
             for (owner, x, y, radius) in claims {
-                for c in self.list.iter() {
+                for c in &self.list {
                     if c.species == owner {
                         continue;
                     }
@@ -627,7 +632,7 @@ impl CreatureSystem {
                 let winner = if power_a > power_b { a } else { b };
                 let loser = if winner == a { b } else { a };
                 self.break_treaty(a, b, Treaty::Alliance, self.tick);
-                self.sign_treaty(a, b, Treaty::Ceasefire, self.tick);
+                let _ = self.sign_treaty(a, b, Treaty::Ceasefire, self.tick);
                 {
                     let rel = self.diplomacy.get_mut(a, b);
                     rel.state = RelationState::Cordial;
@@ -647,11 +652,11 @@ impl CreatureSystem {
             }
         }
 
-        if self.tick % 30 == 0 {
+        if self.tick.is_multiple_of(30) {
             let mut alliances = 0u32;
             let mut wars = 0u32;
             let mut treaties = 0u32;
-            for r in self.diplomacy.relations.iter() {
+            for r in &self.diplomacy.relations {
                 if r.state == RelationState::Allied {
                     alliances += 1;
                 }

@@ -3,6 +3,7 @@ use crate::creature::CreatureSystem;
 use std::time::Instant;
 use crate::world::World;
 
+#[must_use]
 pub fn run(_args: &[String]) -> i32 {
     let seed = 4242u64;
     let mut w = World::new(1280, 720, seed);

@@ -78,10 +78,12 @@ impl World {
         self.volcano_timer = 0;
     }
 
+    #[must_use]
     pub fn volcano_state(&self) -> Volcano {
         self.volcano_state
     }
 
+    #[must_use]
     pub fn volcano(&self) -> Option<(i32, i32)> {
         self.volcano
     }
@@ -172,6 +174,7 @@ impl World {
         }
     }
 
+    #[must_use]
     pub fn volcano_risk(&self) -> f32 {
         match self.volcano_state {
             Volcano::Erupting => 1.0,

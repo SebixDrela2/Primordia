@@ -198,6 +198,7 @@ pub fn draw_diplomacy_panel(c: &CreatureSystem, x: f32, y: f32) {
     }
 }
 
+#[must_use]
 pub fn diplomacy_summary(c: &CreatureSystem) -> String {
     let d = &c.diplomacy;
     let s = &d.stats;
@@ -217,11 +218,12 @@ pub fn diplomacy_summary(c: &CreatureSystem) -> String {
     )
 }
 
+#[must_use]
 pub fn treaties_of(c: &CreatureSystem, species: u32) -> Vec<Treaty> {
     let mut v = Vec::new();
-    for r in c.diplomacy.relations.iter() {
+    for r in &c.diplomacy.relations {
         if r.a == species || r.b == species {
-            for t in r.treaties.iter() {
+            for t in &r.treaties {
                 v.push(*t);
             }
         }
@@ -229,6 +231,7 @@ pub fn treaties_of(c: &CreatureSystem, species: u32) -> Vec<Treaty> {
     v
 }
 
+#[must_use]
 pub fn treaty_blurbs(c: &CreatureSystem, species: u32) -> Vec<String> {
     treaties_of(c, species)
         .iter()

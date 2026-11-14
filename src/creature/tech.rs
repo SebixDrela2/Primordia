@@ -30,11 +30,13 @@ pub struct TechEntry {
 
 impl TechEntry {
 
+    #[must_use]
     pub fn is_discovery(&self) -> bool {
         matches!(self.kind, TechKind::Discovery(_))
     }
 }
 
+#[must_use]
 pub fn tier_name(tier: u8) -> &'static str {
     match tier {
         1 => "THE FIRST HANDS",
@@ -50,6 +52,7 @@ pub fn tier_name(tier: u8) -> &'static str {
     }
 }
 
+#[must_use]
 pub fn tier_blurb(tier: u8) -> &'static str {
     match tier {
         1 => "stone in the hand, and something to hunt with",
@@ -65,6 +68,7 @@ pub fn tier_blurb(tier: u8) -> &'static str {
     }
 }
 
+#[must_use]
 pub fn tech_tree() -> Vec<TechEntry> {
     vec![
 
@@ -423,6 +427,7 @@ pub fn tech_tree() -> Vec<TechEntry> {
     ]
 }
 
+#[must_use]
 pub fn tool_gate(tool: Tool) -> Option<Discovery> {
     Some(match tool {
         Tool::Pickaxe | Tool::Spear => return None,
@@ -441,6 +446,7 @@ pub fn tool_gate(tool: Tool) -> Option<Discovery> {
     })
 }
 
+#[must_use]
 pub fn craft_gate(craft: Consumable) -> Option<Discovery> {
     match craft {
         Consumable::Bomb => Some(Discovery::Siegecraft),

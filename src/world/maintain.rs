@@ -7,14 +7,14 @@ impl World {
 
         self.update_pressure();
 
-        if frame % 600 == 0 && frame > 0 && self.rng.chance(0.05 + self.pressure.extremes * 0.06) {
+        if frame.is_multiple_of(600) && frame > 0 && self.rng.chance(0.05 + self.pressure.extremes * 0.06) {
             let ex = self.rng.range(w as u32) as i32;
             let ey = self.surface_y(ex) + 20 + self.rng.range(40) as i32;
             let radius = 40 + self.rng.range(30) as i32;
             self.tremor(ex, ey, radius);
         }
 
-        if frame % 120 == 0 {
+        if frame.is_multiple_of(120) {
             match self.season {
 
                 1 => {
@@ -53,7 +53,7 @@ impl World {
             self.erupt();
         }
 
-        if frame % 15 == 0 {
+        if frame.is_multiple_of(15) {
             self.update_ground();
         }
 
@@ -134,7 +134,7 @@ impl World {
             }
             Weather::Snow => {
 
-                if frame % 60 == 0 {
+                if frame.is_multiple_of(60) {
                     let mut added = 0;
                     let mut attempts = 0;
                     while added < 1 && attempts < 20 {
@@ -151,7 +151,7 @@ impl World {
             }
             Weather::Fog => {
 
-                if frame % 90 == 0 {
+                if frame.is_multiple_of(90) {
                     for _ in 0..3 {
                         let x = self.rng.range(w as u32) as i32;
                         let surf = self.surface_y(x);
@@ -164,7 +164,7 @@ impl World {
             }
             Weather::Heatwave => {
 
-                if frame % 70 == 0 {
+                if frame.is_multiple_of(70) {
                     for _ in 0..2 {
                         let x = self.rng.range(w as u32) as i32;
                         let surf = self.surface_y(x);
@@ -201,7 +201,7 @@ impl World {
             }
             Weather::Sandstorm => {
 
-                if frame % 24 == 0 {
+                if frame.is_multiple_of(24) {
                     for _ in 0..4 {
                         let x = self.rng.range(w as u32) as i32;
                         let surf = self.surface_y(x);
@@ -211,7 +211,7 @@ impl World {
                         }
                     }
                 }
-                if frame % 45 == 0 {
+                if frame.is_multiple_of(45) {
                     for _ in 0..2 {
                         let x = self.rng.range(w as u32) as i32;
                         let surf = self.surface_y(x);
@@ -225,7 +225,7 @@ impl World {
             Weather::Clear => {}
         }
 
-        if frame % 200 == 0 {
+        if frame.is_multiple_of(200) {
             for _ in 0..1 {
                 let x = self.rng.range(w as u32) as i32;
                 let y = self.h as i32 - 2 - self.rng.range(20) as i32;
@@ -235,7 +235,7 @@ impl World {
             }
         }
 
-        if frame % 1000 == 0 {
+        if frame.is_multiple_of(1000) {
             for _ in 0..1 {
                 let x = self.rng.range(w as u32) as i32;
                 let sy = self.surface_y(x);
@@ -246,7 +246,7 @@ impl World {
             }
         }
 
-        if frame % 15 == 0 && self.census.plants < 4000 {
+        if frame.is_multiple_of(15) && self.census.plants < 4000 {
             let scarcity = self.pressure.scarcity;
             let base = if self.census.plants < 1200 {
                 32
@@ -296,7 +296,7 @@ impl World {
             }
         }
 
-        if frame % 20 == 0 && self.census.plants > 3000 {
+        if frame.is_multiple_of(20) && self.census.plants > 3000 {
 
             let over = (self.census.plants - 3000) as f32 / 1000.0;
             let n = (60.0 + over * 240.0) as u32;
@@ -311,7 +311,7 @@ impl World {
             }
         }
 
-        if frame % 25 == 0 && self.census.energy < 150 {
+        if frame.is_multiple_of(25) && self.census.energy < 150 {
             for _ in 0..4 {
                 let x = self.rng.range(w as u32) as i32;
                 let sy = self.surface_y(x).max(14);
@@ -323,7 +323,7 @@ impl World {
             }
         }
 
-        if frame % 50 == 0 {
+        if frame.is_multiple_of(50) {
 
             if self.census.oil < 200 {
                 for _ in 0..3 {
@@ -371,7 +371,7 @@ impl World {
             }
         }
 
-        if frame % 100 == 0 {
+        if frame.is_multiple_of(100) {
             for _ in 0..8 {
                 let x = self.rng.range(self.w as u32) as i32;
                 let y = self.rng.range(self.h as u32) as i32;
@@ -381,11 +381,11 @@ impl World {
             }
         }
 
-        if frame % 10 == 0 {
+        if frame.is_multiple_of(10) {
             self.regrow_zorg_larder();
         }
 
-        if frame % 250 == 0 {
+        if frame.is_multiple_of(250) {
             let depletion = self.pressure.depletion;
 
             let attempts = ((3.0 * (1.0 - depletion)) as u32).max(1);
@@ -407,7 +407,7 @@ impl World {
             }
         }
 
-        if frame % 200 == 0 && self.census.crystal < 300 {
+        if frame.is_multiple_of(200) && self.census.crystal < 300 {
             for _ in 0..3 {
                 let x = self.rng.range(self.w as u32) as i32;
                 let y = self.rng.range(self.h as u32) as i32;
@@ -417,7 +417,7 @@ impl World {
             }
         }
 
-        if frame % 600 == 0 && frame > 0 {
+        if frame.is_multiple_of(600) && frame > 0 {
             let volcanic = self.pressure.volcanic;
             if volcanic > 0.05 && self.rng.chance(volcanic * 0.5) {
                 let x = self.rng.range(w as u32) as i32;
@@ -438,7 +438,7 @@ impl World {
         }
         self.meteor_events.retain(|m| m.2 > 0);
 
-        if frame % 300 == 0 {
+        if frame.is_multiple_of(300) {
             let total = self.census.particles as usize;
             if total > (self.w * self.h * 85) / 100 {
                 self.compact();
@@ -454,7 +454,7 @@ impl World {
 
         if plants > self.plant_capacity {
             self.plant_capacity = plants;
-        } else if frame % 600 == 0 {
+        } else if frame.is_multiple_of(600) {
             self.plant_capacity = (self.plant_capacity * 0.995).max(plants);
         }
 
@@ -471,7 +471,7 @@ impl World {
             p.scarcity = (p.scarcity - 0.0006).max(0.0);
         }
 
-        if frame % 250 == 0 {
+        if frame.is_multiple_of(250) {
             p.depletion = (p.depletion + 0.012).min(1.0);
         }
 
@@ -487,11 +487,11 @@ impl World {
             p.harshness = (p.harshness - 0.00018).max(0.0);
         }
 
-        if frame % 7200 == 0 && frame > 0 {
+        if frame.is_multiple_of(7200) && frame > 0 {
             p.extremes = (p.extremes + 0.25).min(1.0);
         }
 
-        if frame % 1200 == 0 && frame > 0 {
+        if frame.is_multiple_of(1200) && frame > 0 {
             p.volcanic = (p.volcanic + 0.09).min(1.0);
         }
 
@@ -501,6 +501,7 @@ impl World {
         self.difficulty = (ease * 0.65 + strain * 0.35).clamp(0.0, 1.0);
     }
 
+    #[must_use]
     pub fn hardship(&self) -> f32 {
         self.difficulty
     }

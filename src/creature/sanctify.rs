@@ -10,6 +10,7 @@ pub const WARD_BURN: f32 = 0.9;
 
 pub const WARD_DEPTH: i32 = 35;
 
+#[must_use]
 pub fn sunfire_multiplier(target_is_zorg: bool) -> f32 {
     if target_is_zorg {
         SUNFIRE_VS_ZORG
@@ -18,6 +19,7 @@ pub fn sunfire_multiplier(target_is_zorg: bool) -> f32 {
     }
 }
 
+#[must_use]
 pub fn sunfire_damage(tech: u32, target_is_zorg: bool) -> f32 {
     let mut mult = sunfire_multiplier(target_is_zorg);
 
@@ -27,6 +29,7 @@ pub fn sunfire_damage(tech: u32, target_is_zorg: bool) -> f32 {
     mult
 }
 
+#[must_use]
 pub fn is_corruption(e: Elem) -> bool {
     matches!(
         e,
@@ -85,7 +88,7 @@ impl CreatureSystem {
             }
         }
 
-        if self.tick % 20 == 0 {
+        if self.tick.is_multiple_of(20) {
             for (wx, wy, _) in wards.iter() {
                 let r = radius as i32;
                 let cx = *wx as i32;

@@ -28,6 +28,7 @@ impl Default for Personality {
 
 impl Personality {
 
+    #[must_use]
     pub fn random(rng: &mut Rng) -> Self {
         Personality {
             aggression: rng.f32(),
@@ -38,6 +39,7 @@ impl Personality {
         }
     }
 
+    #[must_use]
     pub fn inherit(parent: &Personality, rng: &mut Rng) -> Self {
         Personality {
             aggression: drift(parent.aggression, rng),
@@ -48,6 +50,7 @@ impl Personality {
         }
     }
 
+    #[must_use]
     pub fn blend(a: &Personality, b: &Personality, rng: &mut Rng) -> Self {
         Personality {
             aggression: drift((a.aggression + b.aggression) * 0.5, rng),
@@ -58,6 +61,7 @@ impl Personality {
         }
     }
 
+    #[must_use]
     pub fn distance(&self, other: &Personality) -> f32 {
         let d = (self.aggression - other.aggression).abs()
             + (self.curiosity - other.curiosity).abs()
@@ -67,6 +71,7 @@ impl Personality {
         (d / 5.0).clamp(0.0, 1.0)
     }
 
+    #[must_use]
     pub fn describe(&self) -> String {
         let mut parts: Vec<&str> = Vec::new();
         if self.aggression > 0.68 {

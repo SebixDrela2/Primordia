@@ -111,6 +111,7 @@ pub enum Discovery {
 
 impl Discovery {
 
+    #[must_use]
     pub fn all() -> [Discovery; DISCOVERY_COUNT] {
         [
             Discovery::Smithing,
@@ -148,6 +149,7 @@ impl Discovery {
         ]
     }
 
+    #[must_use]
     pub fn name(self) -> &'static str {
         match self {
             Discovery::Smithing => "Smithing",
@@ -185,6 +187,7 @@ impl Discovery {
         }
     }
 
+    #[must_use]
     pub fn effect(self) -> &'static str {
         match self {
             Discovery::Smithing => "+30% melee damage",
@@ -222,6 +225,7 @@ impl Discovery {
         }
     }
 
+    #[must_use]
     pub fn tier(self) -> u8 {
         match self {
             Discovery::Husbandry | Discovery::Pottery => 1,
@@ -249,6 +253,7 @@ impl Discovery {
         }
     }
 
+    #[must_use]
     pub fn tier_name(self) -> &'static str {
         match self.tier() {
             1 => "The First Fire",
@@ -264,6 +269,7 @@ impl Discovery {
         }
     }
 
+    #[must_use]
     pub fn bit(self) -> u32 {
         match self {
             Discovery::Smithing => discovery_bits::SMITHING,
@@ -301,6 +307,7 @@ impl Discovery {
         }
     }
 
+    #[must_use]
     pub fn from_bit(bit: u32) -> Option<Discovery> {
         Some(match bit {
             discovery_bits::SMITHING => Discovery::Smithing,
@@ -339,6 +346,7 @@ impl Discovery {
         })
     }
 
+    #[must_use]
     pub fn requires(self) -> &'static [Culture] {
         match self {
             Discovery::Smithing => &[Culture::Craft, Culture::Mining],
@@ -376,6 +384,7 @@ impl Discovery {
         }
     }
 
+    #[must_use]
     pub fn depth(self) -> u32 {
         match self.tier() {
             0 | 1 => 0,
@@ -390,6 +399,7 @@ impl Discovery {
         }
     }
 
+    #[must_use]
     pub fn generations(self) -> u32 {
         match self.tier() {
             1 => 2,
@@ -406,6 +416,7 @@ impl Discovery {
     }
 }
 
+#[must_use]
 pub fn discovery_list(bits: u32) -> Vec<Discovery> {
     let mut v = Vec::new();
     for d in Discovery::all() {
@@ -416,6 +427,7 @@ pub fn discovery_list(bits: u32) -> Vec<Discovery> {
     v
 }
 
+#[must_use]
 pub fn discovery_tier(tier: u8) -> Vec<Discovery> {
     Discovery::all()
         .into_iter()
@@ -439,6 +451,7 @@ pub mod activity {
 
     pub const ATTACK: u32 = 1 << 6;
 
+    #[must_use]
     pub fn for_tier(tier: u8) -> u32 {
         match tier {
             0 | 1 => CRAFT,
@@ -457,6 +470,7 @@ pub mod activity {
 
 impl CreatureSystem {
 
+    #[must_use]
     pub fn species_discoveries(&self, species: u32) -> u32 {
         self.discoveries
             .iter()
@@ -465,6 +479,7 @@ impl CreatureSystem {
             .unwrap_or(0)
     }
 
+    #[must_use]
     pub fn species_activity(&self, species: u32) -> u32 {
         self.activity
             .iter()
@@ -473,10 +488,12 @@ impl CreatureSystem {
             .unwrap_or(0)
     }
 
+    #[must_use]
     pub fn has_discovery(&self, species: u32, d: Discovery) -> bool {
         self.species_discoveries(species) & d.bit() != 0
     }
 
+    #[must_use]
     pub fn species_deepest(&self, species: u32) -> u32 {
         self.deepest
             .iter()
@@ -493,6 +510,7 @@ impl CreatureSystem {
         }
     }
 
+    #[must_use]
     pub fn tech_tier(&self) -> u8 {
         let mut all = 0u32;
         for (_, d) in self.discoveries.iter() {
@@ -512,6 +530,7 @@ impl CreatureSystem {
         tier
     }
 
+    #[must_use]
     pub fn discoveries_found(&self) -> Vec<(Discovery, u32)> {
         let mut out = Vec::new();
         for d in Discovery::all() {
@@ -529,6 +548,7 @@ impl CreatureSystem {
         out
     }
 
+    #[must_use]
     pub fn greatest_discovery(&self) -> Option<Discovery> {
         let mut best: Option<Discovery> = None;
         for (_, bits) in self.discoveries.iter() {
@@ -544,6 +564,7 @@ impl CreatureSystem {
         best
     }
 
+    #[must_use]
     pub fn latest_discovery(&self) -> Option<(Discovery, u32)> {
         self.last_discovery
     }
@@ -553,7 +574,7 @@ impl CreatureSystem {
             return;
         }
         let mut pairs: Vec<(u32, u32)> = Vec::new();
-        for rel in self.diplomacy.relations.iter() {
+        for rel in &self.diplomacy.relations {
             if rel.has(Treaty::Alliance) {
                 pairs.push((rel.a, rel.b));
             }
@@ -602,7 +623,7 @@ impl CreatureSystem {
         }
 
         let mut species: Vec<(u32, u32, u16, u32, bool)> = Vec::new();
-        for c in self.list.iter() {
+        for c in &self.list {
             let entry = match species.iter_mut().find(|(id, _, _, _, _)| *id == c.species) {
                 Some(e) => e,
                 None => {
@@ -692,11 +713,12 @@ impl CreatureSystem {
         let rng = &mut self.rng;
         for c in self.list.iter_mut() {
             if c.species == species && c.net.arch < target {
-                c.net.grow_to(target, rng);
+                let _ = c.net.grow_to(target, rng);
             }
         }
     }
 
+    #[must_use]
     pub fn tier_complete(&self, known: u32, tier: u8) -> bool {
         discovery_tier(tier)
             .iter()
@@ -719,6 +741,7 @@ impl CreatureSystem {
         }
     }
 
+    #[must_use]
     pub fn best_deep_mining(&self) -> u32 {
         let mut best = 0;
         for (_, d) in self.discoveries.iter() {

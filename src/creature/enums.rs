@@ -82,6 +82,7 @@ pub enum Trait {
 }
 
 impl Trait {
+    #[must_use]
     pub fn name(self) -> &'static str {
         match self {
             Trait::Ferocious => "Ferocious",
@@ -110,6 +111,7 @@ impl Trait {
         }
     }
 
+    #[must_use]
     pub fn blurb(self) -> &'static str {
         match self {
             Trait::Ferocious => "+35% melee damage, attacks more readily",
@@ -139,6 +141,7 @@ impl Trait {
     }
 }
 
+#[must_use]
 pub fn decode_traits(genes: &[f32; 32]) -> u32 {
     let mut bits = 0u32;
     if genes[0] > 0.74 {
@@ -213,10 +216,12 @@ pub fn decode_traits(genes: &[f32; 32]) -> u32 {
     bits
 }
 
+#[must_use]
 pub fn trait_count(bits: u32) -> u32 {
     bits.count_ones()
 }
 
+#[must_use]
 pub fn trait_list(bits: u32) -> Vec<Trait> {
     let mut v = Vec::new();
     if bits & trait_bits::FEROCIOUS != 0 {

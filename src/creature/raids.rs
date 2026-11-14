@@ -9,7 +9,7 @@ impl CreatureSystem {
         }
 
         let mut wars: Vec<(u32, u32)> = Vec::new();
-        for rel in self.diplomacy.relations.iter() {
+        for rel in &self.diplomacy.relations {
             if rel.state == RelationState::War {
                 wars.push((rel.a, rel.b));
             }

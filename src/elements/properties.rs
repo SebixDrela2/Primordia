@@ -1,6 +1,7 @@
 use super::*;
 
 impl Elem {
+    #[must_use]
     pub fn color(self) -> [u8; 3] {
         match self {
             Elem::Empty => [10, 14, 23],
@@ -109,6 +110,7 @@ impl Elem {
         }
     }
 
+    #[must_use]
     pub fn emission(self) -> [f32; 3] {
         match self {
             Elem::Fire => [1.00, 0.42, 0.10],
@@ -140,6 +142,7 @@ impl Elem {
         }
     }
 
+    #[must_use]
     pub fn is_reactive(self) -> bool {
         matches!(
             self,
@@ -183,12 +186,14 @@ impl Elem {
         )
     }
 
+    #[must_use]
     pub fn is_inert(self) -> bool {
         !self.is_reactive()
             && self.behavior() == Behavior::Static
             && self.lifetime() == u32::MAX
     }
 
+    #[must_use]
     pub fn behavior(self) -> Behavior {
         match self {
             Elem::Sand | Elem::Sulfur | Elem::Salt | Elem::Ash | Elem::Dust | Elem::Gunpowder | Elem::Fertilizer | Elem::Snow | Elem::Rust => Behavior::Fall,
@@ -207,6 +212,7 @@ impl Elem {
         }
     }
 
+    #[must_use]
     pub fn density(self) -> i16 {
         match self {
             Elem::Empty => 0,
@@ -244,6 +250,7 @@ impl Elem {
         }
     }
 
+    #[must_use]
     pub fn nutrition(self) -> f32 {
         match self {
             Elem::Water => 2.0,
@@ -319,6 +326,7 @@ impl Elem {
         }
     }
 
+    #[must_use]
     pub fn toxicity(self) -> f32 {
         match self {
             Elem::Fire => 10.0,
@@ -342,6 +350,7 @@ impl Elem {
         }
     }
 
+    #[must_use]
     pub fn lifetime(self) -> u32 {
         match self {
             Elem::Fire => 90,
@@ -365,6 +374,7 @@ impl Elem {
         }
     }
 
+    #[must_use]
     pub fn is_edible(self) -> bool {
         matches!(
             self,
@@ -385,6 +395,7 @@ impl Elem {
         )
     }
 
+    #[must_use]
     pub fn is_passable(self) -> bool {
         matches!(
             self,
@@ -414,6 +425,7 @@ impl Elem {
         )
     }
 
+    #[must_use]
     pub fn is_solid(self) -> bool {
         matches!(
             self,
@@ -480,6 +492,7 @@ impl Elem {
         )
     }
 
+    #[must_use]
     pub fn flammable(self) -> bool {
         matches!(
             self,
@@ -502,6 +515,7 @@ impl Elem {
         )
     }
 
+    #[must_use]
     pub fn conducts(self) -> bool {
         matches!(
             self,
@@ -520,6 +534,7 @@ impl Elem {
         )
     }
 
+    #[must_use]
     pub fn melt_temp(self) -> u16 {
         match self {
             Elem::Ice => 0,
@@ -544,6 +559,7 @@ impl Elem {
         }
     }
 
+    #[must_use]
     pub fn is_metal(self) -> bool {
         matches!(
             self,
@@ -559,10 +575,12 @@ impl Elem {
         )
     }
 
+    #[must_use]
     pub fn is_gemstone(self) -> bool {
         matches!(self, Elem::Crystal | Elem::Gem | Elem::Diamond)
     }
 
+    #[must_use]
     pub fn is_organic(self) -> bool {
         matches!(
             self,
@@ -583,6 +601,7 @@ impl Elem {
         )
     }
 
+    #[must_use]
     pub fn is_constructed(self) -> bool {
         matches!(
             self,
@@ -606,6 +625,7 @@ impl Elem {
         )
     }
 
+    #[must_use]
     pub fn is_magical(self) -> bool {
         matches!(
             self,
@@ -613,6 +633,7 @@ impl Elem {
         )
     }
 
+    #[must_use]
     pub fn is_hazardous(self) -> bool {
         matches!(
             self,
@@ -631,6 +652,7 @@ impl Elem {
         )
     }
 
+    #[must_use]
     pub fn name(self) -> &'static str {
         match self {
             Elem::Empty => "Empty",
@@ -738,6 +760,7 @@ impl Elem {
         }
     }
 
+    #[must_use]
     pub fn description(self) -> &'static str {
         match self {
             Elem::Empty => "Nothing here. Creatures can move freely.",
@@ -845,6 +868,7 @@ impl Elem {
         }
     }
 
+    #[must_use]
     pub fn category(self) -> &'static str {
         match self {
             Elem::Empty => "Void",

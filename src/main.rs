@@ -141,7 +141,7 @@ async fn main() {
     if std::env::var("PRIMORDIA_PANEL")
         .ok()
         .as_deref()
-        .map_or(false, |p| p.eq_ignore_ascii_case("diplomacy"))
+        .is_some_and(|p| p.eq_ignore_ascii_case("diplomacy"))
     {
         ui.diplomacy_open = true;
     }
@@ -149,7 +149,7 @@ async fn main() {
     if std::env::var("PRIMORDIA_PANEL")
         .ok()
         .as_deref()
-        .map_or(false, |p| p.eq_ignore_ascii_case("tech"))
+        .is_some_and(|p| p.eq_ignore_ascii_case("tech"))
     {
         ui.tech_open = true;
     }
@@ -157,7 +157,7 @@ async fn main() {
     if std::env::var("PRIMORDIA_PANEL")
         .ok()
         .as_deref()
-        .map_or(false, |p| p.eq_ignore_ascii_case("minds"))
+        .is_some_and(|p| p.eq_ignore_ascii_case("minds"))
     {
         ui.minds_open = true;
     }
@@ -187,7 +187,7 @@ async fn main() {
 
     if cam_env
         .as_deref()
-        .map_or(false, |c| c.eq_ignore_ascii_case("zorg"))
+        .is_some_and(|c| c.eq_ignore_ascii_case("zorg"))
     {
         if let Some((cx, cy)) = world.zorg_cave_center() {
             cam_x = cx as f32 - (VIEW_W as f32 / zoom) * 0.5;
@@ -351,7 +351,7 @@ async fn main() {
                     ACCUM -= fixed_step;
                     steps += 1;
                 }
-                steps_taken = steps as u32;
+                steps_taken = steps;
                 if steps == max_steps {
                     ACCUM = 0.0;
                 }
@@ -361,7 +361,7 @@ async fn main() {
         if victory.is_none() {
             telemetry.observe(now, &creatures);
 
-            for e in creatures.diplomacy.log.iter() {
+            for e in &creatures.diplomacy.log {
                 if e.tick > last_diplo_tick {
                     telemetry.push(e.text.clone());
                 }
@@ -462,7 +462,7 @@ async fn main() {
                     let mut alliances = 0u32;
                     let mut wars = 0u32;
                     let mut treaties = 0u32;
-                    for r in creatures.diplomacy.relations.iter() {
+                    for r in &creatures.diplomacy.relations {
                         if r.a == winner || r.b == winner {
                             if r.state == primordia::creature::RelationState::Allied {
                                 alliances += 1;
@@ -620,7 +620,7 @@ async fn main() {
         }
 
         frame_counter += 1;
-        if mini_dirty && frame_counter % 4 == 0 {
+        if mini_dirty && frame_counter.is_multiple_of(4) {
             for my in 0..MINI_H {
                 for mx in 0..MINI_W {
                     let sx = (mx * MINI_STEP).min(W - 1);

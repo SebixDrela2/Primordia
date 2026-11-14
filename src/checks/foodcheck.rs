@@ -6,6 +6,7 @@ use crate::world::World;
 const W: usize = 1280;
 const H: usize = 720;
 
+#[must_use]
 pub fn run(args: &[String]) -> i32 {
     let steps: u64 = args.first()
         .and_then(|s| s.parse().ok())
@@ -19,7 +20,7 @@ pub fn run(args: &[String]) -> i32 {
     for step in 1..=steps {
         world.step();
         creatures.step(&mut world);
-        if step % 500 == 0 {
+        if step.is_multiple_of(500) {
             println!(
                 "step {:>5} | pop {:>4} | plants {:>5} | avg_energy {:>6.1} | births {:>4} deaths {:>4} | food {:?} |",
                 step,

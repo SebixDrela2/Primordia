@@ -6,6 +6,7 @@ use crate::world::{Landmark, World};
 const W: usize = 1280;
 const H: usize = 720;
 
+#[must_use]
 pub fn run(args: &[String]) -> i32 {
     let mut args = args.iter();
     let steps: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(3000);

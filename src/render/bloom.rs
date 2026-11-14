@@ -15,6 +15,7 @@ pub struct Bloom {
 }
 
 impl Bloom {
+    #[must_use]
     pub fn new() -> Self {
         Bloom {
             buf: Vec::new(),

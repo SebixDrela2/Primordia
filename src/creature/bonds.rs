@@ -4,6 +4,7 @@ pub const BOND_RANGE: f32 = 12.0;
 
 impl Creature {
 
+    #[must_use]
     pub fn bondable(&self) -> bool {
         self.personality.sociability > 0.55
             && self.stage.can_breed()
@@ -11,6 +12,7 @@ impl Creature {
             && !self.migrating
     }
 
+    #[must_use]
     pub fn bond_morale(&self, partner_alive: bool) -> f32 {
         match (self.bond, partner_alive) {
             (Some(_), true) => 1.0,
@@ -79,6 +81,7 @@ impl CreatureSystem {
         }
     }
 
+    #[must_use]
     pub fn bond_of(&self, id: u32) -> Option<(u32, bool)> {
         let c = self.list.iter().find(|c| c.id == id)?;
         let partner = c.bond?;
@@ -86,6 +89,7 @@ impl CreatureSystem {
         Some((partner, alive))
     }
 
+    #[must_use]
     pub fn bond_count(&self) -> u32 {
         self.list.iter().filter(|c| c.bond.is_some()).count() as u32 / 2
     }

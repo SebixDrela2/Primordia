@@ -19,6 +19,7 @@ fn get_random_seed() -> u64 {
     seed
 }
 
+#[must_use]
 pub fn run(args: &[String]) -> i32 {
     let mut args = args.iter();
     let steps: u64 = args

@@ -36,6 +36,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
+    #[must_use]
     pub fn new() -> Self {
         Renderer {
             light: LightField::new(),

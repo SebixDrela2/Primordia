@@ -5,6 +5,7 @@ use crate::world::World;
 const W: usize = 640;
 const H: usize = 400;
 
+#[must_use]
 pub fn run(args: &[String]) -> i32 {
     let steps: u64 = args.first()
         .and_then(|s| s.parse().ok())

@@ -1,6 +1,7 @@
 use super::*;
 
 impl CreatureSystem {
+    #[must_use]
     pub fn new(seed: u64) -> Self {
         CreatureSystem {
             list: Vec::new(),
@@ -47,6 +48,7 @@ impl CreatureSystem {
         }
     }
 
+    #[must_use]
     pub fn species_culture(&self, species: u32) -> u16 {
         self.culture_pool
             .iter()
@@ -70,7 +72,7 @@ impl CreatureSystem {
         let mut rng = std::mem::replace(&mut self.rng, Rng::new(1));
         let mut found = None;
         let mut taken: Vec<(u32, f32, f32)> = Vec::new();
-        for l in world.landmarks.iter() {
+        for l in &world.landmarks {
 
             let holder = self.list.iter().find(|c| {
                 c.role == Role::Queen
@@ -107,6 +109,7 @@ impl CreatureSystem {
         found
     }
 
+    #[must_use]
     pub fn claim_of(&self, species: u32) -> Option<(f32, f32, f32)> {
         self.claims
             .iter()
@@ -118,7 +121,7 @@ impl CreatureSystem {
         self.claims.clear();
         let mut centres: Vec<(u32, f32, f32)> = Vec::new();
         let mut builders: Vec<(u32, u32)> = Vec::new();
-        for c in self.list.iter() {
+        for c in &self.list {
             if c.role == Role::Queen {
 
                 if in_crisis(&self.succession, c.species, self.tick) {
@@ -172,13 +175,14 @@ impl CreatureSystem {
     pub fn populate(&mut self, world: &World, count: usize) {
         for _ in 0..count {
 
-            self.spawn_near_surface(world);
+            let _ = self.spawn_near_surface(world);
         }
 
         self.spawn_zorgs(world, ZORG_START);
         self.update_stats();
     }
 
+    #[must_use]
     pub fn champion_from(&self, species: u32) -> Option<RevivalGenome> {
         self.list
             .iter()
@@ -200,6 +204,7 @@ impl CreatureSystem {
             })
     }
 
+    #[must_use]
     pub fn champion_overall(&self) -> Option<RevivalGenome> {
         self.list
             .iter()
@@ -245,7 +250,7 @@ impl CreatureSystem {
                 .find_empty_passable_near(x, y, 8)
                 .unwrap_or((x, y));
             let before = self.list.len();
-            self.spawn(world, sx as f32, sy as f32, CreatureGenesis::Revival(genome));
+            let _ = self.spawn(world, sx as f32, sy as f32, CreatureGenesis::Revival(genome));
             if self.list.len() > before {
                 let last = self.list.len() - 1;
                 self.list[last].culture = genome.culture;
@@ -256,6 +261,7 @@ impl CreatureSystem {
         self.update_stats();
     }
 
+    #[must_use]
     pub fn spawn_near_surface(&mut self, world: &World) -> bool {
         if self.list.len() >= MAX_POP {
             return false;
@@ -320,7 +326,7 @@ impl CreatureSystem {
             let Some((x, y)) = self.find_zorg_spot(world) else {
                 return;
             };
-            self.spawn(world, x, y, CreatureGenesis::Zorg);
+            let _ = self.spawn(world, x, y, CreatureGenesis::Zorg);
         }
     }
 
@@ -352,9 +358,10 @@ impl CreatureSystem {
         let Some((x, y)) = self.find_zorg_spot(world) else {
             return;
         };
-        self.spawn(world, x, y, CreatureGenesis::Zorg);
+        let _ = self.spawn(world, x, y, CreatureGenesis::Zorg);
     }
 
+    #[must_use]
     pub fn spawn(&mut self, world: &World, x: f32, y: f32, genesis: CreatureGenesis<'_>) -> bool {
         if self.list.len() >= MAX_POP {
             return false;
@@ -415,7 +422,7 @@ impl CreatureSystem {
                 net.mutate(&mut rng, 0.085, 0.15);
 
                 if rng.chance(0.12) {
-                    net.mutate_shape(&mut rng);
+                    let _ = net.mutate_shape(&mut rng);
                 }
 
                 for s in net.skip.iter_mut() {
@@ -769,6 +776,7 @@ impl CreatureSystem {
 
 }
 impl Creature {
+    #[must_use]
     pub fn child_blueprint(&self) -> Creature {
 
         let mut child_genes = self.genes;
@@ -939,6 +947,7 @@ impl Creature {
         culture
     }
 
+    #[must_use]
     pub fn child_blueprint_with(&self, mate: &Creature) -> Creature {
         let mut child = self.child_blueprint();
         let mut rng = Rng::new(

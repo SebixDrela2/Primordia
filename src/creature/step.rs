@@ -28,7 +28,7 @@ impl CreatureSystem {
             let mut anchors: Vec<Vec<(u16, f32, f32)>> =
                 vec![Vec::new(); self.next_species as usize + 8];
             let mut next_squad = self.next_squad.max(1);
-            for c in self.list.iter() {
+            for c in &self.list {
                 if c.role == Role::Soldier && c.squad_id != 0 {
                     let idx = (c.species as usize).min(anchors.len() - 1);
                     anchors[idx].push((c.squad_id, c.x, c.y));
@@ -506,7 +506,7 @@ impl CreatureSystem {
                     c.mood_timer = (self.rng.range(120) + 60) as u16;
                 } else { c.mood_timer -= 1; }
 
-                let think = self.tick % 2 == 0 || !c.brain_ready;
+                let think = self.tick.is_multiple_of(2) || !c.brain_ready;
                 if think {
                     c.percept_cache = scan_percept(
                         world,
@@ -848,7 +848,7 @@ impl CreatureSystem {
 
                     let _targets: Vec<(usize, f32)> = Vec::new();
 
-                    if self.tick % 4 == 0 {
+                    if self.tick.is_multiple_of(4) {
                     let mut targets: [(usize, f32); 6] = [(0, 0.0); 6];
                     let mut n = 0usize;
                     let mut push = |out: usize, amount: f32| {
@@ -918,7 +918,7 @@ impl CreatureSystem {
                     }
                     }
 
-                    if c.hunger > 25.0 && self.tick % 4 == 0 {
+                    if c.hunger > 25.0 && self.tick.is_multiple_of(4) {
                         let drive = ((c.hunger - 25.0) / 75.0).min(1.0);
                         let (best, best_strength) =
                             strongest_direction(&percept, |_, smell| smell[crate::creature::senses::smell::SWEET]);
@@ -928,7 +928,7 @@ impl CreatureSystem {
                         }
                     }
 
-                    if c.thirst > 30.0 && self.tick % 8 == 0 {
+                    if c.thirst > 30.0 && self.tick.is_multiple_of(8) {
                         let drive = ((c.thirst - 30.0) / 70.0).min(1.0);
                         let (best, best_strength) =
                             strongest_direction(&percept, |sight, _| {
@@ -940,7 +940,7 @@ impl CreatureSystem {
                         }
                     }
 
-                    if self.tick % 97 == 0 {
+                    if self.tick.is_multiple_of(97) {
                         c.net.settle(0.004);
                     }
                 }
@@ -1112,7 +1112,7 @@ impl CreatureSystem {
                 }
 
                 if c.disease != Disease::None {
-                    c.apply_disease();
+                    let _ = c.apply_disease();
                 }
 
                 c.fitness = (c.age as f32 / lifespan as f32) * 0.15
@@ -1174,7 +1174,7 @@ impl CreatureSystem {
             }
         }
 
-        if self.tick % 60 == 0 {
+        if self.tick.is_multiple_of(60) {
             self.tend_the_fires();
         }
 
@@ -1198,7 +1198,7 @@ impl CreatureSystem {
 
         self.reseed_the_deep(world);
 
-        if self.tick % 60 == 0 {
+        if self.tick.is_multiple_of(60) {
             self.refresh_tech();
             world.deep_mining = self.best_deep_mining();
         }
@@ -1226,7 +1226,7 @@ impl CreatureSystem {
         self.conclude_negotiations(&proposals, &diplo_willing);
         self.tick_diplomacy();
 
-        if self.tick % 120 == 0 {
+        if self.tick.is_multiple_of(120) {
             self.predation.decay();
         }
 
@@ -1239,7 +1239,7 @@ impl CreatureSystem {
 
         self.apply_status(spell_targets, disease_targets, heal_targets);
 
-        if self.tick % 15 == 0 {
+        if self.tick.is_multiple_of(15) {
             self.update_stats();
         }
     }
@@ -1266,7 +1266,7 @@ impl CreatureSystem {
             }
 
             let mut wood: u32 = 0;
-            for c in self.list.iter() {
+            for c in &self.list {
                 if c.species != sp {
                     continue;
                 }

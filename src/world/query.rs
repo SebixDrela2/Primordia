@@ -2,6 +2,7 @@ use super::*;
 
 impl World {
 
+    #[must_use]
     pub fn fresh_air(&self, x: i32, y: i32, radius: i32) -> f32 {
         let mut n = 0;
         for dy in -radius..=radius {
@@ -14,10 +15,12 @@ impl World {
         (n as f32 / ((radius * 2 + 1) * (radius * 2 + 1)) as f32 * 14.0).min(1.0)
     }
 
+    #[must_use]
     pub fn is_blocked(&self, x: i32, y: i32) -> bool {
         !self.get(x, y).is_passable()
     }
 
+    #[must_use]
     pub fn find_farm_site(&self, x: i32, y: i32, radius: i32) -> Option<(i32, i32, i32, i32)> {
 
         for r in 1..=radius {
@@ -63,6 +66,7 @@ impl World {
         None
     }
 
+    #[must_use]
     pub fn is_loose(e: Elem) -> bool {
         matches!(
             e,
@@ -89,6 +93,7 @@ impl World {
         )
     }
 
+    #[must_use]
     pub fn clear_burrow(&mut self, x: i32, y: i32) -> bool {
         let e = self.get(x, y);
         if e == Elem::Empty || e == Elem::Void {
@@ -98,6 +103,7 @@ impl World {
         true
     }
 
+    #[must_use]
     pub fn eat(&mut self, x: i32, y: i32) -> Option<(f32, f32)> {
         let i = self.idx_xy(x, y)?;
         let e = Elem::from_u8(self.kind[i]);
@@ -113,6 +119,7 @@ impl World {
         Some((n, t))
     }
 
+    #[must_use]
     pub fn find_food(&self, x: i32, y: i32, radius: i32) -> Option<(i32, i32)> {
         let mut best: Option<(i32, i32, i32)> = None;
         let r2 = radius * radius;
@@ -139,6 +146,7 @@ impl World {
         best.map(|b| (b.0, b.1))
     }
 
+    #[must_use]
     pub fn find_zorg_food(&self, x: i32, y: i32, radius: i32) -> Option<(i32, i32)> {
         let mut best: Option<(i32, i32, f32, i32)> = None;
         let r2 = radius * radius;
@@ -176,6 +184,7 @@ impl World {
         best.map(|b| (b.0, b.1))
     }
 
+    #[must_use]
     pub fn eat_zorg(&mut self, x: i32, y: i32) -> Option<(f32, f32)> {
         let i = self.idx_xy(x, y)?;
         let e = Elem::from_u8(self.kind[i]);
@@ -191,6 +200,7 @@ impl World {
         Some((n, crate::creature::zorg_toxicity(e)))
     }
 
+    #[must_use]
     pub fn find_water(&self, x: i32, y: i32, radius: i32) -> Option<(i32, i32)> {
         let mut best: Option<(i32, i32, i32)> = None;
         for dy in -radius..=radius {
@@ -209,6 +219,7 @@ impl World {
         best.map(|b| (b.0, b.1))
     }
 
+    #[must_use]
     pub fn find_resource(&self, x: i32, y: i32, radius: i32) -> Option<(i32, i32)> {
         let mut best: Option<(i32, i32, i32)> = None;
         let r2 = radius * radius;
@@ -244,6 +255,7 @@ impl World {
         }
     }
 
+    #[must_use]
     pub fn owner_at(&self, x: i32, y: i32) -> Option<u32> {
         match self.idx_xy(x, y) {
             Some(i) => match self.owner[i] {
@@ -254,6 +266,7 @@ impl World {
         }
     }
 
+    #[must_use]
     pub fn find_empty_passable_near(&self, x: i32, y: i32, radius: i32) -> Option<(i32, i32)> {
         let w = self.w as i32;
         let h = self.h as i32;

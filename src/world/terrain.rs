@@ -1,6 +1,7 @@
 use super::*;
 
 impl World {
+    #[must_use]
     pub fn surface_y(&self, x: i32) -> i32 {
         let h = self.h as f32;
         let x = x as f32;
@@ -70,6 +71,7 @@ impl World {
         }
     }
 
+    #[must_use]
     pub fn biome_at(&self, x: i32) -> Biome {
         if x < 0 {
             return Biome::Tundra;
@@ -80,6 +82,7 @@ impl World {
         Biome::Grassland
     }
 
+    #[must_use]
     pub fn biome_tint_at(&self, x: i32) -> [f32; 3] {
         if x < 0 {
             return Biome::Tundra.tint();

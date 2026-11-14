@@ -9,6 +9,7 @@ pub enum Faction {
 }
 
 impl Faction {
+    #[must_use]
     pub fn name(self) -> &'static str {
         match self {
             Faction::Player => "Player",
@@ -38,19 +39,23 @@ pub const PLAYER_HUES: [f32; 14] = [
 
 impl CreatureSystem {
 
+    #[must_use]
     pub fn is_zorg(&self, species: u32) -> bool {
         species == ZORG_SPECIES
     }
 
+    #[must_use]
     pub fn is_zorg_creature(&self, c: &Creature) -> bool {
         c.species == ZORG_SPECIES
     }
 
+    #[must_use]
     pub fn zorg_count(&self) -> u32 {
         self.list.iter().filter(|c| self.is_zorg(c.species)).count() as u32
     }
 }
 
+#[must_use]
 pub fn zorg_act_eat(world: &mut World, c: &mut Creature, hungry: bool) -> bool {
     if c.hunger < 15.0 && c.energy > c.max_energy * 0.55 {
         return false;
@@ -96,6 +101,7 @@ pub fn zorg_feed_on_rock(c: &mut Creature, elem: Elem, digging_up: bool) {
     c.hunger = (c.hunger - n * 4.0).max(0.0);
 }
 
+#[must_use]
 pub fn zorg_steer(c: &Creature) -> (f32, f32, f32) {
     let hx = c.base_x - c.x;
     let hy = c.base_y - c.y;
@@ -119,6 +125,7 @@ pub const ZORG_POP_CAP: u32 = 90;
 
 pub const ZORG_MIN: u32 = 6;
 
+#[must_use]
 pub fn zorg_filth(roll: u32) -> Elem {
     match roll % 8 {
         0 => Elem::Virus,
@@ -132,6 +139,7 @@ pub fn zorg_filth(roll: u32) -> Elem {
     }
 }
 
+#[must_use]
 pub fn zorg_carried_disease(roll: u32) -> Disease {
     match roll % 5 {
         0 => Disease::Plague,
@@ -142,6 +150,7 @@ pub fn zorg_carried_disease(roll: u32) -> Disease {
     }
 }
 
+#[must_use]
 pub fn zorg_food(e: Elem) -> bool {
     use Elem::*;
     matches!(
@@ -179,6 +188,7 @@ pub fn zorg_food(e: Elem) -> bool {
     )
 }
 
+#[must_use]
 pub fn zorg_nutrition(e: Elem) -> f32 {
     use Elem::*;
     match e {
@@ -206,6 +216,7 @@ pub fn zorg_nutrition(e: Elem) -> f32 {
     }
 }
 
+#[must_use]
 pub fn zorg_toxicity(e: Elem) -> f32 {
     let _ = e;
     0.0

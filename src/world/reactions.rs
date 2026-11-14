@@ -1,6 +1,7 @@
 use super::*;
 
 impl World {
+    #[must_use]
     pub fn try_reaction(&mut self, i: usize, e: Elem, x: i32, y: i32) -> bool {
         match e {
             Elem::Water => {

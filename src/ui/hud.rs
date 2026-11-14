@@ -15,6 +15,7 @@ pub struct Telemetry {
 }
 
 impl Telemetry {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             pop: Vec::new(),
@@ -202,6 +203,7 @@ pub fn draw_telemetry(t: &Telemetry, x: f32, y: f32) {
     }
 }
 
+#[must_use]
 pub fn dominant_lineage(creatures: &CreatureSystem) -> (Option<u32>, Vec<&'static str>) {
     let mut counts: Vec<(u32, u32)> = Vec::new();
     for c in &creatures.list {

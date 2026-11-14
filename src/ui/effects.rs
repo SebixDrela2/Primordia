@@ -20,6 +20,7 @@ pub struct Effects {
 }
 
 impl Effects {
+    #[must_use]
     pub fn new() -> Self {
         Self { items: Vec::new() }
     }

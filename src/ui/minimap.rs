@@ -76,6 +76,7 @@ pub fn draw_weather(weather: world::Weather, time: f32) {
     }
 }
 
+#[must_use]
 pub fn dominant_species(creatures: &CreatureSystem) -> Option<u32> {
     let mut counts: Vec<(u32, u32)> = Vec::new();
     for c in &creatures.list {
@@ -88,6 +89,7 @@ pub fn dominant_species(creatures: &CreatureSystem) -> Option<u32> {
     counts.first().map(|(id, _)| *id)
 }
 
+#[must_use]
 pub fn dominant_player_species(creatures: &CreatureSystem) -> Option<u32> {
     let mut counts: Vec<(u32, u32)> = Vec::new();
     for c in &creatures.list {
@@ -176,7 +178,7 @@ pub fn draw_minimap(
     }
 
     let mut warring: Vec<u32> = Vec::new();
-    for r in creatures.diplomacy.relations.iter() {
+    for r in &creatures.diplomacy.relations {
         if r.state == crate::creature::RelationState::War {
             warring.push(r.a);
             warring.push(r.b);

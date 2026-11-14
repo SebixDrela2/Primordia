@@ -3,6 +3,7 @@ use crate::creature::{
 };
 use macroquad::prelude::*;
 
+#[must_use]
 pub fn tech_tree_under_pointer(mx: f32, my: f32) -> bool {
     let w = 660.0;
     let h = (screen_height() - 40.0).min(820.0);
@@ -294,6 +295,7 @@ pub fn draw_tech_panel(creatures: &CreatureSystem) {
     }
 }
 
+#[must_use]
 pub fn tech_of(c: &crate::creature::Creature) -> String {
     let mut out = String::new();
     for d in Discovery::all() {
@@ -310,6 +312,7 @@ pub fn tech_of(c: &crate::creature::Creature) -> String {
     out
 }
 
+#[must_use]
 pub fn tool_name(t: Tool) -> &'static str {
     match t {
         Tool::None => "nothing",
@@ -331,6 +334,7 @@ pub fn tool_name(t: Tool) -> &'static str {
     }
 }
 
+#[must_use]
 pub fn craft_name(c: Consumable) -> &'static str {
     match c {
         Consumable::Bomb => "bomb",

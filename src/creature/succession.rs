@@ -2,6 +2,7 @@ use super::*;
 
 pub const CRISIS_TICKS: u64 = 600;
 
+#[must_use]
 pub fn in_crisis(succession: &[(u32, u64)], species: u32, tick: u64) -> bool {
     succession
         .iter()
@@ -10,6 +11,7 @@ pub fn in_crisis(succession: &[(u32, u64)], species: u32, tick: u64) -> bool {
 
 impl CreatureSystem {
 
+    #[must_use]
     pub fn species_in_crisis(&self) -> Vec<u32> {
         self.succession
             .iter()
@@ -21,7 +23,7 @@ impl CreatureSystem {
     pub fn update_succession(&mut self) {
         let mut with_queen: Vec<u32> = Vec::new();
         let mut without_queen: Vec<u32> = Vec::new();
-        for c in self.list.iter() {
+        for c in &self.list {
             if c.role == Role::Queen {
                 if !with_queen.contains(&c.species) {
                     with_queen.push(c.species);
@@ -55,6 +57,7 @@ impl CreatureSystem {
         self.succession.retain(|(sp, _)| *sp != species);
     }
 
+    #[must_use]
     pub fn crisis_penalty(&self, species: u32) -> f32 {
         if in_crisis(&self.succession, species, self.tick) {
             1.0

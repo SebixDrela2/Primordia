@@ -3,6 +3,7 @@ use crate::elements::Elem;
 use std::collections::HashMap;
 use crate::world::World;
 
+#[must_use]
 pub fn run(_args: &[String]) -> i32 {
     let seed = 12345u64;
     let mut w = World::new(1280, 720, seed);

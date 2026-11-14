@@ -11,6 +11,7 @@ pub enum Stage {
 }
 
 impl Stage {
+    #[must_use]
     pub fn name(self) -> &'static str {
         match self {
             Stage::Juvenile => "juvenile",
@@ -19,6 +20,7 @@ impl Stage {
         }
     }
 
+    #[must_use]
     pub fn blurb(self) -> &'static str {
         match self {
             Stage::Juvenile => "young: too small to fight or breed",
@@ -27,6 +29,7 @@ impl Stage {
         }
     }
 
+    #[must_use]
     pub fn of(age: u32, max_age: u32, maturity: f32) -> Stage {
         let span = max_age.max(1) as f32;
         let t = age as f32 / span;
@@ -39,6 +42,7 @@ impl Stage {
         }
     }
 
+    #[must_use]
     pub fn size_factor(self) -> f32 {
         match self {
             Stage::Juvenile => 0.55,
@@ -47,6 +51,7 @@ impl Stage {
         }
     }
 
+    #[must_use]
     pub fn speed_factor(self) -> f32 {
         match self {
             Stage::Juvenile => 0.72,
@@ -55,6 +60,7 @@ impl Stage {
         }
     }
 
+    #[must_use]
     pub fn health_factor(self) -> f32 {
         match self {
             Stage::Juvenile => 0.55,
@@ -63,14 +69,17 @@ impl Stage {
         }
     }
 
+    #[must_use]
     pub fn can_fight(self) -> bool {
         self != Stage::Juvenile
     }
 
+    #[must_use]
     pub fn can_breed(self) -> bool {
         self != Stage::Juvenile
     }
 
+    #[must_use]
     pub fn can_teach(self) -> bool {
         self == Stage::Elder
     }
@@ -94,6 +103,7 @@ pub enum Affinity {
 }
 
 impl Affinity {
+    #[must_use]
     pub fn name(self) -> &'static str {
         match self {
             Affinity::None => "unadapted",
@@ -106,6 +116,7 @@ impl Affinity {
         }
     }
 
+    #[must_use]
     pub fn blurb(self) -> &'static str {
         match self {
             Affinity::None => "no special adaptation",
@@ -118,6 +129,7 @@ impl Affinity {
         }
     }
 
+    #[must_use]
     pub fn from_roll(roll: f32) -> Affinity {
 
         if roll > 0.93 {
@@ -137,6 +149,7 @@ impl Affinity {
         }
     }
 
+    #[must_use]
     pub fn carry_factor(self) -> f32 {
         match self {
             Affinity::Iron => 1.15,
@@ -145,6 +158,7 @@ impl Affinity {
         }
     }
 
+    #[must_use]
     pub fn mana_factor(self) -> f32 {
         match self {
             Affinity::Crystal => 2.0,
@@ -152,6 +166,7 @@ impl Affinity {
         }
     }
 
+    #[must_use]
     pub fn build_factor(self) -> f32 {
         match self {
             Affinity::Timber => 1.5,
@@ -159,6 +174,7 @@ impl Affinity {
         }
     }
 
+    #[must_use]
     pub fn mine_factor(self) -> f32 {
         match self {
             Affinity::Iron => 1.6,
@@ -166,6 +182,7 @@ impl Affinity {
         }
     }
 
+    #[must_use]
     pub fn armor_factor(self) -> f32 {
         match self {
             Affinity::Stone => 0.7,
@@ -173,10 +190,12 @@ impl Affinity {
         }
     }
 
+    #[must_use]
     pub fn fire_immune(self) -> bool {
         matches!(self, Affinity::Ember | Affinity::Stone)
     }
 
+    #[must_use]
     pub fn cold_vulnerability(self) -> f32 {
         match self {
             Affinity::Ember => 2.0,
@@ -218,6 +237,7 @@ pub enum Culture {
 }
 
 impl Culture {
+    #[must_use]
     pub fn name(self) -> &'static str {
         match self {
             Culture::Cultivation => "Cultivation",
@@ -231,6 +251,7 @@ impl Culture {
         }
     }
 
+    #[must_use]
     pub fn blurb(self) -> &'static str {
         match self {
             Culture::Cultivation => "the colony knows how to grow grain",
@@ -244,6 +265,7 @@ impl Culture {
         }
     }
 
+    #[must_use]
     pub fn bit(self) -> u16 {
         match self {
             Culture::Cultivation => culture_bits::CULTIVATION,
@@ -257,6 +279,7 @@ impl Culture {
         }
     }
 
+    #[must_use]
     pub fn from_bit(bit: u16) -> Option<Culture> {
         Some(match bit {
             culture_bits::CULTIVATION => Culture::Cultivation,
@@ -272,6 +295,7 @@ impl Culture {
     }
 }
 
+#[must_use]
 pub fn culture_list(bits: u16) -> Vec<Culture> {
     let mut v = Vec::new();
     for bit in [
@@ -293,6 +317,7 @@ pub fn culture_list(bits: u16) -> Vec<Culture> {
     v
 }
 
+#[must_use]
 pub fn gene_distance(a: &[f32; 32], b: &[f32; 32]) -> f32 {
     let mut sum = 0.0f32;
     for i in 0..32 {
@@ -321,6 +346,7 @@ impl CreatureSystem {
 
 impl Creature {
 
+    #[must_use]
     pub fn lifespan(&self) -> u32 {
         if self.traits & trait_bits::PROLONGED != 0 {
             4800
@@ -331,6 +357,7 @@ impl Creature {
         }
     }
 
+    #[must_use]
     pub fn maturity_fraction(&self) -> f32 {
         if self.traits & trait_bits::PROLONGED != 0 {
             0.26
@@ -341,6 +368,7 @@ impl Creature {
         }
     }
 
+    #[must_use]
     pub fn litter_size(&self) -> u32 {
         if self.traits & trait_bits::PROLIFIC != 0 {
             3
@@ -351,6 +379,7 @@ impl Creature {
         }
     }
 
+    #[must_use]
     pub fn brood_cost(&self) -> f32 {
         if self.traits & trait_bits::PROLONGED != 0 {
             190.0
@@ -361,6 +390,7 @@ impl Creature {
         }
     }
 
+    #[must_use]
     pub fn brood_value(&self) -> f32 {
         if self.traits & trait_bits::PROLONGED != 0 {
             1.5
@@ -371,6 +401,7 @@ impl Creature {
         }
     }
 
+    #[must_use]
     pub fn max_health(&self) -> f32 {
         let base = if self.role == Role::Soldier { 150.0 } else { 100.0 };
         let hardy = if self.traits & trait_bits::HARDY != 0 { 1.4 } else { 1.0 };
@@ -384,10 +415,12 @@ impl Creature {
         base * hardy * hollow * steel * self.stage.health_factor()
     }
 
+    #[must_use]
     pub fn knows_tech(&self, d: Discovery) -> bool {
         self.tech & d.bit() != 0
     }
 
+    #[must_use]
     pub fn tech_name(&self) -> String {
         crate::creature::discovery_list(self.tech)
             .iter()
@@ -396,6 +429,7 @@ impl Creature {
             .join(", ")
     }
 
+    #[must_use]
     pub fn salve_power(&self, discoveries: u32) -> f32 {
         let mut power = 1.0;
         if discoveries & discovery_bits::MEDICINE != 0 {
@@ -407,6 +441,7 @@ impl Creature {
         power
     }
 
+    #[must_use]
     pub fn carry_cap(&self) -> f32 {
         let mut cap = CARRY_CAP;
         if self.traits & trait_bits::HOARDER != 0 {
@@ -415,6 +450,7 @@ impl Creature {
         cap * self.affinity.carry_factor()
     }
 
+    #[must_use]
     pub fn speed_cap(&self) -> f32 {
         let mut speed = MAX_SPEED;
         if self.traits & trait_bits::HOLLOW_BONED != 0 {
@@ -423,10 +459,12 @@ impl Creature {
         speed * self.stage.speed_factor()
     }
 
+    #[must_use]
     pub fn body_size(&self) -> f32 {
         (self.size * self.stage.size_factor()).max(0.6)
     }
 
+    #[must_use]
     pub fn damage_taken(&self, amount: f32) -> f32 {
         let mut dmg = amount * self.affinity.armor_factor();
         if self.knows_tech(Discovery::Tactics) {
@@ -435,10 +473,12 @@ impl Creature {
         dmg
     }
 
+    #[must_use]
     pub fn knows(&self, c: Culture) -> bool {
         self.culture & c.bit() != 0
     }
 
+    #[must_use]
     pub fn culture_factor(&self, c: Culture) -> f32 {
         if !self.knows(c) {
             return 1.0;
@@ -455,10 +495,12 @@ impl Creature {
         }
     }
 
+    #[must_use]
     pub fn hunting_bonus(&self) -> f32 {
         self.culture_factor(Culture::Hunting)
     }
 
+    #[must_use]
     pub fn vision_factor(&self, day_night: f32) -> f32 {
         let nocturnal = self.traits & trait_bits::NOCTURNAL != 0;
 

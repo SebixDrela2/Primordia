@@ -11,6 +11,7 @@ pub struct LightField {
 }
 
 impl LightField {
+    #[must_use]
     pub fn new() -> Self {
         LightField {
             w: 0,

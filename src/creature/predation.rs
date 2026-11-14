@@ -1,5 +1,6 @@
 use super::*;
 
+#[must_use]
 pub fn fear_in(entries: &[(u32, u32, Fear)], prey: u32, predator: u32) -> Fear {
     entries
         .iter()
@@ -8,6 +9,7 @@ pub fn fear_in(entries: &[(u32, u32, Fear)], prey: u32, predator: u32) -> Fear {
         .unwrap_or(0.0)
 }
 
+#[must_use]
 pub fn fear_total(entries: &[(u32, u32, Fear)], prey: u32) -> Fear {
     entries
         .iter()
@@ -24,6 +26,7 @@ pub struct FearTable {
 }
 
 impl FearTable {
+    #[must_use]
     pub fn build(entries: &[(u32, u32, Fear)], species: usize) -> Self {
         let stride = species.max(1);
         let mut cells = vec![0.0f32; stride * stride];
@@ -72,6 +75,7 @@ pub struct PredationMemory {
 
 impl PredationMemory {
 
+    #[must_use]
     pub fn fear_of(&self, prey: u32, predator: u32) -> Fear {
         self.entries
             .iter()
@@ -98,6 +102,7 @@ impl PredationMemory {
         self.entries.push((prey, predator, 8.0));
     }
 
+    #[must_use]
     pub fn most_feared_by(&self, predator: u32) -> Option<(u32, Fear)> {
         self.entries
             .iter()
@@ -113,6 +118,7 @@ impl PredationMemory {
         self.entries.retain(|(_, _, f)| *f > 0.5);
     }
 
+    #[must_use]
     pub fn entries(&self) -> &[(u32, u32, Fear)] {
         &self.entries
     }
@@ -120,10 +126,12 @@ impl PredationMemory {
 
 impl CreatureSystem {
 
+    #[must_use]
     pub fn fear_of_species(&self, creature_species: u32, other_species: u32) -> Fear {
         self.predation.fear_of(creature_species, other_species)
     }
 
+    #[must_use]
     pub fn fear_flee_range(&self, creature_species: u32, other_species: u32) -> f32 {
         let fear = self.predation.fear_of(creature_species, other_species);
         if fear <= 0.0 {
@@ -133,6 +141,7 @@ impl CreatureSystem {
         fear * 0.2
     }
 
+    #[must_use]
     pub fn learned_hunting(&self, species: u32) -> bool {
         let mut total = 0.0;
         for (prey, _predator, fear) in self.predation.entries() {
