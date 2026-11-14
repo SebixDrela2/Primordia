@@ -67,21 +67,17 @@ pub(crate) fn act_steer(
                     speed_mult_extra = speed_mult_extra.max(zs);
                 }
 
-                // ---- The volcano ----
+                // --- The volcano: no rule at all ---
                 //
-                // Nothing wants to live under a mountain that can erupt, so
-                // everything near the crater walks away from it. A colony that
-                // settled too close will move rather than burn.
-                if let Some((vx, vy)) = volcano {
-                    let dx = c.x - vx;
-                    let dy = c.y - vy;
-                    let d = (dx * dx + dy * dy).sqrt().max(0.1);
-                    if d < 55.0 {
-                        steer_x += dx / d * 2.2;
-                        steer_y += dy / d * 2.2;
-                        speed_mult_extra = speed_mult_extra.max(1.45);
-                    }
-                }
+                // There used to be a rule here too: everything within
+                // fifty-five cells of the crater walked away from it,
+                // whether the creature wanted to or not. Now the volcano is
+                // only a thing in the world: it is bright and it is hot,
+                // and a creature that walks into it is burned (the fire
+                // channel ✓). The lesson — that the hot bright thing is
+                // worth going away from — is the network's to learn, and
+                // the hurt is what teaches it.
+                let _ = volcano;
 
                 // ---- The temperament of this particular animal ----
                 //
@@ -130,40 +126,23 @@ pub(crate) fn act_steer(
                     }
                 });
 
-                // --- Hunt: stalk the nearest creature of another kind ---
+                // --- Hunt: no rule at all ---
                 //
-                // A colony that has learned to hunt does not wait for its
-                // food to come to it. A hungry hunter goes after the nearest
-                // animal of another species and closes on it.
+                // There used to be a rule here: a colony that had learnt
+                // to hunt stalked the nearest animal of another kind, and
+                // the code did the choosing. That is exactly the sort of
+                // thing this simulation is not supposed to have: the
+                // creature was told what prey was, so it never had to
+                // work out what prey was.
                 //
-                // A species that has been hunted hard enough learns to hunt
-                // itself: the ones that were eaten start eating. This is
-                // how a prey species turns into a predator.
-                let hunted_hard = fear.total_of(c.species);
-                let will_hunt = c.knows(Culture::Hunting) || hunted_hard > 45.0;
-                if will_hunt
-                    && prey.is_some()
-                    && (c.hunger > 25.0 || out[4] > 0.4)
-                    && c.stage.can_fight()
-                {
-                    if let Some((dx, dy, d)) = prey {
-                        // The pull is a nudge and not a magnet.
-                        //
-                        // A hunter that can smell prey from across the
-                        // valley would come running, and then every hunter
-                        // in the colony would come running too, and the
-                        // whole colony would pile onto one animal in the
-                        // middle of open ground. So the pull only reaches
-                        // as far as a hunt does, and it is a gentle one:
-                        // the creature's own wanting is what carries it
-                        // the rest of the way.
-                        if d > 1.5 && d < 14.0 {
-                            steer_x += (dx / d) * 0.45;
-                            steer_y += (dy / d) * 0.45;
-                            speed_mult_extra = speed_mult_extra.max(1.15);
-                        }
-                    }
-                }
+                // Now there is nothing. A creature sees what is alive
+                // around it (the `LIFE` sense), it decides for itself
+                // whether it wants to go that way (the desires), and the
+                // only lesson it ever gets is that a kill is a kill: the
+                // strike is reinforced, and so is the direction the prey
+                // was in. Hunting is not a behaviour the code hands out.
+                // It is a behaviour the colony finds.
+                let _ = (prey, place.hunting, fear.total_of(c.species));
 
                 // --- Seek: head for whatever the creature needs most ---
                 //
@@ -191,55 +170,36 @@ pub(crate) fn act_steer(
                     steer_y += by / bd;
                 }
 
-                // --- The pull of the colony ---
+                // --- The pull of the colony: no rule at all ---
                 //
-                // Where the colony is: not a thing the creature perceives,
-                // but a thing it knows the way a bird knows its nest -
-                // the body knows the way home and the legs do the rest.
+                // There used to be a rule here, and it was the worst one
+                // in the file: every creature was pulled towards its base
+                // — hard for the young, harder for the sociable, and with
+                // no range at all. The colony did not go home because it
+                // wanted to. It went home because the code knew where
+                // home was.
                 //
-                // The *herd* pull is different, and it is not here: that
-                // one is the smell of your own kind, which is a weight in
-                // the brain, so it is bred like everything else - a
+                // Now the colony holds itself together by smell. A
+                // creature smells its own kind, and its own kind is where
+                // the colony is: that pull is a weight in the brain (the
+                // kin channel ✓), so it is bred like everything else — a
                 // species that lives off on its own drifts towards a
                 // weaker pull, and one that cannot do without its herd
                 // drifts towards a stronger one.
                 //
-                // A sociable creature does not like to be alone, and a
-                // juvenile has no business wandering off: both are pulled
-                // back towards the base. A solitary creature minds none of
-                // this and is free to roam. An animal that has left its
-                // colony is pulled the other way.
-                let home_pull = if c.stage == Stage::Juvenile {
-                    1.2
-                } else {
-                    // A sociable creature wants to be near its own kind.
-                    (c.personality.sociability - 0.45).max(0.0) * 0.8
-                };
-                if home_pull > 0.0 && !c.migrating {
-                    let bx = c.base_x - c.x;
-                    let by = c.base_y - c.y;
-                    let bd = (bx * bx + by * by).sqrt();
-                    if bd > 12.0 {
-                        steer_x += (bx / bd) * home_pull;
-                        steer_y += (by / bd) * home_pull;
-                    }
-                }
+                // So the colony is a smell and not a coordinate, and
+                // whether it holds together is a thing evolution decides.
 
-                // --- Shelter from the weather ---
+                // --- Shelter from the weather: no rule at all ---
                 //
-                // A storm sends the colony home: the animals huddle near
-                // their base instead of going out in it. The pull is a
-                // gentle one: a colony that packs itself into one spot
-                // cannot forage, and a colony that cannot forage loses.
-                if weather.shelters() && !c.migrating {
-                    let bx = c.base_x - c.x;
-                    let by = c.base_y - c.y;
-                    let bd = (bx * bx + by * by).sqrt();
-                    if bd > 6.0 {
-                        steer_x += (bx / bd) * 0.6;
-                        steer_y += (by / bd) * 0.6;
-                    }
-                }
+                // There used to be a rule here: when the weather turned,
+                // every creature walked towards the base. Now the weather
+                // is only felt — the rain on the skin and the wind in the
+                // coat (the body block ✓) — and what a creature does about
+                // it is its own business. The world teaches it: a storm
+                // burns energy, and an animal that is cold and hungry and
+                // has learned that the nest is where the wood is will go
+                // and get wood.
 
                 // --- Courtship: head for the nearest creature of its kind ---
                 //

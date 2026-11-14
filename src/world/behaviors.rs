@@ -5,7 +5,7 @@ use super::*;
 /// Slow on purpose: the surface has to recover at about the rate a colony
 /// eats it, not faster, or the world turns into one green carpet and the
 /// crowding rule is the only thing holding it back.
-const PLANT_SPREAD: f32 = 0.0015;
+const PLANT_SPREAD: f32 = 0.003;
 
 impl World {
     pub(crate) fn decay(&mut self, i: usize, e: Elem) {

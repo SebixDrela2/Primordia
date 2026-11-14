@@ -540,7 +540,7 @@ impl Net {
         // stays together. But a strong pull would pack the whole colony
         // into one heap round the fire, and a heap that cannot spread out
         // cannot forage, cannot explore and cannot fight.
-        self.skip[crate::creature::senses::smell::KIN] = 0.4;
+        self.skip[crate::creature::senses::smell::KIN] = 0.15;
         // The open sky pulls. Every animal can feel whether it is under
         // the sky or shut in the rock, and every animal that lives on the
         // ground stays near it. This is not knowledge of the world: it is

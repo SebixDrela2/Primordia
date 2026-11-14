@@ -395,7 +395,7 @@ const SIGHT_RANGE: i32 = 8;
 /// that is the whole reason it can find food at all: the surface is
 /// thinly covered in plants, so a creature that can only smell eight
 /// cells ahead would spend its life starving a few steps from dinner.
-const SMELL_RANGE: i32 = 30;
+const SMELL_RANGE: i32 = 42;
 
 /// How quickly a smell fades with distance.
 ///
@@ -407,21 +407,17 @@ const SMELL_FALLOFF: f32 = 8.0;
 
 /// How far the smell of your own kind carries.
 ///
-/// Much further than any other smell. A colony is held together by it: an
-/// animal that has wandered off can still smell where its own kind is,
-/// and that is what brings it home. This is the one thing in the world
-/// that a creature knows by its nose alone, and it is what replaced the
-/// hard-coded pull towards the base.
-///
-/// Forty cells: far enough to find the herd, near enough that a creature
-/// on the far side of the map is not dragged across it by the smell of
-/// its own kind.
-const KIN_RANGE: f32 = 40.0;
+/// Much further than any other smell, and far enough that a creature which
+/// has wandered off can still find its way back to the colony: the colony
+/// is not a coordinate, it is a smell. It is also the reason the colony
+/// holds together at all — there is no rule anywhere that says "go home".
+const KIN_RANGE: f32 = 120.0;
 
 /// How quickly the smell of your own kind fades.
 ///
-/// Very gently: a colony two dozen cells away still smells like home.
-const KIN_FALLOFF: f32 = 20.0;
+/// Very gently: a colony two dozen cells away still smells like home, and
+/// one a hundred cells away is a faint thread on the wind.
+const KIN_FALLOFF: f32 = 40.0;
 
 /// How finely the far end of the smell is sampled.
 ///

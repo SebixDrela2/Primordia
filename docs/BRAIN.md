@@ -889,10 +889,9 @@ Everything in §12.
 A large part of the simulation is *not* the brain at all. This is the
 complete list of the important ones.
 
-### 12.1 Steering — always on, regardless of the network
+### 12.1 Steering — the network's desires, and nothing else
 
-The steering vector is computed from hard rules and then **blended** with
-the network's desires:
+The steering vector **is** the network's desires:
 
 ```rust
 for d in 0..8 {
@@ -904,22 +903,24 @@ c.vx = (out[0] * 0.8 + steer_x * 0.8).clamp(-speed_cap, speed_cap);
 c.vy = (out[1] * 0.8 + steer_y * 0.8 + 0.2).clamp(-speed_cap, speed_cap);
 ```
 
-The steering rules that always apply:
+There is **no other rule**. Everything that used to be a rule is now
+either a sense the creature perceives or a lesson the world teaches it:
 
-| Rule | Effect |
-|------|--------|
-| Threat within range | steer away, ×1.4 speed |
-| Colony pull | juveniles are pulled home; sociable adults at `(sociability − 0.45) × 0.8` |
-| Weather sheltering | storms, meteors and heatwaves pull the colony home |
-| Hunting | a hungry hunter stalks the nearest other species at ×1.3 |
-| Courtship | a creature that wants a mate walks towards the nearest of its own kind |
-| Migration | the emigrants push away from the old colony |
-| Diplomacy | a creature that wants to talk walks towards the foreign colony |
+| What it used to be | What it is now |
+|---|---|
+| the direction to the nearest food | the sweet smell, and the lesson that eating is good |
+| the direction to the nearest ore | the mineral smell, and the lesson that mining is good |
+| the direction to the nearest poison | the acid smell, and the lesson that being hurt is bad |
+| **stalk the nearest animal of another kind** | the `LIFE` sense, and the lesson that a kill is a kill |
+| **walk away from the volcano** | the heat and the light of it, and the lesson that burning hurts |
+| **walk home in a storm** | the rain on the skin, and the lesson that a cold hungry animal is a bad animal |
+| **the pull of the colony** | the smell of your own kind, which carries a hundred cells |
+| flee from the nearest stranger | the `LIFE` sense and the colour, and the lesson that a hurt animal should go elsewhere |
 
-**What is *not* in this list any more:** the direction to the nearest food,
-the direction of the nearest ore, the direction of the nearest poison.
-Those used to be looked up in the world and handed to the creature. Now
-they come from the creature's own desires.
+The rules that remain are the ones that are not about the creature at all:
+the ZORGs (who are the deep's ecology and not a lineage ✓), the
+emigrants of a colony that has split (a life-cycle event ✓), and the
+diplomatic walk (which is a colony's business ✓).
 
 ### 12.2 The local actions
 
