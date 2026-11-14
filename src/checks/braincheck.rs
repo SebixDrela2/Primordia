@@ -1,24 +1,13 @@
-#![allow(dead_code)]
-#[path = "../creature/mod.rs"]
-mod creature;
-#[path = "../elements/mod.rs"]
-mod elements;
-#[path = "../render/mod.rs"]
-mod render;
-#[path = "../rng.rs"]
-mod rng;
-#[path = "../world/mod.rs"]
-mod world;
 
-use creature::CreatureSystem;
-use creature::senses::{DIR_CHANNELS, sight, smell};
-use world::World;
+use crate::creature::CreatureSystem;
+use crate::creature::senses::{DIR_CHANNELS, sight, smell};
+use crate::world::World;
 
 const W: usize = 1280;
 const H: usize = 720;
 
-fn main() {
-    let mut args = std::env::args().skip(1);
+pub fn run(args: &[String]) -> i32 {
+    let mut args = args.iter();
     let steps: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(12000);
     let seed: u64 = args
         .next()
@@ -31,10 +20,10 @@ fn main() {
     println!("steps: {}", steps);
 
     println!("--- the senses ---");
-    println!("  inputs: {}", creature::INPUTS);
-    println!("  outputs: {}", creature::OUTPUTS);
+    println!("  inputs: {}", crate::creature::INPUTS);
+    println!("  outputs: {}", crate::creature::OUTPUTS);
     println!("  per direction: {} channels", DIR_CHANNELS);
-    if creature::INPUTS < 100 {
+    if crate::creature::INPUTS < 100 {
         println!("FAIL: there are too few senses for a brain to work with");
         failures += 1;
     }
@@ -80,8 +69,8 @@ fn main() {
                 hunger,
                 { let p = creatures.list.len().max(1) as f32; creatures.list.iter().map(|c| c.energy).sum::<f32>() / p },
                 { let p = creatures.list.len().max(1) as f32; creatures.list.iter().map(|c| (c.y.round() as i32 - world.surface_y(c.x.round() as i32)).max(0) as f32).sum::<f32>() / p },
-                { let mut n = 0; for c in &creatures.list { let cx = c.x.round() as i32; let cy = c.y.round() as i32; for (dx, dy) in world::DIRS8.iter().copied().chain([(0,0)]) { let e = world.get(cx+dx, cy+dy); if e.is_edible() && e.nutrition() > 3.0 { n += 1; break; } } } n },
-                creatures.list.iter().filter(|c| c.faction == creature::Faction::Zorg).count(),
+                { let mut n = 0; for c in &creatures.list { let cx = c.x.round() as i32; let cy = c.y.round() as i32; for (dx, dy) in crate::world::DIRS8.iter().copied().chain([(0,0)]) { let e = world.get(cx+dx, cy+dy); if e.is_edible() && e.nutrition() > 3.0 { n += 1; break; } } } n },
+                creatures.list.iter().filter(|c| c.faction == crate::creature::Faction::Zorg).count(),
                 creatures.stats.births,
                 creatures.stats.deaths
             );
@@ -140,7 +129,7 @@ fn main() {
         let cx = c.x.round() as i32;
         let cy = c.y.round() as i32;
         let mut near = false;
-        for (dx, dy) in world::DIRS8.iter().copied().chain([(0, 0)]) {
+        for (dx, dy) in crate::world::DIRS8.iter().copied().chain([(0, 0)]) {
             let e = world.get(cx + dx, cy + dy);
             if e.is_edible() && e.nutrition() > 3.0 {
                 near = true;
@@ -189,17 +178,18 @@ fn main() {
         println!("{} FAILURES", failures);
         std::process::exit(1);
     }
+    0
 }
 
 fn test_instinct() -> bool {
     let mut rng = crate::rng::Rng::new(0xC0FFEE);
-    let net = creature::Net::random(&creature::brain_sizes_for(0), &mut rng);
+    let net = crate::creature::Net::random(&crate::creature::brain_sizes_for(0), &mut rng);
     let mut net = net;
     let mut act = Vec::new();
     let mut next = Vec::new();
 
     let want = 3usize;
-    let mut input = vec![0.0f32; creature::INPUTS];
+    let mut input = vec![0.0f32; crate::creature::INPUTS];
     let base = want * DIR_CHANNELS;
     input[base + sight::NEAR] = 0.5;
     input[base + sight::GREEN] = 0.8;
@@ -210,8 +200,8 @@ fn test_instinct() -> bool {
 
     let mut best = 0usize;
     let mut best_val = f32::MIN;
-    for d in 0..creature::outputs::DESIRE_COUNT {
-        let v = act[creature::outputs::DESIRE + d];
+    for d in 0..crate::creature::outputs::DESIRE_COUNT {
+        let v = act[crate::creature::outputs::DESIRE + d];
         if v > best_val {
             best_val = v;
             best = d;
@@ -223,7 +213,7 @@ fn test_instinct() -> bool {
 
 fn test_learning() -> bool {
     let mut rng = crate::rng::Rng::new(0xBEEF_1234);
-    let mut net = creature::Net::random(&creature::brain_sizes_for(0), &mut rng);
+    let mut net = crate::creature::Net::random(&crate::creature::brain_sizes_for(0), &mut rng);
 
     net.skip.iter_mut().for_each(|v| *v = 0.0);
     net.skip_up = 0.0;
@@ -232,7 +222,7 @@ fn test_learning() -> bool {
 
     let want = 3usize;
 
-    let mut input = vec![0.0f32; creature::INPUTS];
+    let mut input = vec![0.0f32; crate::creature::INPUTS];
     let mut net_ok = true;
 
     let mut desire_before = 0.0f32;
@@ -247,7 +237,7 @@ fn test_learning() -> bool {
         input[base + sight::SOFT] = 0.9;
         input[base + sight::CHANNELS + smell::SWEET] = 1.0;
         net.forward_into(&input, &mut act, &mut next);
-        let d = net.out_cache_or(&act, creature::outputs::DESIRE + want);
+        let d = net.out_cache_or(&act, crate::creature::outputs::DESIRE + want);
         if round == 0 {
             desire_before = d;
         }
@@ -264,13 +254,13 @@ fn test_learning() -> bool {
     net_ok && desire_after > desire_before + 0.1
 }
 
-fn net_learn_ok(_net: &mut creature::Net) {}
+fn net_learn_ok(_net: &mut crate::creature::Net) {}
 
 trait NetExt {
     fn out_cache_or(&self, act: &[f32], idx: usize) -> f32;
 }
 
-impl NetExt for creature::Net {
+impl NetExt for crate::creature::Net {
     fn out_cache_or(&self, act: &[f32], idx: usize) -> f32 {
         act.get(idx).copied().unwrap_or(0.0)
     }

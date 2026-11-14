@@ -1274,7 +1274,7 @@ the deep has to be the deep wherever the ground happens to be.
 
 ### 13.7 Performance
 
-Measured with `cargo run --release --bin prof`:
+Measured with `cargo run --release --bin primordia -- prof`:
 
 | Stage | Cost |
 |-------|------|
@@ -1303,10 +1303,10 @@ sizes, and the word is the activation function.
 
 The two headless checks that guard this machinery are:
 
-- `cargo run --release --bin braincheck -- 12000` — that the senses are
+- `cargo run --release --bin primordia -- braincheck 12000` — that the senses are
   primitive, that a mind learns to want what it smells, that the colony
   feeds itself, and that the colony does not go extinct.
-- `cargo run --release --bin aircheck -- 3000` — that the undergroves are
+- `cargo run --release --bin primordia -- aircheck 3000` — that the undergroves are
   deep, that the open air beats the deep, that sealed fires go out, and
   that stale air costs something.
 

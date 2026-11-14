@@ -1,21 +1,10 @@
-#![allow(dead_code)]
-#[path = "../creature/mod.rs"]
-mod creature;
-#[path = "../elements/mod.rs"]
-mod elements;
-#[path = "../render/mod.rs"]
-mod render;
-#[path = "../rng.rs"]
-mod rng;
-#[path = "../world/mod.rs"]
-mod world;
 
-use creature::{CreatureSystem, Role};
-use elements::Elem;
+use crate::creature::{CreatureSystem, Role};
+use crate::elements::Elem;
 use std::io::BufWriter;
 use std::time::{SystemTime, UNIX_EPOCH, Instant};
 use std::process;
-use world::World;
+use crate::world::World;
 
 const W: usize = 1280;
 const H: usize = 720;
@@ -30,13 +19,17 @@ fn get_random_seed() -> u64 {
     seed
 }
 
-fn main() {
-    let mut args = std::env::args().skip(1);
+pub fn run(args: &[String]) -> i32 {
+    let mut args = args.iter();
     let steps: u64 = args
         .next()
         .and_then(|s| s.parse().ok())
         .unwrap_or(3600);
-    let out = args.next().unwrap_or_else(|| "snapshot.png".to_string());
+    let out = args
+        .next()
+        .map(|s| s.as_str())
+        .unwrap_or("snapshot.png")
+        .to_string();
 
     let seed = get_random_seed();
     let mut world = World::new(W, H, seed);
@@ -287,7 +280,7 @@ fn main() {
     }
 
     let mut buf = vec![0u8; (W * H * 4) as usize];
-    let mut renderer = render::Renderer::new();
+    let mut renderer = crate::render::Renderer::new();
     renderer.render_world(&world, &creatures, &mut buf, 0.0, 0.25, 0, world.weather);
 
     let file = std::fs::File::create(&out).expect("create png");
@@ -298,4 +291,5 @@ fn main() {
     let mut png_writer = encoder.write_header().expect("png header");
     png_writer.write_image_data(&buf).expect("png data");
     println!("wrote {}", out);
+    0
 }

@@ -1,18 +1,9 @@
-#![allow(dead_code)]
-#[path = "../creature/mod.rs"]
-mod creature;
-#[path = "../elements/mod.rs"]
-mod elements;
-#[path = "../rng.rs"]
-mod rng;
-#[path = "../world/mod.rs"]
-mod world;
 
-use elements::Elem;
+use crate::elements::Elem;
 use std::collections::HashMap;
-use world::World;
+use crate::world::World;
 
-fn main() {
+pub fn run(_args: &[String]) -> i32 {
     let seed = 12345u64;
     let mut w = World::new(1280, 720, seed);
     w.seed();
@@ -46,7 +37,7 @@ fn main() {
     v.sort_by_key(|(_, c)| std::cmp::Reverse(*c));
     println!("elements above the terrain: {:?}", &v[..v.len().min(20)]);
 
-    let mut cs = creature::CreatureSystem::new(seed);
+    let mut cs = crate::creature::CreatureSystem::new(seed);
     cs.populate(&w, 64);
     for _ in 0..600 {
         w.step();
@@ -65,4 +56,5 @@ fn main() {
     let mut v2: Vec<_> = above2.into_iter().collect();
     v2.sort_by_key(|(_, c)| std::cmp::Reverse(*c));
     println!("after 600 steps:        {:?}", &v2[..v2.len().min(20)]);
+    0
 }

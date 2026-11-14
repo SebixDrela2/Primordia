@@ -1,24 +1,12 @@
-#![allow(dead_code)]
-#[path = "../creature/mod.rs"]
-mod creature;
-#[path = "../elements/mod.rs"]
-mod elements;
-#[path = "../render/mod.rs"]
-mod render;
-#[path = "../rng.rs"]
-mod rng;
-#[path = "../world/mod.rs"]
-mod world;
 
-use creature::{CreatureSystem, Culture};
-use world::World;
+use crate::creature::{CreatureSystem, Culture};
+use crate::world::World;
 
 const W: usize = 640;
 const H: usize = 400;
 
-fn main() {
-    let steps: u64 = std::env::args()
-        .nth(1)
+pub fn run(args: &[String]) -> i32 {
+    let steps: u64 = args.first()
         .and_then(|s| s.parse().ok())
         .unwrap_or(6000);
     let mut failures = 0u32;
@@ -37,7 +25,7 @@ fn main() {
 
     let mut counts: Vec<(u32, u32)> = Vec::new();
     for c in &creatures.list {
-        if c.faction == creature::Faction::Zorg {
+        if c.faction == crate::creature::Faction::Zorg {
             continue;
         }
         match counts.iter_mut().find(|(id, _)| *id == c.species) {
@@ -53,9 +41,9 @@ fn main() {
     println!("  the lineage that carries on: species {}", species);
 
     let culture = Culture::Mining.bit() | Culture::Craft.bit();
-    let discoveries = creature::discovery_bits::COGNITION
-        | creature::discovery_bits::HUSBANDRY
-        | creature::discovery_bits::POTTERY;
+    let discoveries = crate::creature::discovery_bits::COGNITION
+        | crate::creature::discovery_bits::HUSBANDRY
+        | crate::creature::discovery_bits::POTTERY;
     for c in creatures.list.iter_mut() {
         if c.species == species {
             c.culture |= culture;
@@ -87,12 +75,12 @@ fn main() {
     let carried_culture = next
         .list
         .iter()
-        .filter(|c| c.faction != creature::Faction::Zorg)
+        .filter(|c| c.faction != crate::creature::Faction::Zorg)
         .fold(0u16, |acc, c| acc | c.culture);
     let carried_knowledge: u32 = next
         .list
         .iter()
-        .filter(|c| c.faction != creature::Faction::Zorg)
+        .filter(|c| c.faction != crate::creature::Faction::Zorg)
         .map(|c| next.species_discoveries(c.species))
         .fold(0, |acc, d| acc | d);
     println!(
@@ -112,7 +100,7 @@ fn main() {
     let revived_gen = next
         .list
         .iter()
-        .filter(|c| c.faction != creature::Faction::Zorg)
+        .filter(|c| c.faction != crate::creature::Faction::Zorg)
         .map(|c| c.generation)
         .max()
         .unwrap_or(0);
@@ -127,7 +115,7 @@ fn main() {
     let temperament_kept = next
         .list
         .iter()
-        .filter(|c| c.faction != creature::Faction::Zorg)
+        .filter(|c| c.faction != crate::creature::Faction::Zorg)
         .any(|c| {
             (c.personality.aggression - genome.personality.aggression).abs() < 0.5
                 && (c.personality.caution - genome.personality.caution).abs() < 0.5
@@ -143,4 +131,5 @@ fn main() {
         println!("{} FAILURES", failures);
         std::process::exit(1);
     }
+    0
 }

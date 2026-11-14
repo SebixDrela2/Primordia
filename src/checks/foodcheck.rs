@@ -1,25 +1,13 @@
-#![allow(dead_code)]
-#[path = "../creature/mod.rs"]
-mod creature;
-#[path = "../elements/mod.rs"]
-mod elements;
-#[path = "../render/mod.rs"]
-mod render;
-#[path = "../rng.rs"]
-mod rng;
-#[path = "../world/mod.rs"]
-mod world;
 
-use creature::CreatureSystem;
-use elements::Elem;
-use world::World;
+use crate::creature::CreatureSystem;
+use crate::elements::Elem;
+use crate::world::World;
 
 const W: usize = 1280;
 const H: usize = 720;
 
-fn main() {
-    let steps: u64 = std::env::args()
-        .nth(1)
+pub fn run(args: &[String]) -> i32 {
+    let steps: u64 = args.first()
         .and_then(|s| s.parse().ok())
         .unwrap_or(3000);
     let seed = 12345u64;
@@ -47,7 +35,7 @@ fn main() {
 
     let mut rows: Vec<(String, u32, f32)> = Vec::new();
     for i in 0..256usize {
-        let n = world::counters::MEALS[i].load(std::sync::atomic::Ordering::Relaxed);
+        let n = crate::world::counters::MEALS[i].load(std::sync::atomic::Ordering::Relaxed);
         if n == 0 {
             continue;
         }
@@ -67,10 +55,11 @@ fn main() {
             nutr * 4.0
         );
     }
-    let refused = world::counters::CORPSE_REFUSED.load(std::sync::atomic::Ordering::Relaxed);
-    let eaten_corpse = world::counters::CORPSE_EATEN.load(std::sync::atomic::Ordering::Relaxed);
+    let refused = crate::world::counters::CORPSE_REFUSED.load(std::sync::atomic::Ordering::Relaxed);
+    let eaten_corpse = crate::world::counters::CORPSE_EATEN.load(std::sync::atomic::Ordering::Relaxed);
     println!(
         "\ncannibalism rule: {} own-kind corpses refused, {} rival corpses eaten",
         refused, eaten_corpse
     );
+    0
 }

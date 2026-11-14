@@ -14,44 +14,44 @@
   For a portable build use
   `cargo build --release --config 'build.rustflags=[]'`.
 - Release builds are the ones to benchmark (`cargo build --release`).
-- Headless checks: `cargo run --release --bin bench -- 6000`.
-- `cargo run --release --bin spawncheck -- 3000` asserts that no
+- Headless checks: `cargo run --release --bin primordia -- bench 6000`.
+- `cargo run --release --bin primordia -- spawncheck 3000` asserts that no
   underground-only material ever appears above the terrain.
-- `cargo run --release --bin diplcheck -- 12000` runs the diplomacy
+- `cargo run --release --bin primordia -- diplcheck 12000` runs the diplomacy
   sector headless and asserts its invariants (no allied-and-at-war pair,
   trust in range, no relation with an extinct species).
-- `cargo run --release --bin lifecheck -- 9000` runs the life and
+- `cargo run --release --bin primordia -- lifecheck 9000` runs the life and
   evolution sector headless and asserts its invariants (the stages are
   reached, the temperament stays in range, a species specialises and
   learns, and young are born to two parents).
-- `cargo run --release --bin zorgcheck -- [seed]` checks the ZORG cave:
+- `cargo run --release --bin primordia -- zorgcheck [seed]` checks the ZORG cave:
   that it exists, that it is deep in the world, that it has a floor and a
   larder, and that every founding ZORG is born inside it.
-- `cargo run --release --bin foodcheck -- 3000` prints the **diet**: what
+- `cargo run --release --bin primordia -- foodcheck 3000` prints the **diet**: what
   the colony actually ate, meal by meal, and how many own-kind corpses
   were refused. The colony is meant to live off the ground: plants,
   fungus and crops should be the bulk of it, and a corpse should be a
   rarity worth a war.
-- `cargo run --release --bin crowdcheck -- 3000 [seed]` prints how
+- `cargo run --release --bin primordia -- crowdcheck 3000 [seed]` prints how
   crowded the colony is (average neighbours within four cells, and how
   many creatures are in a heap of eight or more). It is the way to see
   whether a change has made the herd clump or spread.
-- `cargo run --release --bin braincheck -- 12000` checks the minds: that
+- `cargo run --release --bin primordia -- braincheck 12000` checks the minds: that
   the senses are primitive, that a mind learns to want what it smells,
   that the colony feeds itself, and that the colony does not go extinct.
   It steps the **world** as well as the creatures: a check that only moved
   the animals would measure a world that never changes.
-- `cargo run --release --bin revivalcheck -- 3000` checks that a revival
+- `cargo run --release --bin primordia -- revivalcheck 3000` checks that a revival
   is a continuation and not a fresh start with an old body: the genome
   must carry the brain, the genes, the generation, the temperament and
   **the practices**, and the next world must start with all of them.
   The **knowledge is not carried** - the tech tree is what a run is for,
   and a revival is a set of new species that has to work it out again.
-- `cargo run --release --bin aircheck -- 3000` checks the air: that the
+- `cargo run --release --bin primordia -- aircheck 3000` checks the air: that the
   undergroves are deep and have air in them, that the open air is fresher
   than the deep, that fire in a sealed cave goes out, and that stale air
   costs a creature something.
-- `cargo run --release --bin prof` prints the per-step cost of the world,
+- `cargo run --release --bin primordia -- prof` prints the per-step cost of the world,
   the creatures and the renderer. The renderer is measured on the region
   that is actually on screen, because that is the number that has to fit
   inside a frame.

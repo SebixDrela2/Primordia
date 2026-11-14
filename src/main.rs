@@ -86,8 +86,36 @@ fn save_screenshot(path: &str) {
     eprintln!("screenshot written to {}", path);
 }
 
+mod checks;
+
+fn run_check(name: &str, args: &[String]) -> Option<i32> {
+    match name {
+        "aircheck" => Some(checks::aircheck::run(args)),
+        "bench" => Some(checks::bench::run(args)),
+        "braincheck" => Some(checks::braincheck::run(args)),
+        "crowdcheck" => Some(checks::crowdcheck::run(args)),
+        "diplcheck" => Some(checks::diplcheck::run(args)),
+        "docgen" => Some(checks::docgen::run(args)),
+        "foodcheck" => Some(checks::foodcheck::run(args)),
+        "lifecheck" => Some(checks::lifecheck::run(args)),
+        "prof" => Some(checks::prof::run(args)),
+        "revivalcheck" => Some(checks::revivalcheck::run(args)),
+        "skycheck" => Some(checks::skycheck::run(args)),
+        "spawncheck" => Some(checks::spawncheck::run(args)),
+        "zorgcheck" => Some(checks::zorgcheck::run(args)),
+        _ => None,
+    }
+}
+
 #[macroquad::main(window_conf)]
 async fn main() {
+    let argv: Vec<String> = std::env::args().collect();
+    if argv.len() > 1 {
+        let name = argv[1].clone();
+        if let Some(code) = run_check(&name, &argv[2..]) {
+            std::process::exit(code);
+        }
+    }
     let seed = get_random_seed();
 
     let mut world = World::new(W, H, seed);

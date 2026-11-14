@@ -1,23 +1,12 @@
-#![allow(dead_code)]
-#[path = "../creature/mod.rs"]
-mod creature;
-#[path = "../elements/mod.rs"]
-mod elements;
-#[path = "../render/mod.rs"]
-mod render;
-#[path = "../rng.rs"]
-mod rng;
-#[path = "../world/mod.rs"]
-mod world;
 
-use creature::CreatureSystem;
-use world::World;
+use crate::creature::CreatureSystem;
+use crate::world::World;
 
 const W: usize = 1280;
 const H: usize = 720;
 
-fn main() {
-    let mut args = std::env::args().skip(1);
+pub fn run(args: &[String]) -> i32 {
+    let mut args = args.iter();
     let steps: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(3000);
     let seed: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(12345);
     let mut world = World::new(W, H, seed);
@@ -90,4 +79,5 @@ fn main() {
         creatures.stats.avg_energy,
         creatures.stats.deaths,
     );
+    0
 }

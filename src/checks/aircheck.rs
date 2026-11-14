@@ -1,24 +1,13 @@
-#![allow(dead_code)]
-#[path = "../creature/mod.rs"]
-mod creature;
-#[path = "../elements/mod.rs"]
-mod elements;
-#[path = "../render/mod.rs"]
-mod render;
-#[path = "../rng.rs"]
-mod rng;
-#[path = "../world/mod.rs"]
-mod world;
 
-use creature::CreatureSystem;
-use elements::Elem;
-use world::{Landmark, World};
+use crate::creature::CreatureSystem;
+use crate::elements::Elem;
+use crate::world::{Landmark, World};
 
 const W: usize = 1280;
 const H: usize = 720;
 
-fn main() {
-    let mut args = std::env::args().skip(1);
+pub fn run(args: &[String]) -> i32 {
+    let mut args = args.iter();
     let steps: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(3000);
     let seed: u64 = args
         .next()
@@ -127,6 +116,7 @@ fn main() {
         println!("{} FAILURES", failures);
         std::process::exit(1);
     }
+    0
 }
 
 fn fire_lifetime(with_air: bool) -> u32 {
@@ -227,10 +217,10 @@ fn stale_cost(fresh: bool) -> f32 {
     creatures.populate(&w, 8);
 
     for c in creatures.list.iter_mut() {
-        c.tool = creature::Tool::None;
+        c.tool = crate::creature::Tool::None;
         c.tool_durability = 0;
         c.known_spells = 0;
-        c.active_spell = creature::Spell::None;
+        c.active_spell = crate::creature::Spell::None;
     }
 
     for c in creatures.list.iter_mut() {
@@ -255,7 +245,7 @@ fn stale_cost(fresh: bool) -> f32 {
 
             c.health = c.max_health();
             c.energy = c.max_energy * 0.6;
-            c.disease = creature::Disease::None;
+            c.disease = crate::creature::Disease::None;
 
             for i in 0..c.immunity.len() {
                 c.immunity[i] = 2;

@@ -1,14 +1,5 @@
-#![allow(dead_code)]
-#[path = "../creature/mod.rs"]
-mod creature;
-#[path = "../elements/mod.rs"]
-mod elements;
-#[path = "../rng.rs"]
-mod rng;
-#[path = "../world/mod.rs"]
-mod world;
 
-use elements::{Behavior, Elem};
+use crate::elements::{Behavior, Elem};
 
 fn behavior_name(b: Behavior) -> &'static str {
     match b {
@@ -28,7 +19,7 @@ fn behavior_name(b: Behavior) -> &'static str {
     }
 }
 
-fn main() {
+pub fn run(_args: &[String]) -> i32 {
     println!("| # | Element | Category | Behaviour | Density | Nutrition | Toxicity | Lifetime | Solid | Edible | Emits light | Description |");
     println!("|---|---------|----------|-----------|---------|-----------|----------|----------|-------|--------|------------|-------------|");
     let mut n = 0;
@@ -58,4 +49,5 @@ fn main() {
         );
         n += 1;
     }
+    0
 }

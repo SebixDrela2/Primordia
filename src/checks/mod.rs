@@ -1,0 +1,13 @@
+pub mod aircheck;
+pub mod bench;
+pub mod braincheck;
+pub mod crowdcheck;
+pub mod diplcheck;
+pub mod docgen;
+pub mod foodcheck;
+pub mod lifecheck;
+pub mod prof;
+pub mod revivalcheck;
+pub mod skycheck;
+pub mod spawncheck;
+pub mod zorgcheck;

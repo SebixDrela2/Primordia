@@ -1,23 +1,12 @@
-#![allow(dead_code)]
-#[path = "../creature/mod.rs"]
-mod creature;
-#[path = "../elements/mod.rs"]
-mod elements;
-#[path = "../render/mod.rs"]
-mod render;
-#[path = "../rng.rs"]
-mod rng;
-#[path = "../world/mod.rs"]
-mod world;
 
-use creature::{Affinity, CreatureSystem, Stage, culture_list, trait_list};
-use world::World;
+use crate::creature::{Affinity, CreatureSystem, Stage, culture_list, trait_list};
+use crate::world::World;
 
 const W: usize = 1280;
 const H: usize = 720;
 
-fn main() {
-    let mut args = std::env::args().skip(1);
+pub fn run(args: &[String]) -> i32 {
+    let mut args = args.iter();
     let steps: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(9000);
     let seed: u64 = args
         .next()
@@ -63,7 +52,7 @@ fn main() {
 
             let mut outside = 0;
             for c in creatures.list.iter() {
-                if c.faction != creature::Faction::Zorg {
+                if c.faction != crate::creature::Faction::Zorg {
                     continue;
                 }
                 if !world.in_zorg_cave(c.x.round() as i32, c.y.round() as i32) {
@@ -88,7 +77,7 @@ fn main() {
         creatures.step(&mut world);
 
         for c in &creatures.list {
-            if c.role != creature::Role::Queen {
+            if c.role != crate::creature::Role::Queen {
                 continue;
             }
             let claimed = landmark_claims
@@ -154,7 +143,7 @@ fn main() {
             let sick = creatures
                 .list
                 .iter()
-                .filter(|c| c.disease != creature::Disease::None)
+                .filter(|c| c.disease != crate::creature::Disease::None)
                 .count();
             println!(
                 "  step {:5}  pop {:3}  species {:2}  zorgs {:3}  biggest {:3}  over-cap {:2}  young {:3}  old {:2}  pairs {:4}  splits {:2}  started {:2}  far {:5.0}  sick {:3}  plagues {:2}  practices {}  traits/species {}",
@@ -200,12 +189,12 @@ fn main() {
     }
 
     println!("\n--- the deep ---");
-    let zorgs = creatures.list.iter().filter(|c| c.faction == creature::Faction::Zorg).count();
+    let zorgs = creatures.list.iter().filter(|c| c.faction == crate::creature::Faction::Zorg).count();
     println!("  ZORGs alive: {}", zorgs);
     let zorg_species: Vec<u32> = creatures
         .list
         .iter()
-        .filter(|c| c.faction == creature::Faction::Zorg)
+        .filter(|c| c.faction == crate::creature::Faction::Zorg)
         .map(|c| c.species)
         .collect();
     if !zorg_species.is_empty() {
@@ -228,16 +217,16 @@ fn main() {
     let player_species: Vec<u32> = creatures
         .list
         .iter()
-        .filter(|c| c.faction == creature::Faction::Player)
+        .filter(|c| c.faction == crate::creature::Faction::Player)
         .map(|c| c.species)
         .collect();
-    if player_species.contains(&creature::ZORG_SPECIES) {
+    if player_species.contains(&crate::creature::ZORG_SPECIES) {
         println!("FAIL: a ZORG is counted as a player species");
         failures += 1;
     }
 
     for c in creatures.list.iter() {
-        if c.faction != creature::Faction::Player {
+        if c.faction != crate::creature::Faction::Player {
             continue;
         }
         let [r, g, b] = c.team_color;
@@ -253,7 +242,7 @@ fn main() {
     let in_crisis = creatures.species_in_crisis();
     println!("  colonies in crisis: {} of {}", in_crisis.len(), creatures.stats.species);
     for sp in in_crisis.iter().take(8) {
-        println!("    the {} has no queen", creature::species_name_for(*sp));
+        println!("    the {} has no queen", crate::creature::species_name_for(*sp));
     }
 
     println!("\n--- predation ---");
@@ -262,8 +251,8 @@ fn main() {
     for (prey, predator, fear) in fear_rows.iter().take(12) {
         println!(
             "  the {} fears the {}: {:.0}",
-            creature::species_name_for(*prey),
-            creature::species_name_for(*predator),
+            crate::creature::species_name_for(*prey),
+            crate::creature::species_name_for(*predator),
             fear
         );
     }
@@ -293,13 +282,13 @@ fn main() {
         creatures.discoveries.len()
     );
     for (sp, bits) in creatures.discoveries.iter() {
-        let names: Vec<&str> = creature::discovery_list(*bits)
+        let names: Vec<&str> = crate::creature::discovery_list(*bits)
             .iter()
             .map(|d| d.name())
             .collect();
         println!(
             "    {:<16} {}",
-            creature::species_name_for(*sp),
+            crate::creature::species_name_for(*sp),
             names.join(", ")
         );
     }
@@ -311,16 +300,16 @@ fn main() {
             continue;
         }
         seen.push(c.species);
-        let strategy = if c.traits & creature::trait_bits::PROLIFIC != 0 {
+        let strategy = if c.traits & crate::creature::trait_bits::PROLIFIC != 0 {
             "prolific"
-        } else if c.traits & creature::trait_bits::PROLONGED != 0 {
+        } else if c.traits & crate::creature::trait_bits::PROLONGED != 0 {
             "prolonged"
         } else {
             "balanced"
         };
         println!(
             "  {:<16} strategy {:<10} litter {}  cost {:.0}  lives {:.0} ticks  matures at {:.0}%",
-            creature::species_name_for(c.species),
+            crate::creature::species_name_for(c.species),
             strategy,
             c.litter_size(),
             c.brood_cost(),
@@ -337,7 +326,7 @@ fn main() {
             .filter(|(lx, ly, _)| {
                 ((lx - l.x).powi(2) + (ly - l.y).powi(2)).sqrt() <= l.kind.radius() * 1.6
             })
-            .map(|(_, _, sp)| creature::species_name_for(*sp))
+            .map(|(_, _, sp)| crate::creature::species_name_for(*sp))
             .collect();
 
         let mut uniq: Vec<String> = Vec::new();
@@ -419,7 +408,7 @@ fn main() {
     let queens: Vec<u32> = creatures
         .list
         .iter()
-        .filter(|c| c.role == creature::Role::Queen)
+        .filter(|c| c.role == crate::creature::Role::Queen)
         .map(|c| c.species)
         .collect();
     for sp in creatures.species_in_crisis() {
@@ -435,4 +424,5 @@ fn main() {
         println!("\n{} FAILURES", failures);
         std::process::exit(1);
     }
+    0
 }

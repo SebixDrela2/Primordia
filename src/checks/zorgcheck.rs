@@ -1,25 +1,14 @@
-#![allow(dead_code)]
-#[path = "../creature/mod.rs"]
-mod creature;
-#[path = "../elements/mod.rs"]
-mod elements;
-#[path = "../render/mod.rs"]
-mod render;
-#[path = "../rng.rs"]
-mod rng;
-#[path = "../world/mod.rs"]
-mod world;
 
-use creature::{CreatureSystem, Faction, ZORG_START};
-use elements::Elem;
-use world::World;
+use crate::creature::{CreatureSystem, Faction, ZORG_START};
+use crate::elements::Elem;
+use crate::world::World;
 
 const W: usize = 1280;
 const H: usize = 720;
 
 const RUN: u64 = 6000;
 
-fn main() {
+pub fn run(_args: &[String]) -> i32 {
     let seed: u64 = std::env::args()
         .skip(1)
         .next()
@@ -67,7 +56,7 @@ fn main() {
                     floor_ok += 1;
                 }
             }
-            if creature::zorg_food(world.get(x, y)) {
+            if crate::creature::zorg_food(world.get(x, y)) {
                 food += 1;
             }
         }
@@ -98,7 +87,7 @@ fn main() {
         println!("FAIL: the cave is only {} below the surface", depth);
         failures += 1;
     }
-    let floor_y = cy + world::ZORG_CAVE_RY / 2 + 1;
+    let floor_y = cy + crate::world::ZORG_CAVE_RY / 2 + 1;
     if floor_y >= world.h as i32 - 6 {
         println!("FAIL: the cave runs into the bedrock");
         failures += 1;
@@ -151,7 +140,7 @@ fn main() {
         if i % 1000 != 0 {
             continue;
         }
-        let zorgs: Vec<&creature::Creature> = creatures
+        let zorgs: Vec<&crate::creature::Creature> = creatures
             .list
             .iter()
             .filter(|c| c.faction == Faction::Zorg)
@@ -168,7 +157,7 @@ fn main() {
         let mut left = 0u32;
         for y in (cy - 30)..(cy + 30) {
             for x in (cx - 45)..(cx + 45) {
-                if world.in_zorg_cave(x, y) && creature::zorg_food(world.get(x, y)) {
+                if world.in_zorg_cave(x, y) && crate::creature::zorg_food(world.get(x, y)) {
                     left += 1;
                 }
             }
@@ -219,18 +208,18 @@ fn main() {
     let sanctified: Vec<u32> = creatures
         .discoveries
         .iter()
-        .filter(|(_, d)| d & creature::discovery_bits::SANCTIFY != 0)
+        .filter(|(_, d)| d & crate::creature::discovery_bits::SANCTIFY != 0)
         .map(|(sp, _)| *sp)
         .collect();
     let wards = creatures
         .structures
         .iter()
-        .filter(|s| s.kind == creature::structure_kind::WARD)
+        .filter(|s| s.kind == crate::creature::structure_kind::WARD)
         .count();
     let sunfires = creatures
         .list
         .iter()
-        .filter(|c| c.tool == creature::Tool::Sunfire)
+        .filter(|c| c.tool == crate::creature::Tool::Sunfire)
         .count();
     println!(
         "  {} species know sanctification, {} wards stand, {} carry a sunfire",
@@ -243,7 +232,7 @@ fn main() {
         let queen = creatures
             .list
             .iter()
-            .any(|c| c.species == *sp && c.role == creature::Role::Queen);
+            .any(|c| c.species == *sp && c.role == crate::creature::Role::Queen);
         println!(
             "    species {}: {} members, a queen: {}",
             sp, members, queen
@@ -263,12 +252,12 @@ fn main() {
     let carriers = creatures
         .list
         .iter()
-        .filter(|c| c.faction == Faction::Zorg && c.disease != creature::Disease::None)
+        .filter(|c| c.faction == Faction::Zorg && c.disease != crate::creature::Disease::None)
         .count();
     let sick_players = creatures
         .list
         .iter()
-        .filter(|c| c.faction != Faction::Zorg && c.disease != creature::Disease::None)
+        .filter(|c| c.faction != Faction::Zorg && c.disease != crate::creature::Disease::None)
         .count();
     println!(
         "  {} ZORGs carry a sickness, {} other creatures are sick",
@@ -315,4 +304,5 @@ fn main() {
         println!("\n{} FAILURES", failures);
         std::process::exit(1);
     }
+    0
 }

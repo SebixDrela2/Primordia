@@ -1,15 +1,6 @@
-#![allow(dead_code)]
-#[path = "../creature/mod.rs"]
-mod creature;
-#[path = "../elements/mod.rs"]
-mod elements;
-#[path = "../rng.rs"]
-mod rng;
-#[path = "../world/mod.rs"]
-mod world;
 
-use elements::Elem;
-use world::World;
+use crate::elements::Elem;
+use crate::world::World;
 
 const UNDERGROUND_ONLY: &[Elem] = &[
     Elem::Lava,
@@ -41,9 +32,8 @@ const UNDERGROUND_ONLY: &[Elem] = &[
     Elem::Iron,
 ];
 
-fn main() {
-    let frames: u64 = std::env::args()
-        .nth(1)
+pub fn run(args: &[String]) -> i32 {
+    let frames: u64 = args.first()
         .and_then(|s| s.parse().ok())
         .unwrap_or(2400);
     let seed = 12345u64;
@@ -91,4 +81,5 @@ fn main() {
             );
         }
     }
+    0
 }

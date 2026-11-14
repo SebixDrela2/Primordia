@@ -1,20 +1,9 @@
-#![allow(dead_code)]
-#[path = "../creature/mod.rs"]
-mod creature;
-#[path = "../elements/mod.rs"]
-mod elements;
-#[path = "../render/mod.rs"]
-mod render;
-#[path = "../rng.rs"]
-mod rng;
-#[path = "../world/mod.rs"]
-mod world;
 
-use creature::CreatureSystem;
+use crate::creature::CreatureSystem;
 use std::time::Instant;
-use world::World;
+use crate::world::World;
 
-fn main() {
+pub fn run(_args: &[String]) -> i32 {
     let seed = 4242u64;
     let mut w = World::new(1280, 720, seed);
     w.seed();
@@ -38,7 +27,7 @@ fn main() {
     }
     let creature_ms = t.elapsed().as_secs_f64() * 1000.0 / n as f64;
 
-    let mut renderer = render::Renderer::new();
+    let mut renderer = crate::render::Renderer::new();
     let mut buf = vec![0u8; 480 * 270 * 4];
     let frames = 400;
     let t = Instant::now();
@@ -54,7 +43,7 @@ fn main() {
             i as f32 * 0.016,
             0.3,
             0,
-            world::Weather::Clear,
+            crate::world::Weather::Clear,
         );
     }
     let region_ms = t.elapsed().as_secs_f64() * 1000.0 / frames as f64;
@@ -62,7 +51,7 @@ fn main() {
     let mut full = vec![0u8; 1280 * 720 * 4];
     let t = Instant::now();
     for i in 0..40 {
-        renderer.render_world(&w, &cs, &mut full, i as f32 * 0.016, 0.3, 0, world::Weather::Clear);
+        renderer.render_world(&w, &cs, &mut full, i as f32 * 0.016, 0.3, 0, crate::world::Weather::Clear);
     }
     let world_render_ms = t.elapsed().as_secs_f64() * 1000.0 / 40 as f64;
 
@@ -76,4 +65,5 @@ fn main() {
         1000.0 / 60.0,
         frame_ms
     );
+    0
 }
