@@ -1,18 +1,3 @@
-//! Creature module - the agents that live in the world.
-//!
-//! Split by responsibility:
-//! - mod.rs        shared types (Creature, CreatureSystem, events, genome)
-//! - brain.rs      the tiny feed-forward network
-//! - enums.rs      roles, tools, diseases, spells, moods
-//! - names.rs      species names and colours
-//! - senses.rs     what a creature perceives
-//! - colony.rs     spawning, reproduction and lineages
-//! - step.rs       the simulation step (the behaviour loop)
-//! - actions.rs    the individual behaviours a creature can pick
-//! - combat.rs     projectiles, bombs, turrets and deaths
-//! - diplomacy.rs  relations, treaties and negotiations between species
-//! - stats.rs      population statistics
-
 mod actions;
 mod bonds;
 mod brain;
@@ -44,61 +29,29 @@ use crate::elements::Elem;
 use crate::rng::Rng;
 use crate::world::{World, DIRS4, DIRS8};
 
-/// How many things a creature can perceive.
-///
-/// The senses are the eyes of the network, and they are deliberately
-/// primitive: eight directions of sight, smell and sound, plus what the
-/// animal knows about its own body, plus what it can see of its own kind
-/// and of strangers. Nothing is labelled. The network is told that
-/// something is green and soft and smells sweet, and it has to work out
-/// for itself that this is worth eating.
 pub const INPUTS: usize = crate::creature::senses::TOTAL_INPUTS;
 pub const OUTPUTS: usize = 33;
 
-/// The network outputs, in order.
-///
-/// The first twenty-five are the behaviour outputs, unchanged:
-///
-/// ```text
-///  0 move_x      1 move_y      2 eat         3 reproduce
-///  4 attack      5 build       6 craft       7 cast_spell
-///  8 mount       9 trade      10 rest       11 switch_spell
-/// 12 dig/mine   13 gather_water 14 shoot    15 flee
-/// 16 seek       17 forage     18 rally      19 defend
-/// 20 negotiate 21 hostile    22 ally       23 tribute
-/// 24 seek_mate
-/// ```
-///
-/// The last eight are the **desires**: how much the creature wants to go
-/// in each of the eight directions.
-///
-/// This is what makes the whole thing work. With a single "move x" and
-/// "move y" the network has to learn the hard mapping from "the thing I
-/// want is over there" to "these are the coordinates to press". With one
-/// desire per direction it only has to learn "this direction looks good",
-/// and because the percepts are laid out in the same eight directions, the
-/// mapping is almost trivial for the hidden layer to find.
 pub mod outputs {
-    /// Open talks with a foreign creature.
+
     pub const NEGOTIATE: usize = 20;
-    /// Make a hostile move.
+
     pub const HOSTILE: usize = 21;
-    /// Offer an alliance or a pact.
+
     pub const ALLY: usize = 22;
-    /// Demand tribute.
+
     pub const TRIBUTE: usize = 23;
-    /// Court a mate of its own kind.
+
     pub const SEEK_MATE: usize = 24;
-    /// The first of the per-direction desires.
+
     pub const DESIRE: usize = 25;
-    /// How many directions there are.
+
     pub const DESIRE_COUNT: usize = 8;
 }
 const MAX_POP: usize = 500;
-/// Above this population creatures stop reproducing so the world stays lively
-/// without grinding to a halt (the hard cap is still MAX_POP).
+
 const REPRO_SOFT_CAP: usize = 320;
-/// Creatures that reach this age die of old age, driving generational turnover.
+
 const MAX_AGE: u32 = 3200;
 const BASE_RADIUS: i32 = 40;
 const BUILD_COST: f32 = 80.0;
@@ -106,65 +59,44 @@ const CARRY_CAP: f32 = 400.0;
 const MANA_REGEN: f32 = 0.15;
 const STAMINA_REGEN: f32 = 0.2;
 
-/// The energy cost of every action a creature can take.
-///
-/// Actions used to be free, so a creature could mine, build, craft and fight
-/// without ever needing to eat. Now everything costs energy, which is what
-/// makes foraging and the food web matter.
 pub mod energy_cost {
-    /// Moving at all.
+
     pub const MOVE: f32 = 0.020;
-    /// Shoving through loose debris while moving.
+
     pub const SHOVE: f32 = 0.35;
-    /// Chewing through solid rock.
-    ///
-    /// Only a ZORG does this: it eats stone and ore, and the tunnels it
-    /// chews are how it comes up into the world. It is slow and it tires
-    /// (the stamina cost is the real limit), but it is cheap: the rock it
-    /// chews is its food as well as its way out.
+
     pub const CHEW: f32 = 0.06;
-    /// Attacking in melee.
+
     pub const ATTACK: f32 = 6.0;
-    /// Loosing a shot.
+
     pub const SHOOT: f32 = 4.0;
-    /// Digging a tunnel through rock.
+
     pub const DIG: f32 = 5.0;
-    /// Extracting ore or rock from the ground.
+
     pub const MINE: f32 = 3.0;
-    /// Raising a structure.
+
     pub const BUILD: f32 = 8.0;
-    /// Crafting a tool, bomb or salve.
+
     pub const CRAFT: f32 = 5.0;
-    /// Throwing a bomb.
+
     pub const BOMB: f32 = 6.0;
-    /// Using a salve on a wounded colonymate.
+
     pub const SALVE: f32 = 4.0;
-    /// Making a trade.
+
     pub const TRADE: f32 = 2.0;
-    /// Casting a spell.
+
     pub const SPELL: f32 = 10.0;
 }
 
-/// How many farms a single colony may keep.
-///
-/// Each plot takes 4 wood and a builder's time, and a plot that nobody
-/// tends is just a field of weeds. A handful is enough to feed a colony
-/// and keeps the wood for other things.
 pub const MAX_FARMS: usize = 4;
-/// How many turrets one colony may keep.
+
 pub const MAX_TOWERS: usize = 4;
-/// How many buildings the whole world may have at once.
+
 pub const MAX_STRUCTURES: usize = 420;
 
-/// How fast a creature may move, in cells per step.
-///
-/// The old limit was 2.6, which made a creature cross the whole screen in
-/// well under a second: it looked like zooming rather than walking.
 pub const MAX_SPEED: f32 = 0.9;
-/// The speed multiplier a mounted creature gets.
-pub const MOUNT_SPEED_BONUS: f32 = 1.5;
 
-/// Distance from a point to a line segment. Used for swept projectile hits so
+pub const MOUNT_SPEED_BONUS: f32 = 1.5;
 
 pub struct Projectile {
     pub x: f32,
@@ -180,8 +112,6 @@ pub struct Projectile {
     pub elem: Elem,
 }
 
-/// A player-built structure that remembers who owns it, so turrets know
-/// which creatures to shoot at.
 pub struct Structure {
     pub x: f32,
     pub y: f32,
@@ -190,12 +120,10 @@ pub struct Structure {
     pub hp: f32,
     pub cooldown: u32,
     pub armed: bool,
-    /// 0 = generic, 1 = turret, 2 = temple (grants morale to its colony),
-    /// 3 = farm (a plot that grows crops).
+
     pub kind: u8,
 }
 
-/// A thrown bomb: arcs towards its target and detonates.
 pub struct Bomb {
     pub x: f32,
     pub y: f32,
@@ -206,7 +134,6 @@ pub struct Bomb {
     pub color: [u8; 3],
 }
 
-/// Things that happened, so the renderer can animate them.
 pub enum SimEvent {
     Hit { x: f32, y: f32, color: [u8; 3], damage: f32 },
     Shoot { x: f32, y: f32, color: [u8; 3] },
@@ -217,20 +144,17 @@ pub enum SimEvent {
     Death { x: f32, y: f32, color: [u8; 3], size: f32 },
     Heal { x: f32, y: f32, color: [u8; 3] },
     Explosion { x: f32, y: f32, color: [u8; 3] },
-    /// A diplomatic moment: a treaty signed, a tribute demanded, talks held.
+
     Treaty { x: f32, y: f32, color: [u8; 3], label: String },
-    /// War has been declared between two species.
+
     War { x: f32, y: f32, color: [u8; 3] },
-    /// A group of animals has left its colony and become a species of
-    /// its own.
+
     Speciation { x: f32, y: f32, color: [u8; 3] },
-    /// A disease has broken out in a colony.
+
     Plague { x: f32, y: f32, color: [u8; 3] },
-    /// A species has worked out something new.
+
     Discovery { x: f32, y: f32, color: [u8; 3] },
 }
-
-/// Uniform spatial hash so neighbour queries do not scan the whole colony.
 
 pub struct Creature {
     pub id: u32,
@@ -245,61 +169,40 @@ pub struct Creature {
     pub net: Net,
     pub color: [u8; 3],
     pub species: u32,
-    /// Which side of the world this creature belongs to. The ZORGs are the
-    /// deep's own ecology and are hostile to every player species.
+
     pub faction: Faction,
     pub generation: u32,
     pub fitness: f32,
     pub offspring: u32,
     pub kills: u32,
     pub cooldown: u32,
-    /// Cooldown between ranged shots.
+
     pub fire_cooldown: u32,
-    /// The creature's last decision, reused between brain ticks.
+
     pub out_cache: [f32; OUTPUTS],
-    /// Has the brain run at least once for this creature?
+
     pub brain_ready: bool,
-    /// What the creature last saw, smelled and heard. It is refreshed on
-    /// the same tick the brain runs on, so the steering uses a picture that
-    /// is one tick old at worst.
+
     pub(crate) percept_cache: Percept,
-    /// Which of the eight directions the creature most wanted to go in.
-    ///
-    /// This is remembered so that a reward can be given to the direction
-    /// that worked: a creature that found food was heading somewhere when
-    /// it found it, and that is the direction that gets the credit.
+
     pub(crate) desire_dir: usize,
-    /// Which way the thing that hurt it came from, if something did.
-    ///
-    /// This is the lesson the creature has to learn: it was hurt, and the
-    /// hurt came from over there. The direction is remembered so that the
-    /// credit can be given to the direction it was in, and not to
-    /// whatever the creature happened to want most.
+
     pub(crate) hurt_dir: i8,
-    /// Which way the thing it killed was in.
-    ///
-    /// The same idea, the other way round: the strike landed, and it
-    /// landed because the creature went that way.
+
     pub(crate) kill_dir: i8,
-    /// The health it had the last time it thought about such things.
-    ///
-    /// The damage that hurts a creature usually arrives from outside the
-    /// tick it is noticed in: a shot or a bite is resolved after the
-    /// creatures have all had their turn. So the creature remembers what
-    /// its health was, and the difference between then and now is what
-    /// tells it that something hit it.
+
     pub(crate) health_seen: f32,
-    /// The kills it had the last time it thought about such things.
+
     pub(crate) kills_seen: u32,
-    /// What it last ate. A diagnostic, for the census of meals.
+
     pub(crate) last_meal: Elem,
     pub size: f32,
     pub last_x: f32,
     pub last_y: f32,
-    // Identity
-    pub name: [u8; 10], // null-terminated name
-    pub team_color: [u8; 3], // species color for rendering
-    // Colony fields
+
+    pub name: [u8; 10],
+    pub team_color: [u8; 3],
+
     pub role: Role,
     pub base_x: f32,
     pub base_y: f32,
@@ -307,16 +210,16 @@ pub struct Creature {
     pub build_cooldown: u32,
     pub target_x: f32,
     pub target_y: f32,
-    // Tech/Tools
+
     pub tool: Tool,
-    /// Bombs and healing salves the creature has crafted.
+
     pub bombs: u8,
     pub salves: u8,
     pub tool_durability: u16,
     pub tech_level: u8,
     pub inventory: [u16; 16],
     pub craft_cooldown: u32,
-    // Social
+
     pub disease: Disease,
     pub disease_timer: u16,
     pub immunity: [u8; 8],
@@ -329,69 +232,60 @@ pub struct Creature {
     pub trade_partner: Option<u32>,
     pub squad_id: u16,
     pub squad_role: u8,
-    // Magic
+
     pub mana: f32,
     pub max_mana: f32,
     pub spell_cooldown: u16,
     pub known_spells: u16,
     pub active_spell: Spell,
     pub spell_cd: [u16; 10],
-    // Vehicle/Mount
+
     pub mount: Option<u32>,
     pub vehicle: Option<u32>,
     pub mount_kind: MountKind,
-    /// How many ticks the animal has been off the ground.
-    ///
-    /// A flight is not a place to live: the sky has no food and no water,
-    /// and the longer an animal stays up there the more every tick of it
-    /// costs.
+
     pub air_time: u32,
     pub mount_stamina: f32,
-    /// Genetics
+
     pub genes: [f32; 32],
     pub mutations: u16,
-    /// Evolutionary traits decoded from the genes.
+
     pub traits: u32,
-    /// The individual's temperament: the part of it that is not a species
-    /// trait but a personal one.
+
     pub personality: Personality,
-    /// Which stage of life it is in.
+
     pub stage: Stage,
-    /// What its species has become adapted to.
+
     pub affinity: Affinity,
-    /// What its species has learned to do.
+
     pub culture: u16,
-    /// The mate it is courting, if any.
+
     pub mate: Option<u32>,
-    /// How many children it has sired with a mate.
+
     pub sired: u32,
-    /// This animal has left its colony and is on its own.
+
     pub migrating: bool,
-    /// The creature it is bonded with.
+
     pub bond: Option<u32>,
-    // Needs
+
     pub hunger: f32,
     pub thirst: f32,
     pub stamina: f32,
     pub max_stamina: f32,
     pub resting: bool,
-    // Memory (tiny blackboard for learned behavior)
+
     pub memory: [f32; 8],
-    /// The tech its species knows: the discoveries of the tech tree.
-    ///
-    /// The creature carries its species' knowledge with it, so that the
-    /// effect of a discovery can be read where it is used.
+
     pub tech: u32,
-    // Diplomacy
-    /// Ticks until this creature is willing to make another diplomatic move.
+
     pub diplo_cooldown: u16,
-    /// How far the current negotiation has progressed (0..1).
+
     pub diplo_progress: f32,
-    /// The species this creature is currently negotiating with.
+
     pub diplo_partner: Option<u32>,
-    /// The creature this one is negotiating with.
+
     pub diplo_with: Option<u32>,
-    /// How many treaties this creature has personally concluded.
+
     pub pacts_signed: u32,
 }
 
@@ -444,17 +338,17 @@ pub struct CreatureStats {
     pub avg_stamina: f32,
     pub shots: u32,
     pub towers: u32,
-    /// How many creatures are still young.
+
     pub juveniles: u32,
-    /// How many creatures are old.
+
     pub elders: u32,
-    /// How many pairs were made in the last run of ticks.
+
     pub matings: u32,
-    /// How many species have split off from another.
+
     pub splits: u32,
-    /// How many practices the species have learned.
+
     pub practices: u32,
-    /// How many discoveries the species have made.
+
     pub discoveries: u32,
 }
 
@@ -468,78 +362,57 @@ pub struct CreatureSystem {
     births_total: u32,
     deaths_total: u32,
     pub eats_total: u64,
-    /// What the creatures have been eating, by element.
-    ///
-    /// This is a diagnostic: it says what the colony is living on, which
-    /// is the quickest way to see whether the senses are working.
+
     pub eats_by_elem: [u32; 128],
     pub builds_total: u64,
     pub trades_total: u64,
     pub spells_cast: u64,
-    /// How many pairs have mated in this run.
+
     pub matings_total: u32,
-    /// How many young have been born to two parents.
+
     pub two_parent_births: u32,
     next_squad: u16,
     vehicles: Vec<Vehicle>,
     next_vehicle: u32,
-    pub day_night: f32, // 0.0 = midnight, 0.5 = noon, 1.0 = midnight
-    pub temperature: f32, // world temperature affecting creatures
-    pub season: u8, // 0=spring,1=summer,2=autumn,3=winter
+    pub day_night: f32,
+    pub temperature: f32,
+    pub season: u8,
     pub season_timer: u64,
-    /// Shots currently in flight.
+
     pub projectiles: Vec<Projectile>,
-    /// Player-built structures (turrets) with an owner.
+
     pub structures: Vec<Structure>,
-    /// The ground each colony holds: (species, centre x, centre y, radius).
-    /// Rebuilt once per tick.
+
     pub claims: Vec<(u32, f32, f32, f32)>,
-    /// Who eats whom, and what the prey remembers about it.
+
     pub predation: PredationMemory,
-    /// The species that are without a queen: (species, tick the crisis
-    /// started). A colony in crisis holds no ground and builds nothing.
+
     pub succession: Vec<(u32, u64)>,
-    /// Whether each colony's fire is lit.
-    ///
-    /// A campfire has to be fed with wood, and the wood has to be
-    /// carried home by somebody. A colony that sits by its own fire and
-    /// gathers nothing goes cold: the fire goes out, the cold comes in,
-    /// and the animals that huddle around a dead fire find out what it is
-    /// worth to be out in the world.
+
     pub fire_lit: Vec<bool>,
-    /// Events for the renderer, drained every frame by the UI.
+
     pub events: Vec<SimEvent>,
-    /// Bombs currently in flight.
+
     pub bombs: Vec<Bomb>,
-    /// The relations between the species of this world.
+
     pub diplomacy: Diplomacy,
-    /// What each species has collectively learned, by species id.
-    ///
-    /// A practice that one animal discovers is remembered by the colony
-    /// and passed on to the young, so a species that learns to farm stays a
-    /// farming species even after the individual that worked it out dies.
+
     pub culture_pool: Vec<(u32, u16)>,
-    /// The groups that have left their colonies to found a new species.
+
     pub migrations: Vec<Migration>,
-    /// How many species have split off from another in this run.
+
     pub splits_total: u32,
-    /// How many groups have left their colonies in this run.
+
     pub migrations_started: u32,
-    /// How many disease outbreaks have begun in this run.
+
     pub plagues_started: u32,
-    /// What each species has worked out for itself, by species id.
+
     pub discoveries: Vec<(u32, u32)>,
-    /// What each species has been doing: (species, the activity bits).
-    ///
-    /// This is the record of the network's own decisions — what the
-    /// creatures actually chose to do — and the tech tree is gated on it.
+
     pub activity: Vec<(u32, u32)>,
-    /// How deep each species has been: (species, the deepest it has gone).
-    ///
-    /// This is the record the tech tree is gated on. A colony that has
-    /// never been below the surface cannot work out how to go down.
+
     pub deepest: Vec<(u32, u32)>,
-    /// The discovery that was made last, and the species that made it.
+
     pub last_discovery: Option<(Discovery, u32)>,
 }
 
@@ -555,56 +428,38 @@ struct Vehicle {
     fuel: f32,
 }
 
-
 pub enum CreatureGenesis<'a> {
     Random,
     Child(&'a Creature),
-    /// A descendant of a previous run's dominant species. The genome is cloned
-    /// with extra mutation so the winning lineage diversifies again.
+
     Revival(&'a RevivalGenome),
-    /// The first of the ZORGs. They come from the bottom of the caves, and
-    /// they are their own species: they eat rock and poison and they are
-    /// hostile to everything.
+
     Zorg,
 }
 
-/// Snapshot of the winning species' best genome, carried into the next run.
 pub struct RevivalGenome {
     pub net: Net,
     pub color: [u8; 3],
     pub genes: [f32; 32],
     pub size: f32,
     pub generation: u32,
-    /// The practices the species had learned.
-    ///
-    /// The culture is inherited too, not only the body and the brain. The
-    /// practices are per-creature and the children of a colony inherit
-    /// them, so a lineage that carried its genes into the next revival and
-    /// left its traditions behind started every revival with nothing to
-    /// teach its young. That is not inheritance — it is amnesia.
+
     pub culture: u16,
-    /// The temperament of the animal that carried the lineage.
-    ///
-    /// The personality is inherited from the parents, and the parents of a
-    /// revival are the animal that carried the lineage. So the revived
-    /// animals start with the temperament it had, drifted a little.
+
     pub personality: Personality,
 }
 
-pub use actions::*;
-pub use bonds::*;
+use actions::*;
 pub use brain::*;
-pub use building::*;
+use building::*;
 pub use diplomacy::*;
 pub use enums::*;
-pub use growth::*;
+use growth::*;
 pub use heritage::*;
-pub use mating::*;
 pub use names::*;
 pub use personality::*;
 pub use plague::*;
 pub use predation::*;
-pub use sanctify::*;
 pub(crate) use spells::*;
 pub use tech::*;
 pub use senses::*;
@@ -612,4 +467,3 @@ pub use speciation::*;
 pub use succession::*;
 pub use technology::*;
 pub use zorg::*;
-

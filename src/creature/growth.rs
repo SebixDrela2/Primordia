@@ -1,15 +1,5 @@
-//! Growing up, and what the young learn from the old.
-//!
-//! A creature passes through three stages of life: a juvenile that cannot
-//! fight or breed, a full adult, and finally an elder that is slower but
-//! wiser. A young animal that grows up near an old one learns from it: it
-//! matures a little faster and picks up a practice it did not know. That is
-//! what gives old age a purpose in a colony.
-
 use super::*;
 
-/// Move the creature through the stages of its life and let the elders
-/// teach it.
 pub(crate) fn grow_and_learn(
     c: &mut Creature,
     grid: &SpatialGrid,
@@ -19,7 +9,7 @@ pub(crate) fn grow_and_learn(
     let lifespan = c.lifespan();
     let new_stage = Stage::of(c.age, lifespan, c.maturity_fraction());
     if new_stage != c.stage {
-        // Growing up costs energy, and the body changes with it.
+
         if new_stage == Stage::Adult {
             c.health = (c.health + 30.0).min(c.max_health());
             c.energy = (c.energy - 80.0).max(0.0);
@@ -31,7 +21,6 @@ pub(crate) fn grow_and_learn(
         return;
     }
 
-    // Find an elder of the same kind nearby.
     let mut elder: Option<u16> = None;
     let cx = c.x;
     let cy = c.y;
@@ -53,9 +42,9 @@ pub(crate) fn grow_and_learn(
     let Some(culture) = elder else {
         return;
     };
-    // The lesson speeds the young up.
+
     c.age += 1;
-    // And it teaches one practice the young did not know yet.
+
     for bit in [
         culture_bits::CULTIVATION,
         culture_bits::MINING,

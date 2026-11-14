@@ -1,12 +1,6 @@
 use crate::creature::{CreatureSystem, RelationState, Treaty};
 use macroquad::prelude::*;
 
-/// The diplomacy panel.
-///
-/// This is where the player reads what the species have done to each other:
-/// who is allied, who is paying tribute, who is at war and how much trust
-/// each pair has built up. Without it the whole sector would happen
-/// invisibly.
 pub fn draw_diplomacy_panel(c: &CreatureSystem, x: f32, y: f32) {
     let w = 336.0f32;
     let h = 400.0f32;
@@ -23,7 +17,6 @@ pub fn draw_diplomacy_panel(c: &CreatureSystem, x: f32, y: f32) {
         Color::new(0.45, 0.72, 1.0, 0.95),
     );
 
-    // The headline counters.
     let s = &d.stats;
     draw_text(
         &format!(
@@ -48,7 +41,6 @@ pub fn draw_diplomacy_panel(c: &CreatureSystem, x: f32, y: f32) {
 
     let mut yy = y + 54.0;
 
-    // ---- The relations ----
     draw_text(
         "RELATIONS",
         x + 12.0,
@@ -58,8 +50,6 @@ pub fn draw_diplomacy_panel(c: &CreatureSystem, x: f32, y: f32) {
     );
     yy += 15.0;
 
-    // Sort the relations so the interesting ones (wars, alliances) come
-    // first: a player should not have to hunt for the crisis.
     let mut rows: Vec<(i32, &crate::creature::Relation)> = d
         .relations
         .iter()
@@ -98,7 +88,6 @@ pub fn draw_diplomacy_panel(c: &CreatureSystem, x: f32, y: f32) {
         let col = r.state.color();
         let tint = Color::new(col[0] as f32 / 255.0, col[1] as f32 / 255.0, col[2] as f32 / 255.0, 0.95);
 
-        // A colour chip per species, so the pair is recognisable.
         let ca = c.species_color(r.a);
         let cb = c.species_color(r.b);
         draw_rectangle(
@@ -119,8 +108,6 @@ pub fn draw_diplomacy_panel(c: &CreatureSystem, x: f32, y: f32) {
         let label = format!("{} <-> {}", an, bn);
         draw_text(&label, x + 30.0, yy, 12.0, Color::new(0.86, 0.9, 0.95, 0.92));
 
-        // How big the two colonies are, so the player can see who is
-        // winning the arms race.
         let pa = c.species_population(r.a);
         let pb = c.species_population(r.b);
         let sizes = format!("{} vs {}", pa, pb);
@@ -142,7 +129,6 @@ pub fn draw_diplomacy_panel(c: &CreatureSystem, x: f32, y: f32) {
             tint,
         );
 
-        // The treaties in force, or what the state means.
         let treaties: Vec<&str> = r.treaties.iter().map(|t| t.name()).collect();
         let tlabel = if treaties.is_empty() {
             r.state.blurb().to_string()
@@ -157,8 +143,6 @@ pub fn draw_diplomacy_panel(c: &CreatureSystem, x: f32, y: f32) {
             Color::new(0.62, 0.7, 0.78, 0.8),
         );
 
-        // The trust bar sits below the text: red for hatred, green for
-        // warmth. It is drawn last so it can never cut through a label.
         let bar_x = x + 30.0;
         let bar_y = yy + 32.0;
         let bar_w = w - 42.0;
@@ -181,7 +165,6 @@ pub fn draw_diplomacy_panel(c: &CreatureSystem, x: f32, y: f32) {
         yy += 44.0;
     }
 
-    // ---- The event feed ----
     if yy < y + h - 60.0 {
         draw_line(
             x + 12.0,
@@ -215,7 +198,6 @@ pub fn draw_diplomacy_panel(c: &CreatureSystem, x: f32, y: f32) {
     }
 }
 
-/// A one-line summary of the diplomatic situation, for the HUD.
 pub fn diplomacy_summary(c: &CreatureSystem) -> String {
     let d = &c.diplomacy;
     let s = &d.stats;
@@ -235,7 +217,6 @@ pub fn diplomacy_summary(c: &CreatureSystem) -> String {
     )
 }
 
-/// The treaties a species currently holds, as a short list.
 pub fn treaties_of(c: &CreatureSystem, species: u32) -> Vec<Treaty> {
     let mut v = Vec::new();
     for r in c.diplomacy.relations.iter() {
@@ -248,7 +229,6 @@ pub fn treaties_of(c: &CreatureSystem, species: u32) -> Vec<Treaty> {
     v
 }
 
-/// The treaties a species currently holds, for the creature tooltip.
 pub fn treaty_blurbs(c: &CreatureSystem, species: u32) -> Vec<String> {
     treaties_of(c, species)
         .iter()

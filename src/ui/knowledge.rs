@@ -4,7 +4,6 @@ use crate::elements::Elem;
 use crate::world::World;
 use macroquad::prelude::*;
 
-
 pub enum HoverTarget {
     None,
     Element { x: i32, y: i32, elem: Elem },
@@ -14,20 +13,15 @@ pub enum HoverTarget {
 pub struct UiState {
     pub     hover: HoverTarget,
     pub     knowledge_open: bool,
-    /// The tech tree window (toggled with T).
+
     pub     tech_open: bool,
-    /// How far the tech tree has been scrolled.
+
     pub     tech_scroll: f32,
-    /// Whether the diplomacy panel is on screen (toggled with G).
+
     pub     diplomacy_open: bool,
-    /// The mind inspector (toggled with M).
+
     pub     minds_open: bool,
-    /// Which mind the inspector is showing.
-    ///
-    /// Not a scroll offset: the inspector shows one mind at a time, and
-    /// the wheel walks from one of the cleverest animals to the next. The
-    /// inspector clamps it to the number of minds it has, so the count
-    /// cannot run away.
+
     pub     minds_index: f32,
     pub     discovered_elements: Vec<u8>,
     pub     discovered_creatures: Vec<u32>,
@@ -62,7 +56,6 @@ impl UiState {
     }
 }
 
-/// Draw a tooltip at the mouse position showing what's under the cursor.
 pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx: f32, my: f32) {
     match &ui.hover {
         HoverTarget::None => return,
@@ -149,7 +142,7 @@ pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx
             lines.push(format!("age {}  size {:.1}  tech {}", c.age, c.size, c.tech_level));
             lines.push(format!("tool {}  carried {:.0}", tool_str, c.carried));
             lines.push(format!("kills {}  offspring {}", c.kills, c.offspring));
-            // The life stage and the temperament.
+
             lines.push(format!(
                 "stage: {} ({})",
                 c.stage.name(),
@@ -161,7 +154,7 @@ pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx
                 c.affinity.name(),
                 c.affinity.blurb()
             ));
-            // The life history of the species.
+
             let strategy = if c.traits & creature::trait_bits::PROLIFIC != 0 {
                 "prolific"
             } else if c.traits & creature::trait_bits::PROLONGED != 0 {
@@ -176,7 +169,7 @@ pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx
                 c.lifespan() as f32,
                 c.brood_cost()
             ));
-            // The bond, if it has one.
+
             if let Some(partner) = c.bond {
                 let alive = creatures.list.iter().any(|o| o.id == partner && o.health > 0.0);
                 lines.push(format!(
@@ -185,9 +178,7 @@ pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx
                     if alive { "alive" } else { "lost" }
                 ));
             }
-            // What the species has learned to do. One practice per line: a
-            // colony that knows everything would otherwise make a line
-            // wider than the screen.
+
             let culture: Vec<String> = culture_list(c.culture)
                 .iter()
                 .map(|cu| format!("{} ({})", cu.name(), cu.blurb()))
@@ -198,8 +189,7 @@ pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx
                     lines.push(format!("  {}", cu));
                 }
             }
-            // The tech the species knows: what it has worked out and what
-            // it can make.
+
             let tech = crate::ui::tech::tech_of(c);
             if tech != "nothing yet" {
                 lines.push(format!("tech: {}", tech));
@@ -212,7 +202,7 @@ pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx
                     plague.blurb()
                 ));
             }
-            // The diplomatic standing of this creature and its species.
+
             if c.role == creature::Role::Envoy || c.pacts_signed > 0 {
                 lines.push(format!(
                     "envoy: {} pacts signed  rep {}",
@@ -248,7 +238,7 @@ pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx
             for line in relations.iter().take(4) {
                 lines.push(line.clone());
             }
-            // Who this species is afraid of, and who fears it.
+
             let fears: Vec<String> = creatures
                 .predation
                 .entries()
@@ -265,7 +255,7 @@ pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx
             for line in fears.iter().take(3) {
                 lines.push(line.clone());
             }
-            // What the treaties actually mean, spelled out for the player.
+
             for line in crate::ui::diplomacy::treaty_blurbs(creatures, c.species) {
                 lines.push(format!("  {}", line));
             }
@@ -280,7 +270,6 @@ pub fn draw_tooltip_box(lines: Vec<String>, mx: f32, my: f32) {
         return;
     }
 
-    // Measure the widest line
     let mut max_w: f32 = 0.0;
     let mut total_h = 0.0;
     for line in &lines {
@@ -292,13 +281,10 @@ pub fn draw_tooltip_box(lines: Vec<String>, mx: f32, my: f32) {
 
     let pad = 6.0;
     let margin = 4.0;
-    // The box never grows wider than the screen. A long line is cut short
-    // rather than the box running off the edge, which would leave the
-    // clamp below with nothing to clamp to.
+
     let box_w = (max_w + pad * 2.0).min(screen_width() - margin * 2.0).max(64.0);
     let box_h = total_h + pad * 2.0;
 
-    // Position below-right of cursor, clamped to screen
     let mut bx = mx + 14.0;
     let mut by = my + 14.0;
     if bx + box_w > screen_width() {
@@ -307,22 +293,18 @@ pub fn draw_tooltip_box(lines: Vec<String>, mx: f32, my: f32) {
     if by + box_h > screen_height() {
         by = my - box_h - 14.0;
     }
-    // The bounds must never cross over, or the clamp panics on a window
-    // that is smaller than the box.
+
     let max_bx = (screen_width() - box_w - margin).max(margin);
     let max_by = (screen_height() - box_h - margin).max(margin);
     bx = bx.clamp(margin, max_bx);
     by = by.clamp(margin, max_by);
 
-    // Background
     draw_rectangle(bx, by, box_w, box_h, Color::new(0.05, 0.05, 0.08, 0.85));
     draw_rectangle_lines(bx, by, box_w, box_h, 1.5, Color::new(0.3, 0.5, 0.7, 0.9));
 
-    // Title (first line)
     let title_color = Color::new(0.7, 0.85, 1.0, 1.0);
     draw_text(&lines[0], bx + pad, by + pad + 12.0, 14.0, title_color);
 
-    // Remaining lines
     let mut yy = by + pad + 12.0 + 16.0;
     for line in &lines[1..] {
         draw_text(line, bx + pad, yy, 12.0, Color::new(0.85, 0.9, 0.95, 0.85));
@@ -330,14 +312,12 @@ pub fn draw_tooltip_box(lines: Vec<String>, mx: f32, my: f32) {
     }
 }
 
-/// Draw the knowledge window: an encyclopedia of all discovered elements and creatures.
 pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiState) {
     let w = 520.0;
     let h = screen_height() * 0.85;
     let x = screen_width() - w - 20.0;
     let y = 40.0;
 
-    // Background
     draw_rectangle(x, y, w, h, Color::new(0.06, 0.06, 0.09, 0.93));
     draw_rectangle_lines(x, y, w, h, 2.0, Color::new(0.3, 0.5, 0.7, 0.9));
 
@@ -345,7 +325,6 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
     draw_rectangle_lines(x + 16.0, y + 34.0, 100.0, 2.0, 1.0, Color::new(0.3, 0.5, 0.7, 0.6));
     draw_text("press K to close", x + 16.0, y + 52.0, 14.0, Color::new(0.5, 0.55, 0.6, 0.7));
 
-    // What a creature can decide to do.
     draw_text("BEHAVIOURS", x + 16.0, y + 76.0, 13.0, Color::new(0.4, 0.75, 0.9, 0.85));
     let abilities = [
         ("SHOOT", "fire a bow or staff at a rival"),
@@ -369,7 +348,6 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
 
     let mut yy = ay + 14.0;
 
-    // ---- The landmarks and who has claimed them ----
     if !world.landmarks.is_empty() {
         yy += 8.0;
         draw_text(
@@ -381,7 +359,7 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
         );
         yy += 22.0;
         for l in world.landmarks.iter() {
-            // Who lives here?
+
             let mut occupants: Vec<(u32, u32)> = Vec::new();
             for c in &creatures.list {
                 if c.role == creature::Role::Queen
@@ -426,7 +404,7 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
     }
 
     {
-        // (species, members, traits, colour, affinity, culture)
+
         let mut counts: Vec<(u32, u32, u32, [u8; 3], Affinity, u16)> = Vec::new();
         for c in &creatures.list {
             match counts.iter_mut().find(|(id, _, _, _, _, _)| *id == c.species) {
@@ -486,18 +464,16 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
                     11.0,
                     Color::new(0.65, 0.75, 0.7, 0.85),
                 );
-                // What the species has become adapted to, and what it has
-                // learned to do.
+
                 let practices: Vec<&str> = culture_list(*culture)
                     .iter()
                     .map(|cu| cu.name())
                     .collect();
-                // A colony that has learned to hunt is a predator, and the
-                // player should be able to see that at a glance.
+
                 let hunting = culture_list(*culture)
                     .iter()
                     .any(|cu| *cu == creature::Culture::Hunting);
-                // What the species has worked out for itself.
+
                 let found: Vec<&str> = creature::discovery_list(
                     creatures.species_discoveries(*sp),
                 )
@@ -537,12 +513,10 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
         }
     }
 
-    // ---- Elements section ----
     if !ui.discovered_elements.is_empty() {
         draw_text("ELEMENTS DISCOVERED", x + 16.0, yy, 16.0, Color::new(0.85, 0.9, 0.95, 0.9));
         yy += 22.0;
 
-        // Group by category
         let mut cats: Vec<(&str, Vec<u8>)> = Vec::new();
         for &id in &ui.discovered_elements {
             let e = Elem::from_u8(id);
@@ -562,12 +536,12 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
                 let name = e.name();
                 let desc = e.description();
                 let color = e.color();
-                // color swatch
+
                 draw_rectangle(x + 24.0, yy - 2.0, 10.0, 10.0, Color::new(
                     color[0] as f32 / 255.0, color[1] as f32 / 255.0, color[2] as f32 / 255.0, 0.9,
                 ));
                 draw_text(name, x + 40.0, yy + 8.0, 13.0, Color::new(0.9, 0.95, 1.0, 0.95));
-                // short desc
+
                 let short = if desc.len() > 60 { format!("{}...", &desc[..60]) } else { desc.to_string() };
                 draw_text(&short, x + 40.0, yy + 20.0, 11.0, Color::new(0.65, 0.7, 0.75, 0.8));
                 yy += 34.0;
@@ -577,7 +551,6 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
         yy += 16.0;
     }
 
-    // ---- Creatures section ----
     if !ui.discovered_creatures.is_empty() {
         draw_text("CREATURES OBSERVED", x + 16.0, yy, 16.0, Color::new(0.85, 0.9, 0.95, 0.9));
         yy += 22.0;

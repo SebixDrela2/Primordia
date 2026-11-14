@@ -1,21 +1,12 @@
-//! Dynamic light field.
-//!
-//! Emissive cells (lava, fire, crystals, mana) cast light into the world.
-//! The field is built at a quarter of the render resolution - light is a soft
-//! quantity, so the low resolution is invisible and the whole pass costs a
-//! fraction of a per-cell computation at full resolution.
-
-/// One light cell covers this many world cells in each direction.
 pub const LIGHT_SCALE: usize = 4;
 
-/// RGB light buffer, one entry per light cell.
 pub struct LightField {
     pub w: usize,
     pub h: usize,
     pub buf: Vec<[f32; 3]>,
-    /// Scratch buffer for the separable blur.
+
     tmp: Vec<[f32; 3]>,
-    /// Prefix sums for the blur, reused between frames.
+
     prefix: Vec<[f32; 3]>,
 }
 
@@ -30,7 +21,6 @@ impl LightField {
         }
     }
 
-    /// Resize the field, keeping the buffers allocated.
     pub fn resize(&mut self, w: usize, h: usize) {
         if self.w == w && self.h == h {
             return;
@@ -52,8 +42,6 @@ impl LightField {
         }
     }
 
-    /// Add light at a light-cell coordinate. Contributions are clamped so a
-    /// huge lava chamber cannot blow the whole cave out to white.
     #[inline]
     pub fn add(&mut self, x: usize, y: usize, c: [f32; 3]) {
         if x >= self.w || y >= self.h {
@@ -65,13 +53,6 @@ impl LightField {
         e[2] = (e[2] + c[2]).min(3.0);
     }
 
-    /// Spread the light with a box blur, run once horizontally and once
-    /// vertically.
-    ///
-    /// The edges are clamped and the average is normalised by the number of
-    /// samples that were actually taken. A plain running sum gets the edges
-    /// wrong, and because the field's origin moves with the camera, that
-    /// error showed up as a flash of lighting whenever the view moved.
     pub fn blur(&mut self, radius: usize) {
         if radius == 0 || self.w == 0 || self.h == 0 {
             return;
@@ -87,12 +68,7 @@ impl LightField {
         if r == 0 {
             return;
         }
-        // A prefix sum over the row gives the window total in constant time.
-        // The window is clamped at the edges and the divisor is the number of
-        // samples actually taken, so the result does not depend on where the
-        // field starts. A plain running sum gets the clipped edges subtly
-        // wrong, and because the field's origin moves with the camera, that
-        // error showed up as a flash of lighting whenever the view moved.
+
         let mut prefix = std::mem::take(&mut self.prefix);
         prefix.resize(w + 1, [0.0; 3]);
         for y in 0..h {
@@ -127,7 +103,7 @@ impl LightField {
         if r == 0 {
             return;
         }
-        // A prefix sum down the column.
+
         let mut prefix = std::mem::take(&mut self.prefix);
         prefix.resize(h + 1, [0.0; 3]);
         for x in 0..w {
@@ -153,14 +129,9 @@ impl LightField {
         self.prefix = prefix;
     }
 
-    /// Convert the raw light into the final additive colour, in place.
-    ///
-    /// Doing this once per light cell instead of once per pixel is what keeps
-    /// the pixel loop cheap: the inner loop only adds three numbers.
     pub fn finalize(&mut self) {
         for c in self.buf.iter_mut() {
-            // Warm light dominates; the blue channel keeps it from turning
-            // everything orange.
+
             let lr = c[0].max(c[1] * 0.85).max(c[2] * 0.6);
             let lg = c[1].max(c[0] * 0.45);
             let lb = c[2].max(c[0] * 0.25);

@@ -1,14 +1,4 @@
-//! Headless check for the diplomacy sector.
-//!
-//! cargo run --release --bin diplcheck -- [steps] [seed]
-//!
-//! Runs a world without a renderer and reports what the species did to each
-//! other: the treaties that were signed, the wars that were declared and how
-//! the relations evolved. It also asserts the invariants that matter:
-//! - an alliance must keep the two species from attacking each other
-//! - a war must make even peaceful species fight
-//! - a broken treaty must cost trust
-
+#![allow(dead_code)]
 #[path = "../creature/mod.rs"]
 mod creature;
 #[path = "../elements/mod.rs"]
@@ -110,10 +100,8 @@ fn main() {
     println!("  envoys:      {}", d.stats.envoys);
     println!("  peak pairs:  {}", peak_relations);
 
-    // ---- Invariants ----
     let mut failures = 0;
 
-    // 1. An alliance must never coexist with a war between the same pair.
     for r in d.relations.iter() {
         if r.state == RelationState::Allied && r.has(Treaty::Alliance) && r.state == RelationState::War {
             println!("FAIL: allied and at war at once");
@@ -121,7 +109,6 @@ fn main() {
         }
     }
 
-    // 2. Trust must stay inside its range.
     for r in d.relations.iter() {
         if r.trust < -100.0 || r.trust > 100.0 {
             println!("FAIL: trust out of range: {}", r.trust);
@@ -129,7 +116,6 @@ fn main() {
         }
     }
 
-    // 3. No relation may point at a species that no longer exists.
     let alive: Vec<u32> = creatures.list.iter().map(|c| c.species).collect();
     for r in d.relations.iter() {
         if !alive.contains(&r.a) || !alive.contains(&r.b) {
@@ -138,30 +124,23 @@ fn main() {
         }
     }
 
-    // 4. Allied species must never be adjacent enemies in the same tick:
-    //    no member of an alliance may be attacking its partner.
     for c in creatures.list.iter() {
         for other in creatures.list.iter() {
             if c.species == other.species {
                 continue;
             }
             if d.are_allied(c.species, other.species) {
-                // Nothing to assert on the pair directly; the combat code
-                // skips allies by construction.
+
                 break;
             }
         }
     }
 
-    // 5. A war must be able to end. If any war was declared in this run,
-    //    at least one of them has to have been worn down into a truce:
-    //    otherwise the world would only ever get more bloody.
     if d.stats.wars > 0 && d.stats.truces == 0 {
         println!("FAIL: {} wars declared but no war ever ended in a truce", d.stats.wars);
         failures += 1;
     }
 
-    // 6. A truce must leave the pair out of the war state.
     for r in d.relations.iter() {
         if r.has(Treaty::Ceasefire) && r.state == RelationState::War {
             println!("FAIL: ceasefire signed while still at war");

@@ -4,7 +4,6 @@ use crate::world::World;
 use crate::{H, W};
 use macroquad::prelude::*;
 
-/// Soft darkening towards the screen edges.
 pub fn draw_vignette() {
     let w = screen_width();
     let h = screen_height();
@@ -22,7 +21,6 @@ pub fn draw_vignette() {
     }
 }
 
-/// Screen-space weather: rain streaks, snow and storm flashes.
 pub fn draw_weather(weather: world::Weather, time: f32) {
     let w = screen_width();
     let h = screen_height();
@@ -57,8 +55,7 @@ pub fn draw_weather(weather: world::Weather, time: f32) {
             }
         }
         world::Weather::Sandstorm => {
-            // The wind carries grains of sand across the screen in long,
-            // fast streaks.
+
             for i in 0..140 {
                 let fi = i as f32;
                 let ii = i as u32;
@@ -79,7 +76,6 @@ pub fn draw_weather(weather: world::Weather, time: f32) {
     }
 }
 
-/// The species with the most living members (ties broken by lowest id).
 pub fn dominant_species(creatures: &CreatureSystem) -> Option<u32> {
     let mut counts: Vec<(u32, u32)> = Vec::new();
     for c in &creatures.list {
@@ -92,10 +88,6 @@ pub fn dominant_species(creatures: &CreatureSystem) -> Option<u32> {
     counts.first().map(|(id, _)| *id)
 }
 
-/// The player species with the most living members.
-///
-/// The ZORGs are not a player: they are the deep's own hostile faction,
-/// so they never carry a genome into the next revival and they never win.
 pub fn dominant_player_species(creatures: &CreatureSystem) -> Option<u32> {
     let mut counts: Vec<(u32, u32)> = Vec::new();
     for c in &creatures.list {
@@ -111,7 +103,6 @@ pub fn dominant_player_species(creatures: &CreatureSystem) -> Option<u32> {
     counts.first().map(|(id, _)| *id)
 }
 
-/// Bottom-left minimap: terrain, species dots and the current camera viewport.
 pub fn draw_minimap(
     creatures: &CreatureSystem,
     world: &World,
@@ -126,7 +117,7 @@ pub fn draw_minimap(
     let x = 18.0;
     let y = screen_height() - mh - 44.0;
     if y < 180.0 {
-        return; // too little vertical space; don't cover the HUD
+        return;
     }
 
     draw_rectangle(
@@ -136,7 +127,7 @@ pub fn draw_minimap(
         mh + 6.0,
         Color::new(0.02, 0.03, 0.05, 0.82),
     );
-    // Downsampled terrain.
+
     draw_texture_ex(
         mini_texture,
         x,
@@ -150,7 +141,6 @@ pub fn draw_minimap(
     draw_rectangle(x, y, mw, mh, Color::new(0.02, 0.04, 0.07, 0.25));
     draw_rectangle_lines(x, y, mw, mh, 1.0, Color::new(0.3, 0.5, 0.7, 0.55));
 
-    // The landmarks: the places worth fighting over.
     for l in &world.landmarks {
         let px = x + (l.x / W as f32).clamp(0.0, 1.0) * mw;
         let py = y + (l.y / H as f32).clamp(0.0, 1.0) * mh;
@@ -173,7 +163,6 @@ pub fn draw_minimap(
         draw_circle_lines(px, py, 4.5, 1.0, col);
     }
 
-    // The volcano, marked so the danger is visible at a glance.
     if let Some((vx, vy)) = world.volcano() {
         let px = x + (vx as f32 / W as f32).clamp(0.0, 1.0) * mw;
         let py = y + (vy as f32 / H as f32).clamp(0.0, 1.0) * mh;
@@ -186,8 +175,6 @@ pub fn draw_minimap(
         draw_circle_lines(px, py, 5.0, 1.2, Color::new(1.0, 0.5, 0.2, 0.5 + 0.5 * hot));
     }
 
-    // The species that are at war are marked in red, so the state of the
-    // world can be read from the map.
     let mut warring: Vec<u32> = Vec::new();
     for r in creatures.diplomacy.relations.iter() {
         if r.state == crate::creature::RelationState::War {
@@ -226,4 +213,3 @@ pub fn draw_minimap(
 
     draw_text("MAP", x + 5.0, y + 13.0, 11.0, Color::new(0.6, 0.7, 0.8, 0.6));
 }
-

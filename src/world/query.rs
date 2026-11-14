@@ -1,12 +1,7 @@
 use super::*;
 
 impl World {
-    /// How much fresh air there is around a point.
-    ///
-    /// The plants of the surface breathe out oxygen in the daylight, and
-    /// the oxygen floats up and hangs about. A creature standing in fresh
-    /// air tires more slowly, and a creature in a sealed cave tires
-    /// faster: the deep is a stale, breathless place.
+
     pub fn fresh_air(&self, x: i32, y: i32, radius: i32) -> f32 {
         let mut n = 0;
         for dy in -radius..=radius {
@@ -23,19 +18,12 @@ impl World {
         !self.get(x, y).is_passable()
     }
 
-    /// Find a good place to put a farm near `(x, y)`.
-    ///
-    /// A farm only works if it stands on open ground with water within
-    /// reach, so the search looks for a surface cell that satisfies both.
-    /// It returns the cell to build on and the cell to plant the first
-    /// seedling in.
     pub fn find_farm_site(&self, x: i32, y: i32, radius: i32) -> Option<(i32, i32, i32, i32)> {
-        // Try the cells closest to the creature first, so the farm ends up
-        // near the colony rather than at the far edge of the world.
+
         for r in 1..=radius {
             for dy in -r..=r {
                 for dx in -r..=r {
-                    // Only the ring at this radius.
+
                     if dx.abs() != r && dy.abs() != r {
                         continue;
                     }
@@ -44,26 +32,24 @@ impl World {
                     if nx < 1 || ny < 1 || nx >= self.w as i32 - 1 || ny >= self.h as i32 - 1 {
                         continue;
                     }
-                    // The plot itself must be free and stand on the ground.
+
                     if self.get(nx, ny) != Elem::Empty {
                         continue;
                     }
                     let surface = self.surface_y(nx);
-                    // A farm belongs on the surface, not buried or floating.
+
                     if ny < surface - 1 || ny > surface + 4 {
                         continue;
                     }
-                    // There must be ground under it.
+
                     if self.get(nx, ny + 1) == Elem::Empty {
                         continue;
                     }
-                    // And there must be water within reach, or the plot is
-                    // dead ground.
+
                     if !self.has_water_near(nx, ny, FARM_WATER_RADIUS) {
                         continue;
                     }
-                    // Find a free cell next to the plot to sow the first
-                    // seedling in.
+
                     for (ox, oy) in [(0, -1), (1, 0), (-1, 0), (0, 1)] {
                         let px = nx + ox;
                         let py = ny + oy;
@@ -77,9 +63,6 @@ impl World {
         None
     }
 
-    // Loose debris (powders, ice, organics) that a creature can shove aside or
-    // dig through with its bare hands. Used so falling material can never
-    // permanently entomb a creature.
     pub fn is_loose(e: Elem) -> bool {
         matches!(
             e,
@@ -106,8 +89,6 @@ impl World {
         )
     }
 
-    // Remove loose debris that settled on a creature's cell. Returns true if
-    // anything was cleared.
     pub fn clear_burrow(&mut self, x: i32, y: i32) -> bool {
         let e = self.get(x, y);
         if e == Elem::Empty || e == Elem::Void {
@@ -117,7 +98,6 @@ impl World {
         true
     }
 
-    // Eats the cell at (x,y). Returns (nutrition, toxicity) if something was eaten.
     pub fn eat(&mut self, x: i32, y: i32) -> Option<(f32, f32)> {
         let i = self.idx_xy(x, y)?;
         let e = Elem::from_u8(self.kind[i]);
@@ -133,8 +113,6 @@ impl World {
         Some((n, t))
     }
 
-    // Nearest edible cell around (x,y) within `radius`, used by hungry creatures.
-    // Only real food is targeted, never rock/ore, so the terrain survives.
     pub fn find_food(&self, x: i32, y: i32, radius: i32) -> Option<(i32, i32)> {
         let mut best: Option<(i32, i32, i32)> = None;
         let r2 = radius * radius;
@@ -144,8 +122,7 @@ impl World {
                 if d2 > r2 {
                     continue;
                 }
-                // Direct indexing plus a lookup table: this runs for every
-                // hungry creature every step.
+
                 let sx = x + dx;
                 let sy = y + dy;
                 if sx < 0 || sy < 0 || sx >= self.w as i32 || sy >= self.h as i32 {
@@ -162,19 +139,6 @@ impl World {
         best.map(|b| (b.0, b.1))
     }
 
-    /// The best thing a ZORG can eat around (x,y) within `radius`.
-    ///
-    /// A ZORG eats the rock and the poison of the deep, so it looks for a
-    /// completely different set of cells than a player does. The stone it
-    /// chews is the stone it digs its tunnels with.
-    ///
-    /// It goes for the richest bite rather than the nearest one: a pool of
-    /// acid is a feast and a wall of stone is only bread.
-    ///
-    /// It can only eat what it touches, though: the rock right beside it,
-    /// or a pool of poison it is standing in. A ZORG that could eat the
-    /// walls of its own cave from across it would hollow the cave out and
-    /// then starve in the hole it had made.
     pub fn find_zorg_food(&self, x: i32, y: i32, radius: i32) -> Option<(i32, i32)> {
         let mut best: Option<(i32, i32, f32, i32)> = None;
         let r2 = radius * radius;
@@ -193,16 +157,13 @@ impl World {
                 if k == Elem::Empty as u8 || !self.zorg_food_table[k as usize] {
                     continue;
                 }
-                // What it can reach: the rock beside it, or a pool of poison
-                // it can wade into. It does not eat the floor it is
-                // standing on: a ZORG that ate its own floor would swallow
-                // the larder whole and then starve in the hole.
+
                 let touching = dx.abs() <= 1 && dy.abs() <= 1 && dy <= 0;
                 if !touching && !Elem::from_u8(k).is_passable() {
                     continue;
                 }
                 let nutrition = self.zorg_nutrition_table[k as usize];
-                // The richest bite wins; the closest one breaks the tie.
+
                 let better = match best {
                     None => true,
                     Some((_, _, n, d)) => nutrition > n || (nutrition == n && d2 < d),
@@ -215,10 +176,6 @@ impl World {
         best.map(|b| (b.0, b.1))
     }
 
-    /// A ZORG eats a cell.
-    ///
-    /// The nutrition comes from the ZORG table, and nothing it eats is ever
-    /// poison to it: the acid and the tar of the deep are its meat.
     pub fn eat_zorg(&mut self, x: i32, y: i32) -> Option<(f32, f32)> {
         let i = self.idx_xy(x, y)?;
         let e = Elem::from_u8(self.kind[i]);
@@ -230,11 +187,10 @@ impl World {
             return None;
         }
         self.set_at(i, Elem::Empty);
-        // Nothing in the deep is poison to a ZORG.
+
         Some((n, crate::creature::zorg_toxicity(e)))
     }
 
-    // Nearest water cell within `radius`, used when a creature is thirsty.
     pub fn find_water(&self, x: i32, y: i32, radius: i32) -> Option<(i32, i32)> {
         let mut best: Option<(i32, i32, i32)> = None;
         for dy in -radius..=radius {
@@ -253,7 +209,6 @@ impl World {
         best.map(|b| (b.0, b.1))
     }
 
-    // Nearest gatherable solid/resource cell within `radius`.
     pub fn find_resource(&self, x: i32, y: i32, radius: i32) -> Option<(i32, i32)> {
         let mut best: Option<(i32, i32, i32)> = None;
         let r2 = radius * radius;
@@ -279,30 +234,16 @@ impl World {
         best.map(|b| (b.0, b.1))
     }
 
-    // Leaves remains where a creature died: the body, and who it belonged to.
-    //
-    // A death leaves a body, and the body says whose body it is. That
-    // matters, because the rule of this world is that a colony lives off
-    // the ground it stands on: the plants, the fungus and the farms. A
-    // creature may eat the dead of another species - that is what a war
-    // is worth - but it will never eat its own dead. The corpse carries
-    // the species id, and the mouth checks it.
-    //
-    // Nothing edible is dropped with it: no meat, no glowing motes. A
-    // death is a mark on the ground, not a meal.
     pub fn scavenge(&mut self, x: i32, y: i32, species: u32) {
         if let Some(i) = self.idx_xy(x, y) {
             if self.kind[i] == Elem::Empty as u8 {
                 self.set_at(i, Elem::Corpse);
-                // Species zero is the ZORGs and the player species are
-                // numbered from one, so the owner is stored plus one and
-                // zero can mean "nobody's".
+
                 self.owner[i] = species.saturating_add(1).min(u8::MAX as u32) as u8;
             }
         }
     }
 
-    /// Whose body is lying here, if anybody's.
     pub fn owner_at(&self, x: i32, y: i32) -> Option<u32> {
         match self.idx_xy(x, y) {
             Some(i) => match self.owner[i] {
@@ -313,8 +254,6 @@ impl World {
         }
     }
 
-    // Find an empty passable cell within `radius` of (x, y), scanning outward.
-    // Used so creatures never spawn inside solid blocks or deep water.
     pub fn find_empty_passable_near(&self, x: i32, y: i32, radius: i32) -> Option<(i32, i32)> {
         let w = self.w as i32;
         let h = self.h as i32;

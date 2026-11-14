@@ -1,16 +1,4 @@
-//! Headless check for the life and evolution systems.
-//!
-//! cargo run --release --bin lifecheck -- [steps] [seed]
-//!
-//! Runs a world without a renderer and reports what the life of the colony
-//! looks like: the ages of the creatures, the traits that have evolved, the
-//! cultures the species have developed and the courtships that have taken
-//! place. It also asserts the invariants that matter:
-//! - a creature must pass through juvenile, adult and elder
-//! - a child must inherit its parent's temperament
-//! - a child of two parents must be a blend of the two
-//! - the trust and affinity ranges must hold
-
+#![allow(dead_code)]
 #[path = "../creature/mod.rs"]
 mod creature;
 #[path = "../elements/mod.rs"]
@@ -22,7 +10,7 @@ mod rng;
 #[path = "../world/mod.rs"]
 mod world;
 
-use creature::{Affinity, Culture, CreatureSystem, Stage, culture_list, trait_list};
+use creature::{Affinity, CreatureSystem, Stage, culture_list, trait_list};
 use world::World;
 
 const W: usize = 1280;
@@ -51,14 +39,9 @@ fn main() {
     let mut saw_affinity = false;
     let mut saw_culture = false;
     let mut max_trait_count = 0u32;
-    // Every colony that has settled beside a landmark: (x, y, species).
+
     let mut landmark_claims: Vec<(f32, f32, u32)> = Vec::new();
 
-    // ---- The ZORG cave ----
-    //
-    // The deep has a chamber of its own, and every founding ZORG is born
-    // inside it. The cave has to be far below the surface: a ZORG cave
-    // that sits up in the sky would be a hole in the world.
     println!("--- the ZORG cave ---");
     let cave = world.zorg_cave_center();
     match cave {
@@ -77,7 +60,7 @@ fn main() {
                 println!("FAIL: the ZORG cave is in the bedrock");
                 failures += 1;
             }
-            // Every ZORG has to start inside it.
+
             let mut outside = 0;
             for c in creatures.list.iter() {
                 if c.faction != creature::Faction::Zorg {
@@ -104,14 +87,13 @@ fn main() {
         world.step();
         creatures.step(&mut world);
 
-        // Record the colonies that have settled.
         for c in &creatures.list {
             if c.role != creature::Role::Queen {
                 continue;
             }
             let claimed = landmark_claims
                 .iter()
-                .any(|(x, y, sp)| *sp == c.species && (*x - c.base_x).abs() < 1.0);
+                .any(|(x, _y, sp)| *sp == c.species && (*x - c.base_x).abs() < 1.0);
             if !claimed {
                 landmark_claims.push((c.base_x, c.base_y, c.species));
             }
@@ -133,7 +115,7 @@ fn main() {
             if tc > max_trait_count {
                 max_trait_count = tc;
             }
-            // The temperament has to stay in range.
+
             let p = &c.personality;
             for v in [
                 p.aggression,
@@ -147,7 +129,7 @@ fn main() {
                     failures += 1;
                 }
             }
-            // A juvenile must not be fighting or breeding.
+
             if c.stage == Stage::Juvenile && c.energy > c.max_energy {
                 println!("FAIL: juvenile has more than its maximum energy");
                 failures += 1;
@@ -156,8 +138,7 @@ fn main() {
 
         if i % 1500 == 0 && i > 0 {
             let s = &creatures.stats;
-            // The largest colony in the world: this is what a species has
-            // to reach before it can split.
+
             let mut counts: std::collections::BTreeMap<u32, u32> =
                 std::collections::BTreeMap::new();
             for c in &creatures.list {
@@ -197,7 +178,6 @@ fn main() {
         }
     }
 
-    // ---- The species and what they have become ----
     println!("\n--- species ---");
     let mut seen: Vec<u32> = Vec::new();
     for c in &creatures.list {
@@ -219,11 +199,6 @@ fn main() {
         );
     }
 
-    // ---- The ZORGs ----
-    //
-    // The ZORGs live in the deep and are hostile to everything. They must
-    // be there from the start, they must never be a player, and they must
-    // never be allied with anything.
     println!("\n--- the deep ---");
     let zorgs = creatures.list.iter().filter(|c| c.faction == creature::Faction::Zorg).count();
     println!("  ZORGs alive: {}", zorgs);
@@ -239,7 +214,7 @@ fn main() {
             println!("FAIL: the ZORGs are more than one species");
             failures += 1;
         }
-        // A ZORG is never allied with anything, and always at war.
+
         for r in creatures.diplomacy.relations.iter() {
             if r.a == first || r.b == first {
                 if r.has(crate::creature::Treaty::Alliance) {
@@ -249,7 +224,7 @@ fn main() {
             }
         }
     }
-    // A ZORG must never be counted as a player species.
+
     let player_species: Vec<u32> = creatures
         .list
         .iter()
@@ -260,13 +235,13 @@ fn main() {
         println!("FAIL: a ZORG is counted as a player species");
         failures += 1;
     }
-    // No player species may be purple: purple belongs to the ZORGs.
+
     for c in creatures.list.iter() {
         if c.faction != creature::Faction::Player {
             continue;
         }
         let [r, g, b] = c.team_color;
-        // Purple is a strong red and blue with a weak green.
+
         if r > 90 && b > 90 && g + 40 < r.min(b) {
             println!("FAIL: a player species is purple: {:?} {}", c.team_color, r);
             failures += 1;
@@ -274,7 +249,6 @@ fn main() {
         }
     }
 
-    // ---- The colonies and their queens ----
     println!("\n--- succession ---");
     let in_crisis = creatures.species_in_crisis();
     println!("  colonies in crisis: {} of {}", in_crisis.len(), creatures.stats.species);
@@ -282,7 +256,6 @@ fn main() {
         println!("    the {} has no queen", creature::species_name_for(*sp));
     }
 
-    // ---- The food web: who eats whom ----
     println!("\n--- predation ---");
     let mut fear_rows: Vec<(u32, u32, f32)> = creatures.predation.entries().to_vec();
     fear_rows.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
@@ -298,7 +271,6 @@ fn main() {
         println!("  (nothing has been hunted)");
     }
 
-    // ---- The life of the colony ----
     println!("\n--- colony ---");
     let s = &creatures.stats;
     println!("  population:    {}", s.population);
@@ -332,7 +304,6 @@ fn main() {
         );
     }
 
-    // ---- The life histories of the species that are left ----
     println!("\n--- life histories ---");
     let mut seen: Vec<u32> = Vec::new();
     for c in &creatures.list {
@@ -358,7 +329,6 @@ fn main() {
         );
     }
 
-    // ---- The landmarks and who settled beside them ----
     println!("\n--- landmarks ---");
     let mut owners: Vec<Vec<String>> = Vec::new();
     for l in world.landmarks.iter() {
@@ -369,8 +339,7 @@ fn main() {
             })
             .map(|(_, _, sp)| creature::species_name_for(*sp))
             .collect();
-        // A landmark belongs to the colony that settled there first; the
-        // others are squatters that will end up fighting over it.
+
         let mut uniq: Vec<String> = Vec::new();
         for n in names.iter() {
             if !uniq.contains(n) {
@@ -397,8 +366,7 @@ fn main() {
         println!("FAIL: more landmarks claimed than there are landmarks");
         failures += 1;
     }
-    // A landmark can only have one owner; squatters are the ones that fight
-    // over it.
+
     for (i, o) in owners.iter().enumerate() {
         if o.len() > 1 {
             println!(
@@ -408,7 +376,6 @@ fn main() {
         }
     }
 
-    // ---- Invariants ----
     if !saw_juvenile {
         println!("FAIL: no creature was ever a juvenile");
         failures += 1;
@@ -437,8 +404,7 @@ fn main() {
         println!("FAIL: no young was born to two parents");
         failures += 1;
     }
-    // The fear of a species has to stay in range, and a species can never
-    // fear itself.
+
     for (prey, predator, fear) in creatures.predation.entries().iter() {
         if !(0.0..=100.0).contains(fear) {
             println!("FAIL: fear out of range: {}", fear);
@@ -449,8 +415,7 @@ fn main() {
             failures += 1;
         }
     }
-    // A colony that has a queen must never be in crisis: the crisis is
-    // about the absence of a queen.
+
     let queens: Vec<u32> = creatures
         .list
         .iter()

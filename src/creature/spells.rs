@@ -1,19 +1,5 @@
-//! Spells: what a shaman or a priest can do.
-//!
-//! The spells are not scripted events: a creature decides to cast one, and
-//! the effect follows from the spell. A fireball scorches everything of
-//! another species that stands too close, a curse spreads a disease, a
-//! teleport puts the caster somewhere else entirely.
-//!
-//! The effects are resolved after the main loop, so a spell that kills
-//! something is resolved in the same way as any other death.
-
 use super::*;
 
-/// Resolve the spell a creature has just cast.
-///
-/// The targets are collected and applied after the loop, so the creature
-/// that casts the spell is not affected by its own fire.
 pub(crate) fn cast_spell_effects(
     rng: &mut Rng,
     index: usize,
@@ -52,7 +38,7 @@ pub(crate) fn cast_spell_effects(
             c.y = rng.range_i(10, world.h as i32 - 10) as f32;
         }
         Spell::Wall => {
-            // A wall of stone, raised in the first free direction.
+
             let gx = c.x.round() as i32;
             let gy = c.y.round() as i32;
             for (dx, dy) in DIRS4 {
@@ -66,7 +52,7 @@ pub(crate) fn cast_spell_effects(
             c.fitness += 1.0;
         }
         Spell::Summon => {
-            // A minion is raised by the birth machinery, not here.
+
         }
         Spell::Curse => {
             let (sx, sy, ssp) = (c.x, c.y, c.species);
@@ -104,10 +90,6 @@ pub(crate) fn cast_spell_effects(
     }
 }
 
-/// Should this creature switch to the next spell it knows?
-///
-/// The creature decides with its network, so the choice of spell is
-/// behaviour, not a script.
 pub(crate) fn switch_spell(c: &mut Creature) {
     let next = (c.active_spell as u8 + 1) % 10;
     c.active_spell = match next {

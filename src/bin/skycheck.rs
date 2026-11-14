@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 #[path = "../creature/mod.rs"]
 mod creature;
 #[path = "../elements/mod.rs"]
@@ -45,7 +46,6 @@ fn main() {
     v.sort_by_key(|(_, c)| std::cmp::Reverse(*c));
     println!("elements above the terrain: {:?}", &v[..v.len().min(20)]);
 
-    // And after a short simulation.
     let mut cs = creature::CreatureSystem::new(seed);
     cs.populate(&w, 64);
     for _ in 0..600 {

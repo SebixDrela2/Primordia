@@ -1,18 +1,8 @@
-//! The tech tree on the screen.
-//!
-//! Two windows: the **tree** (T), which shows every tier of the tree and
-//! what the world has worked out so far, and the **panel**, a small sign
-//! on the side of the screen that says where the world has got to.
-
 use crate::creature::{
     self, Consumable, CreatureSystem, Discovery, TechEntry, TechKind, Tool, TECH_TIERS,
 };
 use macroquad::prelude::*;
 
-/// Is the pointer over the tech tree window?
-///
-/// The window scrolls under the pointer, and the wheel over it scrolls the
-/// tree rather than zooming the world.
 pub fn tech_tree_under_pointer(mx: f32, my: f32) -> bool {
     let w = 660.0;
     let h = (screen_height() - 40.0).min(820.0);
@@ -21,15 +11,10 @@ pub fn tech_tree_under_pointer(mx: f32, my: f32) -> bool {
     mx >= x && mx <= x + w && my >= y && my <= y + h
 }
 
-/// Draw the tech tree window: every tier, every entry, and what it does.
-///
-/// The window is taller than the tree, so it scrolls: the wheel over the
-/// window moves it up and down.
 pub fn draw_tech_tree(creatures: &CreatureSystem, ui: &mut crate::ui::knowledge::UiState) {
     let w = 660.0;
     let h = (screen_height() - 40.0).min(820.0);
-    // The window sits a little to the left of the middle, so it never
-    // collides with the tech panel on the right.
+
     let x = ((screen_width() - w) * 0.5 - 90.0).max(10.0);
     let y = (screen_height() - h) * 0.5;
 
@@ -52,7 +37,7 @@ pub fn draw_tech_tree(creatures: &CreatureSystem, ui: &mut crate::ui::knowledge:
         15.0,
         Color::new(0.5, 0.55, 0.6, 0.7),
     );
-    // How far the world has got.
+
     draw_text(
         &format!("the world stands at tier {} of {}", tier, TECH_TIERS),
         x + w - 280.0,
@@ -61,10 +46,6 @@ pub fn draw_tech_tree(creatures: &CreatureSystem, ui: &mut crate::ui::knowledge:
         Color::new(0.85, 0.8, 0.45, 0.95),
     );
 
-    // ---- Scrolling ----
-    //
-    // The wheel over the window moves the tree. The scroll is clamped to
-    // the height of the tree, so it never runs off the end.
     let mouse = mouse_position();
     let over = mouse.0 >= x && mouse.0 <= x + w && mouse.1 >= y && mouse.1 <= y + h;
     if over {
@@ -77,7 +58,7 @@ pub fn draw_tech_tree(creatures: &CreatureSystem, ui: &mut crate::ui::knowledge:
     let tree = creature::tech_tree();
     let row_h = 16.0;
     let top = y + 88.0;
-    // How tall the whole tree is, so the scroll can be clamped.
+
     let mut content_h = 0.0f32;
     for t in 1..=TECH_TIERS {
         content_h += row_h + 3.0;
@@ -88,8 +69,6 @@ pub fn draw_tech_tree(creatures: &CreatureSystem, ui: &mut crate::ui::knowledge:
     let max_scroll = (content_h - view_h).max(0.0);
     ui.tech_scroll = ui.tech_scroll.clamp(0.0, max_scroll);
 
-    // The tree is clipped to the window by hand: rows outside it are
-    // simply not drawn.
     let view_top = top - 4.0;
     let view_bottom = y + h - 10.0;
 
@@ -98,7 +77,7 @@ pub fn draw_tech_tree(creatures: &CreatureSystem, ui: &mut crate::ui::knowledge:
         if yy > view_bottom {
             break;
         }
-        // The tier heading.
+
         let reached = tier >= t;
         let head_col = if reached {
             Color::new(0.55, 0.9, 0.75, 0.95)
@@ -121,7 +100,6 @@ pub fn draw_tech_tree(creatures: &CreatureSystem, ui: &mut crate::ui::knowledge:
         }
         yy += row_h + 3.0;
 
-        // The entries of the tier.
         for e in tree.iter().filter(|e| e.tier == t) {
             if yy > view_bottom {
                 break;
@@ -163,7 +141,6 @@ pub fn draw_tech_tree(creatures: &CreatureSystem, ui: &mut crate::ui::knowledge:
         yy += 8.0;
     }
 
-    // A scroll bar, so it is clear there is more of the tree below.
     if max_scroll > 0.0 {
         let track_x = x + w - 8.0;
         draw_rectangle(track_x, top, 4.0, view_h, Color::new(0.12, 0.15, 0.2, 0.8));
@@ -173,10 +150,6 @@ pub fn draw_tech_tree(creatures: &CreatureSystem, ui: &mut crate::ui::knowledge:
     }
 }
 
-/// Has the world got this entry of the tree?
-///
-/// A discovery is known when a species has worked it out. A tool is
-/// available when the colony knows the craft that goes with it.
 fn entry_known(creatures: &CreatureSystem, e: &TechEntry) -> bool {
     match e.kind {
         TechKind::Discovery(d) => creatures
@@ -200,7 +173,6 @@ fn entry_known(creatures: &CreatureSystem, e: &TechEntry) -> bool {
     }
 }
 
-/// The side panel: where the world has got to.
 pub fn draw_tech_panel(creatures: &CreatureSystem) {
     let w = 314.0;
     let h = 152.0;
@@ -228,8 +200,6 @@ pub fn draw_tech_panel(creatures: &CreatureSystem) {
         Color::new(0.85, 0.8, 0.45, 0.95),
     );
 
-    // The fraction: how much of the tier the world has finished, and how
-    // much of the tree in all.
     let tier_entries = creature::discovery_tier(tier.max(1));
     let tier_done = tier_entries
         .iter()
@@ -251,7 +221,6 @@ pub fn draw_tech_panel(creatures: &CreatureSystem) {
         Color::new(0.7, 0.78, 0.85, 0.9),
     );
 
-    // A bar of the whole tree, one notch per tier.
     let bar_x = x + 12.0;
     let bar_y = y + 52.0;
     let bar_w = w - 24.0;
@@ -272,7 +241,6 @@ pub fn draw_tech_panel(creatures: &CreatureSystem) {
         );
     }
 
-    // The latest thing that was worked out.
     let mut yy = y + 76.0;
     if let Some((d, sp)) = creatures.latest_discovery() {
         draw_text(
@@ -308,7 +276,6 @@ pub fn draw_tech_panel(creatures: &CreatureSystem) {
         yy += 24.0;
     }
 
-    // And the greatest thing the world knows.
     if let Some(d) = creatures.greatest_discovery() {
         draw_text(
             &format!("GREATEST  {}", d.name()),
@@ -327,7 +294,6 @@ pub fn draw_tech_panel(creatures: &CreatureSystem) {
     }
 }
 
-/// The names of the tech a creature knows, for the tooltip.
 pub fn tech_of(c: &crate::creature::Creature) -> String {
     let mut out = String::new();
     for d in Discovery::all() {
@@ -344,7 +310,6 @@ pub fn tech_of(c: &crate::creature::Creature) -> String {
     out
 }
 
-/// The tools a creature is carrying, named.
 pub fn tool_name(t: Tool) -> &'static str {
     match t {
         Tool::None => "nothing",
@@ -366,7 +331,6 @@ pub fn tool_name(t: Tool) -> &'static str {
     }
 }
 
-/// The names of the things a colony makes.
 pub fn craft_name(c: Consumable) -> &'static str {
     match c {
         Consumable::Bomb => "bomb",

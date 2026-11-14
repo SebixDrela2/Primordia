@@ -1,12 +1,5 @@
-//! Building: the structures a colony raises.
-//!
-//! This used to live in ctions.rs, but the building rules grew into
-//! their own thing: a colony decides what to build from its needs, its
-//! technology and the culture it has learned.
-
 use super::*;
 
-/// Build a structure. Returns (built, structures_built).
 pub(crate) fn act_build(
     world: &mut World,
     c: &mut Creature,
@@ -18,35 +11,27 @@ pub(crate) fn act_build(
 ) -> (bool, u32) {
     let mut built_something = false;
     let mut structures_total = 0u32;
-    // A ZORG does not build. It has a cave, not a settlement: it digs, it
-    // hunts and it chews its way up through the rock. A farm in the deep
-    // would be nonsense, and a horde of them would eat the world's
-    // building budget for nothing.
+
     if c.faction == Faction::Zorg {
         return (built_something, structures_total);
     }
-    // The world can only hold so many buildings.
+
     if structures.len() >= MAX_STRUCTURES {
         return (built_something, structures_total);
     }
-                // Build / place structures (output[5])
-                //
-                // A colony that has built for generations builds better and
-                // faster, and a species adapted to timber raises its
-                // structures in half the time.
+
                 let skill = c.culture_factor(Culture::Architecture) * c.affinity.build_factor() * company;
                 let nn_wants_build = out[5] > 0.2;
                 let exploratory_build = c.carried > 80.0 && c.build_cooldown == 0
                     && (c.age * 17 + c.id * 23) % 100 < 1;
-                // A juvenile cannot raise a building.
+
                 let built = (nn_wants_build || exploratory_build)
                     && c.carried >= 20.0
                     && c.build_cooldown == 0
                     && c.stage != Stage::Juvenile;
                 if built {
                     c.energy = (c.energy - energy_cost::BUILD / skill).max(0.0);
-                    // A colony that farms will keep a farm even when it is
-                    // not yet desperate: the practice is part of the culture.
+
                     let farming = c.knows(Culture::Cultivation);
                     let gx = c.x.round() as i32;
                     let gy = c.y.round() as i32;
@@ -57,28 +42,22 @@ pub(crate) fn act_build(
                     let mut place_x = gx;
                     let mut place_y = gy;
 
-                    // Architecture: a colony that knows how to build well
-                    // pays less for what it raises.
                     let discount = if c.knows_tech(Discovery::Architecture) {
                         0.7
                     } else {
                         1.0
                     };
-                    // Masonry: what it builds stands up longer.
+
                     let sturdy = if c.knows_tech(Discovery::Masonry) {
                         1.4
                     } else {
                         1.0
                     };
 
-                    // Choose structure type based on tech/carried
                     let want_wall = c.inventory[0] >= 3 && c.tech_level < 2;
                     let want_door = c.inventory[0] >= 5 && c.role == Role::Builder;
                     let want_chest = c.inventory[1] >= 3 && c.carried > 150.0;
-                    // A farm needs 4 wood and someone who knows what to do
-                    // with it (tech 1). A colony only keeps a handful of
-                    // plots: a farm that nobody tends is just a field of
-                    // weeds, so more than a few is wasted effort.
+
                     let farms_built = structures
                         .iter()
                         .filter(|s| s.species == c.species && s.kind == 3)
@@ -87,8 +66,7 @@ pub(crate) fn act_build(
                         && c.tech_level >= 1
                         && farms_built < MAX_FARMS;
                     let want_temple = c.inventory[4] >= 2 && c.tech_level >= 3 && c.role == Role::Priest;
-                    // A turret needs a stockpile: 8 wood and tech 1. A colony
-                    // keeps only a few of them.
+
                     let towers_built = structures
                         .iter()
                         .filter(|s| s.species == c.species && s.kind == 1)
@@ -97,9 +75,7 @@ pub(crate) fn act_build(
                         && c.inventory[6] >= 8
                         && towers_built < MAX_TOWERS
                         && matches!(c.role, Role::Explorer | Role::Soldier | Role::Builder | Role::Worker);
-                    // The buildings of a settlement. Each one needs timber
-                    // and metal, and each one is worth having beside the
-                    // colony.
+
                     let want_market = c.tech_level >= 2
                         && c.inventory[6] >= 10
                         && c.inventory[1] >= 4;
@@ -112,9 +88,7 @@ pub(crate) fn act_build(
                     let want_beacon = c.tech_level >= 3
                         && c.inventory[0] >= 10
                         && c.inventory[4] >= 3;
-                    // A ward: a pillar of sanctified fire. Only a colony
-                    // that has worked out sanctification can raise one, and
-                    // it is the only thing that can close the ZORG cave.
+
                     let wards_built = structures
                         .iter()
                         .filter(|s| s.species == c.species && s.kind == structure_kind::WARD)
@@ -125,13 +99,8 @@ pub(crate) fn act_build(
                         && c.inventory[0] >= (6.0 * discount) as u16
                         && wards_built < 3;
 
-                    // A hungry colony prefers a farm to a wall: a farm is
-                    // the only thing that makes food grow back. A colony
-                    // that has farmed for generations prefers it even when
-                    // it is not desperate, because farming is what it knows.
                     let starving = c.hunger > 45.0;
-                    // A colony that has trade and craft wants the buildings
-                    // that make them better at it.
+
                     let settled = c.knows(Culture::Commerce) && c.knows(Culture::Architecture);
                     let chosen = if want_farm && (starving || farming) { Buildable::Farm }
                         else if want_tower { Buildable::Tower }
@@ -166,15 +135,10 @@ pub(crate) fn act_build(
                         Buildable::Ward => Elem::Ward,
                     };
 
-                    // A farm has its own placement rule: it must stand on the
-                    // surface with water within reach, or it is dead ground
-                    // that never grows anything. The plot also sows its
-                    // first seedling straight away.
                     if chosen == Buildable::Farm && !placed {
                         if let Some((tx, ty, px, py)) = world.find_farm_site(gx, gy, 14) {
                             world.set_xy(tx, ty, Elem::Farm);
-                            // Sow the first seedling so the plot is not
-                            // empty when the creature walks away.
+
                             world.set_xy(px, py, Elem::Plant);
                             place_x = tx;
                             place_y = ty;
@@ -187,7 +151,6 @@ pub(crate) fn act_build(
                         }
                     }
 
-                    // Try base perimeter first if near base
                     if !placed && dist_to_base < (BASE_RADIUS * BASE_RADIUS) as f32 {
                         for r in 3..=BASE_RADIUS {
                             for angle in 0..24 {
@@ -210,7 +173,6 @@ pub(crate) fn act_build(
                         }
                     }
 
-                    // Fallback: build adjacent to self
                     if !placed {
                         for (dx, dy) in DIRS8 {
                             let tx = gx + dx;
@@ -230,7 +192,6 @@ pub(crate) fn act_build(
                         }
                     }
 
-                    // Last resort: build anywhere in 5x5 area
                     if !placed {
                         for dy in -2..=2 {
                             for dx in -2..=2 {
@@ -253,16 +214,14 @@ pub(crate) fn act_build(
                     }
 
                     if placed {
-                        // Building stone lies in the amber fields: a colony
-                        // beside one raises its buildings faster.
+
                         if world.landmark_bonus(gx as f32, gy as f32).stone && c.build_cooldown > 3 {
                             c.build_cooldown = 3;
                         }
                         if chosen == Buildable::Farm {
-                            // A farm costs 4 wood to build.
+
                             c.inventory[6] = c.inventory[6].saturating_sub((4 as f32 * discount) as u16);
-                            // The plot is recorded so the colony knows how
-                            // many it has, and so the cap below applies.
+
                             structures.push(Structure {
                                 x: place_x as f32,
                                 y: place_y as f32,
@@ -275,8 +234,7 @@ pub(crate) fn act_build(
                             });
                         }
                         if chosen == Buildable::Tower {
-                            // Turrets are armed: they will shoot at other species.
-                            // A colony keeps a limited battery of them.
+
                             let mine = structures
                                 .iter()
                                 .filter(|s| s.species == c.species && s.kind == 1)
@@ -295,8 +253,7 @@ pub(crate) fn act_build(
                                 });
                             }
                         } else if chosen == Buildable::Temple {
-                            // Temples rally the colony: nearby members recover
-                            // faster and keep their spirits up.
+
                             c.inventory[4] = c.inventory[4].saturating_sub((2 as f32 * discount) as u16);
                             structures.push(Structure {
                                 x: place_x as f32,
@@ -309,8 +266,7 @@ pub(crate) fn act_build(
                                 kind: structure_kind::TEMPLE,
                             });
                         } else {
-                            // The buildings of a settlement. Each one is a
-                            // single structure that the whole colony shares.
+
                             let (kind, wood, metal, stone, crystal, hp) = match chosen {
                                 Buildable::Market => {
                                     (structure_kind::MARKET, 10, 4, 0, 0, 140.0)
@@ -324,9 +280,7 @@ pub(crate) fn act_build(
                                 Buildable::Beacon => {
                                     (structure_kind::BEACON, 0, 0, 10, 3, 200.0)
                                 }
-                                // A ward: a pillar of sanctified fire. It
-                                // costs crystal and stone, and it is the
-                                // only thing that can close the deep.
+
                                 Buildable::Ward => {
                                     (structure_kind::WARD, 0, 0, 6, 2, 260.0)
                                 }
@@ -356,4 +310,3 @@ pub(crate) fn act_build(
                 }
     (built_something, structures_total)
 }
-

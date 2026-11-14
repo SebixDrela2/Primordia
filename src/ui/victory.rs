@@ -1,7 +1,5 @@
 use macroquad::prelude::*;
 
-/// Full-screen state shown when one species has wiped out all others (or the
-/// whole population died out).
 pub struct VictoryScreen {
     pub     winner: String,
     pub     color: [u8; 3],
@@ -10,32 +8,23 @@ pub struct VictoryScreen {
     pub     revival: u32,
     pub     timer: f32,
     pub     extinction: bool,
-    /// The run was lost: the ZORGs are the only thing left standing.
+
     pub     lost: bool,
-    /// How many ZORGs were still alive when the run ended.
+
     pub     zorgs: u32,
-    /// How the winner got there: alliances it held, wars it fought and the
-    /// treaties it signed.
+
     pub     alliances: u32,
     pub     wars: u32,
     pub     treaties: u32,
-    /// How many wars ended in a tired truce.
+
     pub     truces: u32,
-    /// The traits the winning lineage evolved.
+
     pub     traits: Vec<&'static str>,
-    /// What the winning species worked out for itself.
+
     pub     discoveries: Vec<&'static str>,
-    /// Was the cave of the ZORGs sealed before the run ended?
-    ///
-    /// This is how a run ends against the deep: the ZORGs cannot be
-    /// out-fought, but their cave can be closed.
+
     pub     deep_sealed: bool,
-    /// Does the lineage carry into the next revival?
-    ///
-    /// A win always carries the winner's genome. A loss to the deep
-    /// carries the last player lineage's genome too, unless there was no
-    /// player left to carry it - and then a fresh random population rises
-    /// and the lineage really is lost.
+
     pub     lineage_carried: bool,
 }
 
@@ -43,7 +32,6 @@ pub fn draw_victory(v: &VictoryScreen) {
     let sw = screen_width();
     let sh = screen_height();
 
-    // Dim the whole simulation.
     draw_rectangle(0.0, 0.0, sw, sh, Color::new(0.01, 0.02, 0.04, 0.66));
 
     let w = 600.0f32.min(sw - 60.0);
@@ -64,8 +52,7 @@ pub fn draw_victory(v: &VictoryScreen) {
     draw_rectangle_lines(x, y, w, h, 2.0, frame);
 
     let (title, title_color) = if v.lost {
-        // The ZORGs took the world. The frame is purple, the colour of
-        // the deep.
+
         ("LOST", Color::new(
             crate::creature::ZORG_COLOR[0] as f32 / 255.0,
             crate::creature::ZORG_COLOR[1] as f32 / 255.0,
@@ -98,7 +85,6 @@ pub fn draw_victory(v: &VictoryScreen) {
         Color::new(0.6, 0.68, 0.76, 0.9),
     );
 
-    // Winning species colour swatch + name.
     let color = Color::new(
         v.color[0] as f32 / 255.0,
         v.color[1] as f32 / 255.0,
@@ -162,7 +148,6 @@ pub fn draw_victory(v: &VictoryScreen) {
     let l2d = measure_text(&l2, None, 14, 1.0);
     draw_text(&l2, (sw - l2d.width) / 2.0, y + 238.0, 14.0, Color::new(0.6, 0.66, 0.72, 0.85));
 
-    // The diplomatic record of the run: it says how the winner got here.
     let diplo = format!(
         "{} alliances   {} wars fought   {} treaties signed   {} truces",
         v.alliances, v.wars, v.treaties, v.truces
@@ -176,8 +161,6 @@ pub fn draw_victory(v: &VictoryScreen) {
         Color::new(0.45, 0.72, 1.0, 0.88),
     );
 
-    // What the winning lineage became: the traits it evolved and what it
-    // worked out for itself.
     if !v.traits.is_empty() {
         let evolved = format!("evolved: {}", v.traits.join(", "));
         let ed = measure_text(&evolved, None, 14, 1.0);

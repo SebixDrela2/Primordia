@@ -1,13 +1,5 @@
 use super::*;
 
-// The individual behaviours a creature can pick during its turn.
-
-/// How strongly the creature wants to move in each direction.
-///
-/// Note that the percept is *not* an argument: the steering reads the
-/// network's desires, and the network has already read the percept. The
-/// hard-coded rules below (flee, hunt, the pull of the colony) are about
-/// the creature's situation, not about what the world looks like.
 pub(crate) fn act_steer(
     c: &Creature,
     out: &[f32],
@@ -20,22 +12,11 @@ pub(crate) fn act_steer(
     place: &crate::world::LandmarkBonus,
     volcano: Option<(f32, f32)>,
 ) -> (f32, f32, f32) {
-                // Outputs: [0]=move_x, [1]=move_y, [2]=eat, [3]=reproduce, [4]=attack,
-                // [5]=build, [6]=craft, [7]=cast_spell, [8]=mount/dismount, [9]=trade,
-                // [10]=rest, [11]=switch_spell, [12]=dig/mine, [13]=gather_water,
-                // [14]=shoot, [15]=flee, [16]=seek, [17]=forage, [18]=rally,
-                // [19]=defend, [20..24]=diplomacy, [25..32]=desire per direction
+
                 let mut steer_x = 0.0f32;
                 let mut steer_y = 0.0f32;
                 let mut speed_mult_extra = 1.0f32;
 
-                // ---- The desires ----
-                //
-                // The network says which of the eight directions it wants
-                // to go in, and the creature goes that way. This is where
-                // the perception pays off: a direction that smells sweet
-                // and looks green is worth walking towards, and the
-                // network has to work that out for itself.
                 for d in 0..outputs::DESIRE_COUNT {
                     let v = out[outputs::DESIRE + d];
                     if v <= 0.0 {
@@ -49,17 +30,6 @@ pub(crate) fn act_steer(
                     }
                 }
 
-                // ---- The ZORGs ----
-                //
-                // A ZORG belongs to the deep, but it is a predator of the
-                // surface, so it pushes upward: out of the caves and into
-                // the world. It also does not care about its own kind and it
-                // is never afraid of anything.
-                //
-                // The cave in the deep is its home and its larder, though.
-                // A hungry ZORG goes down to it and feeds on the poison
-                // pooled on its floor; a fed one goes up through the rock
-                // after the colonies that live in the light.
                 if c.faction == Faction::Zorg {
                     let (zx, zy, zs) = zorg_steer(c);
                     steer_x += zx;
@@ -67,43 +37,17 @@ pub(crate) fn act_steer(
                     speed_mult_extra = speed_mult_extra.max(zs);
                 }
 
-                // --- The volcano: no rule at all ---
-                //
-                // There used to be a rule here too: everything within
-                // fifty-five cells of the crater walked away from it,
-                // whether the creature wanted to or not. Now the volcano is
-                // only a thing in the world: it is bright and it is hot,
-                // and a creature that walks into it is burned (the fire
-                // channel ✓). The lesson — that the hot bright thing is
-                // worth going away from — is the network's to learn, and
-                // the hurt is what teaches it.
                 let _ = volcano;
 
-                // ---- The temperament of this particular animal ----
-                //
-                // A bold creature keeps its nerve when an enemy is close, a
-                // curious one is willing to walk further from the colony,
-                // a cautious one is the first to run and the last to go
-                // underground, and a sociable one wants to be near its own
-                // kind.
                 let bold = c.personality.aggression;
                 let wary = c.personality.caution;
 
-                // --- Flee: run from the closest enemy ---
-                //
-                // The distance at which a creature gives in depends on how
-                // brave it is and how close it is to being hurt.
                 let flee_range = 45.0 - bold * 22.0 + wary * 10.0 + weather.fear_factor();
                 let mut flee_target: Option<(f32, f32, f32)> = None;
-                // The nearest creature of another kind. It is the thing to
-                // run from, and for a hunter it is the thing to chase.
-                // A bone field is good hunting ground: the prey comes
-                // closer to the bones.
+
                 let hunt_range = if place.hunting { 48.0 } else { 34.0 };
                 let mut prey: Option<(f32, f32, f32)> = None;
-                // The nearest creatures are looked for through the spatial
-                // grid: walking the whole population for every animal was
-                // the last O(n^2) loop in the simulation.
+
                 let search = (flee_range + 22.0).max(hunt_range) as usize;
                 grid.near(c.x, c.y, search, |idx| {
                     let a = &agents[idx as usize];
@@ -114,8 +58,7 @@ pub(crate) fn act_steer(
                     let dx = ox - c.x;
                     let dy = oy - c.y;
                     let d = (dx * dx + dy * dy).sqrt();
-                    // A species that has been hunted keeps well away from
-                    // the hunter: the fear of the herd lengthens the run.
+
                     let fright = fear.fear_of(c.species, ospecies) * 0.22;
                     let run = flee_range + fright;
                     if d < run && flee_target.map_or(true, |t| d < t.2) {
@@ -126,32 +69,7 @@ pub(crate) fn act_steer(
                     }
                 });
 
-                // --- Hunt: no rule at all ---
-                //
-                // There used to be a rule here: a colony that had learnt
-                // to hunt stalked the nearest animal of another kind, and
-                // the code did the choosing. That is exactly the sort of
-                // thing this simulation is not supposed to have: the
-                // creature was told what prey was, so it never had to
-                // work out what prey was.
-                //
-                // Now there is nothing. A creature sees what is alive
-                // around it (the `LIFE` sense), it decides for itself
-                // whether it wants to go that way (the desires), and the
-                // only lesson it ever gets is that a kill is a kill: the
-                // strike is reinforced, and so is the direction the prey
-                // was in. Hunting is not a behaviour the code hands out.
-                // It is a behaviour the colony finds.
                 let _ = (prey, place.hunting, fear.total_of(c.species));
-
-                // --- Seek: head for whatever the creature needs most ---
-                //
-                // The *direction* is no longer looked up. Before, the code
-                // asked the world where the nearest food was and walked
-                // there, which meant the creature never had to notice that
-                // the food was there at all. Now the direction comes from
-                // the network's own desires, and what it wants is decided
-                // by what it can smell and see.
 
                 if out[15] > 0.35 {
                     if let Some((dx, dy, d)) = flee_target {
@@ -162,55 +80,9 @@ pub(crate) fn act_steer(
                         }
                     }
                 }
-                // --- Rally: no rule at all ---
-                //
-                // There used to be a rule here too, and it was a
-                // coordinate: when the network said "rally", the code
-                // steered the creature towards `base_x` and `base_y`. The
-                // creature was told where home was.
-                //
-                // Now the only way home is the smell of your own kind,
-                // which is a sense and not a map reference, and which the
-                // network reads like anything else. A creature that wants
-                // to be with its colony knows it by the nose.
+
                 let _ = out[18];
 
-                // --- The pull of the colony: no rule at all ---
-                //
-                // There used to be a rule here, and it was the worst one
-                // in the file: every creature was pulled towards its base
-                // — hard for the young, harder for the sociable, and with
-                // no range at all. The colony did not go home because it
-                // wanted to. It went home because the code knew where
-                // home was.
-                //
-                // Now the colony holds itself together by smell. A
-                // creature smells its own kind, and its own kind is where
-                // the colony is: that pull is a weight in the brain (the
-                // kin channel ✓), so it is bred like everything else — a
-                // species that lives off on its own drifts towards a
-                // weaker pull, and one that cannot do without its herd
-                // drifts towards a stronger one.
-                //
-                // So the colony is a smell and not a coordinate, and
-                // whether it holds together is a thing evolution decides.
-
-                // --- Shelter from the weather: no rule at all ---
-                //
-                // There used to be a rule here: when the weather turned,
-                // every creature walked towards the base. Now the weather
-                // is only felt — the rain on the skin and the wind in the
-                // coat (the body block ✓) — and what a creature does about
-                // it is its own business. The world teaches it: a storm
-                // burns energy, and an animal that is cold and hungry and
-                // has learned that the nest is where the wood is will go
-                // and get wood.
-
-                // --- Courtship: head for the nearest creature of its kind ---
-                //
-                // A creature that wants a mate goes looking for one. The
-                // mating itself is handled in the step, but the walking
-                // here is what brings two animals together at all.
                 if out[outputs::SEEK_MATE] > 0.35 {
                     let mut best: Option<(f32, f32, f32)> = None;
                     grid.near(c.x, c.y, 40, |idx| {
@@ -235,11 +107,6 @@ pub(crate) fn act_steer(
                     }
                 }
 
-                // --- Migration: walk away from the old colony ---
-                //
-                // The animals that have left their colony do not go back.
-                // They push away from the place they came from, and if they
-                // get far enough they become a species of their own.
                 if c.migrating {
                     let bx = c.x - c.base_x;
                     let by = c.y - c.base_y;
@@ -249,52 +116,25 @@ pub(crate) fn act_steer(
                     speed_mult_extra = speed_mult_extra.max(1.2);
                 }
 
-                // --- Diplomacy: no walk any more ---
-                //
-                // There used to be a rule here as well: a creature that
-                // wanted to negotiate was steered to the other colony's
-                // coordinates. The animal was given a destination.
-                //
-                // Now it has to find the other colony itself, by the same
-                // things everything else is found by - its nose and its own
-                // wanting. Two colonies that want to talk will walk towards
-                // each other because they smell each other's kind, or they
-                // will not talk at all.
                 let _ = (out[outputs::NEGOTIATE], ds.partner, foreign_bases);
 
     (steer_x, steer_y, speed_mult_extra)
 }
 
-/// Movement with collision (mounted moves faster).
 pub(crate) fn act_move(world: &mut World, c: &mut Creature, behaviour_speed: f32) {
-                // Movement with collision (mounted moves faster)
+
                 let mut speed_mult = behaviour_speed;
                 if c.mount_kind != MountKind::None && c.mount_stamina > 0.0 {
                     speed_mult = MOUNT_SPEED_BONUS * behaviour_speed;
                     c.mount_stamina = (c.mount_stamina - 0.3).max(0.0);
                 }
-                // Moving costs energy, but only for the distance covered.
-                //
-                // And the higher up it is, the more each step costs.
-                //
-                // Everything above the surface is air, and staying in the
-                // air is work: the higher an animal goes, the more it
-                // costs to hold itself up there and to climb any further.
-                // The sky is empty — there is no food up there and no
-                // water — so a creature that drifts to the top of the map
-                // is spending everything it has on nothing.
-                //
-                // This is what keeps a colony on the ground, where the
-                // digging is and where the tech is.
+
                 let ground = world.surface_y(c.x.round() as i32);
                 let height = (ground - c.y.round() as i32).max(0) as f32;
                 let distance = (c.vx.abs() + c.vy.abs()) * speed_mult;
                 let step_cost = energy_cost::MOVE * (1.0 + height / 20.0);
                 c.energy = (c.energy - distance * step_cost).max(0.0);
-                // And holding still in the air costs too, the higher it is
-                // and the longer it has been up there. A flight is not a
-                // place to live: the sky has no food and no water, and
-                // every tick of it is paid for.
+
                 if height > 1.0 {
                     let below = world.get(c.x.round() as i32, c.y.round() as i32 + 1);
                     if !below.is_solid() {
@@ -312,26 +152,17 @@ pub(crate) fn act_move(world: &mut World, c: &mut Creature, behaviour_speed: f32
                 let nx = c.x + c.vx * speed_mult;
                 let ny = c.y + c.vy * speed_mult;
 
-                // A creature can shove through loose debris (sand, ice, ash...)
-                // and can tunnel through solid rock only with a pickaxe/drill.
                 let can_dig = |e: Elem, _tool: Tool| -> bool {
-                    // Walking only shoves loose debris aside. Solid rock is never
-                    // excavated just by pathing - that happens through the
-                    // deliberate, budgeted mining action instead, otherwise a
-                    // colony of pickaxe carriers hollows out the entire world.
+
                     World::is_loose(e)
                 };
-                // A ZORG is the exception: it chews through the rock of the
-                // deep on its way up, because the rock is its food and its
-                // way out. It pays for the digging in stamina, so it is slow
-                // and it tires, but nothing stops it.
+
                 let zorg_chew = c.faction == Faction::Zorg;
 
                 let tx = nx.round() as i32;
                 let ty = ny.round() as i32;
                 let mut ok = !world.is_blocked(tx, ty);
-                // Swimming is hard work. A creature that is at home in the
-                // water does not mind; the others tire quickly in a lake.
+
                 if ok && c.traits & trait_bits::AMPHIBIOUS == 0 {
                     let here = world.get(c.x.round() as i32, c.y.round() as i32);
                     if here == Elem::Water || world.get(tx, ty) == Elem::Water {
@@ -344,19 +175,14 @@ pub(crate) fn act_move(world: &mut World, c: &mut Creature, behaviour_speed: f32
                     c.energy = (c.energy - energy_cost::SHOVE).max(0.0);
                     ok = true;
                 }
-                // A ZORG chews its way through solid rock. It is slow and it
-                // tires, but the way up is open to it.
+
                 if !ok && zorg_chew {
                     let here = world.get(tx, ty);
                     if here.is_solid() {
                         world.set_xy(tx, ty, Elem::Empty);
                         c.stamina = (c.stamina - 1.2).max(0.0);
                         c.energy = (c.energy - energy_cost::CHEW).max(0.0);
-                        // The rock it chews is its food as well as its way
-                        // out: the tunnel it digs upwards feeds it. It
-                        // does not eat its way down through the floor of
-                        // its own cave, though - that would swallow the
-                        // larder whole.
+
                         zorg_feed_on_rock(c, here, c.vy < 0.0);
                         ok = true;
                     }
@@ -391,9 +217,6 @@ pub(crate) fn act_move(world: &mut World, c: &mut Creature, behaviour_speed: f32
                     }
                 }
 
-                // If debris settled directly on top of us, clear our own cell so
-                // we are never permanently entombed. Hard rock without a tool is
-                // escaped by nudging to the nearest open cell instead.
                 let cx = c.x.round() as i32;
                 let cy = c.y.round() as i32;
                 if world.is_blocked(cx, cy) {
@@ -410,7 +233,6 @@ pub(crate) fn act_move(world: &mut World, c: &mut Creature, behaviour_speed: f32
                 }
 }
 
-/// Eat and drink. Returns true when something was consumed.
 pub(crate) fn act_eat(
     world: &mut World,
     c: &mut Creature,
@@ -420,39 +242,16 @@ pub(crate) fn act_eat(
     let mut ate_something = false;
                     let gx = c.x.round() as i32;
                     let gy = c.y.round() as i32;
-                    // ---- Eat ----
-                    //
-                    // The creature eats what is **next to it**. Before, it
-                    // could reach anything edible within six cells without
-                    // knowing where it was, which meant the network never
-                    // had to perceive food at all: the hard-coded action
-                    // did the finding. Now the creature has to walk to the
-                    // food first, which means the network has to want to
-                    // walk towards it.
-                    // The creature bites what is next to it when it has any
-                    // inclination to eat at all. The threshold is low
-                    // because the network's outputs sit near zero most of
-                    // the time, and a mind that has to *insist* before it
-                    // will try anything never learns to try.
-                    //
-                    // What the creature learns is *when* eating is a good
-                    // idea, and what is worth eating: the reward for a
-                    // good meal strengthens the bite, and the punishment
-                    // for a bad one weakens it.
+
                     if out[2] > 0.05 || out[16] > 0.05 {
                         if c.faction == Faction::Zorg {
-                            // A ZORG has its own ecology: it eats the rock and
-                            // the poison of the deep, and nothing it eats is
-                            // ever bad for it.
+
                             ate_something = zorg_act_eat(world, c, c.hunger > 55.0);
                         } else {
                             ate_something = eat_adjacent(world, c, gx, gy, dip);
                         }
                     }
-                    // ---- Drink ----
-                    //
-                    // Likewise: the creature drinks the water it is
-                    // standing next to, not any water within six cells.
+
                     if c.thirst > 40.0 && out[13] > 0.05 {
                         for (dx, dy) in DIRS8.iter() {
                             let wx = gx + dx;
@@ -462,8 +261,7 @@ pub(crate) fn act_eat(
                                 c.thirst = (c.thirst - 60.0).max(0.0);
                                 c.energy = (c.energy + 5.0).min(c.max_energy);
                                 c.inventory[8] = (c.inventory[8].saturating_add(2)).min(255);
-                                // A drink is a meal too, and the census of
-                                // what the colony lives on should say so.
+
                                 c.last_meal = Elem::Water;
                                 ate_something = true;
                                 break;
@@ -473,17 +271,8 @@ pub(crate) fn act_eat(
     ate_something
 }
 
-/// Eat whatever is next to the creature.
-///
-/// The creature tastes what is around it and eats the best thing it finds.
-/// This is the whole eating mechanic now: the mouth knows what food is
-/// (that is a mouth, not a brain), but the creature has to have walked
-/// there first. Where it walked to is a decision the network made.
 fn eat_adjacent(world: &mut World, c: &mut Creature, gx: i32, gy: i32, dip: &super::diplomacy::Diplomacy) -> bool {
-    // Look at the eight neighbours *and* the cell it is standing on, and
-    // take the most nourishing thing it can reach. The cell it is standing
-    // on matters: a creature that walks into a patch of plants is
-    // standing in the middle of the food.
+
     let mut best: Option<(i32, i32, Elem)> = None;
     for (dx, dy) in DIRS8.iter().copied().chain([(0, 0)]) {
         let ex = gx + dx;
@@ -492,22 +281,15 @@ fn eat_adjacent(world: &mut World, c: &mut Creature, gx: i32, gy: i32, dip: &sup
         if e == Elem::Empty || e.nutrition() <= 0.0 {
             continue;
         }
-        // A ZORG's food is different, but a player creature only eats
-        // what is edible.
+
         if !e.is_edible() {
             continue;
         }
-        // Water is drunk, not eaten. A creature that nibbles at the water
-        // it is standing in fills neither its belly nor its thirst, and a
-        // colony that has learned to do that starves beside a lake.
+
         if e == Elem::Water {
             continue;
         }
-        // The dead of your own kind are not food. A colony lives off the
-        // ground it stands on; a creature will eat the body of a rival -
-        // that is what a war is worth - but it will not eat its own, and
-        // it will not eat the body of a nation it has sworn to.
-        // The body knows whose it is, and the mouth refuses it.
+
         if e == Elem::Corpse {
             if let Some(owner) = world.owner_at(ex, ey) {
                 if owner == c.species {
@@ -536,7 +318,7 @@ fn eat_adjacent(world: &mut World, c: &mut Creature, gx: i32, gy: i32, dip: &sup
     let Some((nutrition, toxicity)) = world.eat(ex, ey) else {
         return false;
     };
-    // What it ate, for the census of meals.
+
     c.last_meal = eaten_elem;
     crate::world::counters::MEALS[eaten_elem as usize]
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -544,17 +326,12 @@ fn eat_adjacent(world: &mut World, c: &mut Creature, gx: i32, gy: i32, dip: &sup
         crate::world::counters::CORPSE_EATEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    // Modest returns: food is a real resource, so a colony has to keep
-    // foraging instead of trivially maxing out after a couple of bites.
-    //
-    // A colony that has hunted for generations gets more out of the same
-    // carcass.
     let mut nutrition = nutrition * c.hunting_bonus();
-    // A forager that knows the land gets more out of what it finds.
+
     if c.traits & trait_bits::SCAVENGER != 0 {
         nutrition *= 1.12;
     }
-    // Herbalism: the colony knows which plants are worth eating.
+
     if c.knows_tech(Discovery::Herbalism) && eaten_elem.is_organic() {
         nutrition *= 1.15;
     }
@@ -565,7 +342,7 @@ fn eat_adjacent(world: &mut World, c: &mut Creature, gx: i32, gy: i32, dip: &sup
     } else if eaten_elem.nutrition() > 0.0 {
         c.thirst = (c.thirst - nutrition * 4.0).max(0.0);
     }
-    // Gathering resources gives inventory
+
     match eaten_elem {
         Elem::Stone | Elem::Brick | Elem::Concrete | Elem::Wall => {
             c.inventory[0] = (c.inventory[0].saturating_add(5)).min(255);
@@ -592,20 +369,17 @@ fn eat_adjacent(world: &mut World, c: &mut Creature, gx: i32, gy: i32, dip: &sup
             c.carried = (c.carried + 60.0).min(c.carry_cap());
         }
         Elem::Wood => {
-            // A tree is the fuel of a campfire, and the only thing in the
-            // world that is worth carrying home for one.
+
             c.inventory[6] = (c.inventory[6].saturating_add(8)).min(255);
             c.carried = (c.carried + 20.0).min(c.carry_cap());
         }
         Elem::Plant | Elem::Fungus => {
-            // A mouthful of green is a mouthful of green: it fills the
-            // belly, and it is not firewood.
+
             c.inventory[6] = (c.inventory[6].saturating_add(1)).min(255);
             c.carried = (c.carried + 20.0).min(c.carry_cap());
         }
         Elem::Crop => {
-            // A harvested crop is stored as grain: it can be planted again
-            // or eaten later.
+
             c.inventory[10] = (c.inventory[10].saturating_add(3)).min(255);
             c.carried = (c.carried + 15.0).min(c.carry_cap());
         }
@@ -618,8 +392,7 @@ fn eat_adjacent(world: &mut World, c: &mut Creature, gx: i32, gy: i32, dip: &sup
         _ => {}
     }
     if toxicity > 0.0 {
-        // Antitoxins: the colony can hold its own against poison.
-        // Deepdiving: the deep does no harm at all.
+
         let mut harm = 0.25;
         if c.knows_tech(Discovery::Antitoxins) {
             harm *= 0.5;
@@ -635,14 +408,8 @@ fn eat_adjacent(world: &mut World, c: &mut Creature, gx: i32, gy: i32, dip: &sup
     true
 }
 
-/// The neighbour cell the creature most wants to dig into.
-///
-/// The creature picks the direction it is most drawn to and digs the cell
-/// next to it in that direction. It is not told where the ore is: it has
-/// to have seen the glint of it and walked over.
 fn desired_neighbour(world: &World, gx: i32, gy: i32, out: &[f32]) -> Option<(i32, i32)> {
-    // Find the direction the creature wants most, and take the cell next
-    // to it in that direction.
+
     let mut best_dir = 0usize;
     let mut best = f32::MIN;
     for d in 0..outputs::DESIRE_COUNT {
@@ -661,35 +428,26 @@ fn desired_neighbour(world: &World, gx: i32, gy: i32, out: &[f32]) -> Option<(i3
     Some((mx, my))
 }
 
-/// Mine ore out of the rock (never food).
 pub(crate) fn act_mine(world: &mut World, c: &mut Creature, out: &[f32], company: f32) {
-                // A ZORG does not mine. It eats the rock it wants, rather
-                // than carrying it away to build something with.
+
                 if c.faction == Faction::Zorg {
                     return;
                 }
-                // Mining / gathering (output[12]). Takes solid resources out of
-                // the world for building but is explicitly *not* food.
-                //
-                // A colony that has mined for generations digs better, and a
-                // species that reads metal in the rock finds more of it.
+
                 let skill = c.culture_factor(Culture::Mining) * c.affinity.mine_factor() * company;
                 let wants_mine = (out[12] > 0.35 || out[17] > 0.3) && world.mine_budget > 0;
                 let exploratory_mine = c.carried < 60.0
                     && c.stamina > 8.0
                     && matches!(c.role, Role::Worker | Role::Builder | Role::Explorer)
                     && (c.age.wrapping_add(c.id) % 400) < 1;
-                // A juvenile is no use with a pickaxe.
+
                 if c.stage == Stage::Juvenile {
                     return;
                 }
                 if (wants_mine || (exploratory_mine && world.mine_budget > 0)) && c.stamina > 5.0 {
                     let gx = c.x.round() as i32;
                     let gy = c.y.round() as i32;
-                    // The creature digs in the direction it wants to go.
-                    // It can only reach what is next to it: to mine an ore
-                    // vein it has to walk up to it first, and the walk is
-                    // the network's decision.
+
                     let (mx, my) = match desired_neighbour(world, gx, gy, out) {
                         Some(p) => p,
                         None => return,
@@ -701,10 +459,9 @@ pub(crate) fn act_mine(world: &mut World, c: &mut Creature, out: &[f32], company
                         c.stamina = (c.stamina - 0.8).max(0.0);
                         c.energy = (c.energy - energy_cost::MINE * skill).max(0.0);
                         c.carried = (c.carried + 15.0 * skill).min(c.carry_cap());
-                        // Every excavation also yields a little stone.
+
                         c.inventory[0] = c.inventory[0].saturating_add(1).min(255);
-                        // An iron womb gives up its metal far more freely
-                        // than ordinary rock does.
+
                         let rich = world.landmark_bonus(c.x, c.y).metal;
                         let ore = if rich { 2 } else { 1 };
                         match me {
@@ -735,8 +492,7 @@ pub(crate) fn act_mine(world: &mut World, c: &mut Creature, out: &[f32], company
                             }
                             _ => {}
                         }
-                        // A deep digger sometimes breaks through into a pocket
-                        // of something better than plain rock.
+
                         let deep = c.traits & trait_bits::DEEP_DIGGER != 0;
                         if deep && world.rng.chance(0.06) {
                             let prize = match world.rng.range(4) {
@@ -753,7 +509,6 @@ pub(crate) fn act_mine(world: &mut World, c: &mut Creature, out: &[f32], company
                 }
 }
 
-/// Craft a tool, bomb or salve. Returns true when something was made.
 pub(crate) fn act_craft(
     c: &mut Creature,
     out: &[f32],
@@ -763,31 +518,20 @@ pub(crate) fn act_craft(
     discoveries: u32,
 ) -> bool {
     let mut crafted = false;
-    // A ZORG does not craft. It has no workshop and no need of one: it
-    // digs with its own jaws and it fights with its own claws. Crafting
-    // would cost it the energy it needs to live on the rock.
+
     if c.faction == Faction::Zorg {
         return crafted;
     }
-                // Tool crafting (output[6] = craft)
-                //
-                // A colony that has crafted for generations makes better
-                // tools: the craft costs less and the tool lasts longer. A
-                // workshop beside the colony helps even more, and an old
-                // ruin still holds the knowledge of the people who built
-                // it.
+
                 let skill = c.culture_factor(Culture::Craft)
                     * if workshop { 1.5 } else { 1.0 }
                     * if ruins { 1.35 } else { 1.0 };
-                // A colony that has worked out the craft can make the thing
-                // without the awkward materials.
+
                 let knows_ranged = discoveries & discovery_bits::RANGED != 0;
                 let knows_medicine = discoveries & discovery_bits::MEDICINE != 0;
                 let knows_sanctify = discoveries & discovery_bits::SANCTIFY != 0;
                 let knows_siegecraft = discoveries & discovery_bits::SIEGECRAFT != 0;
-                // What the colony knows how to make. The sword comes with
-                // smithing, the bow with ranged craft, and so on: a colony
-                // cannot make a thing it has not worked out how to make.
+
                 let can_make = |t: Tool| -> bool {
                     match tool_gate(t) {
                         None => true,
@@ -797,9 +541,7 @@ pub(crate) fn act_craft(
                 let nn_wants_craft = out[6] > 0.25;
                 let exploratory_craft = c.tool == Tool::None && c.craft_cooldown == 0
                     && (c.age * 13 + c.id * 17) % 25 < 1;
-                // A craft can only be attempted when the creature is not still waiting
-                // for the last one to finish. Without this the network can
-                // ask for a craft on every single step.
+
                 let wants_craft = c.craft_cooldown == 0
                     && (nn_wants_craft || exploratory_craft)
                     && c.stage != Stage::Juvenile;
@@ -808,20 +550,7 @@ pub(crate) fn act_craft(
                 let salves_before = c.salves;
                 let inv_before = c.inventory;
                 if wants_craft {
-                    // Sunfire: 1 crystal + 1 wood (tech 1).
-                    //
-                    // A colony that has worked out sanctification makes the
-                    // light of the surface into a weapon before anything
-                    // else. It scours the ZORGs and their corruption, but
-                    // it is a poor weapon against ordinary flesh - which is
-                    // exactly the point: this is a tool for the deep, not
-                    // for a rival.
-                    //
-                    // Taking up the fire means giving up whatever the
-                    // creature was carrying: a pickaxe, a sword, a bow.
-                    // The colony trades its ordinary strength for the
-                    // light that scours the deep, and it can only afford
-                    // to do so as fast as it can find crystal.
+
                     if knows_sanctify
                         && c.tech_level >= 1
                         && c.inventory[4] >= 1
@@ -833,7 +562,7 @@ pub(crate) fn act_craft(
                         c.tool_durability = 900;
                         c.craft_cooldown = 50;
                     }
-                    // Pickaxe: 5 stone + 2 wood (tech 0)
+
                     else if c.tool == Tool::None && c.inventory[0] >= 5 && c.inventory[6] >= 2 {
                         c.inventory[0] = c.inventory[0].saturating_sub(5);
                         c.inventory[6] = c.inventory[6].saturating_sub(2);
@@ -841,7 +570,7 @@ pub(crate) fn act_craft(
                         c.tool_durability = 1000;
                         c.craft_cooldown = 30;
                     }
-                    // Sword: 3 metal + 2 wood (tech 1)
+
                     else if c.tool == Tool::None && c.tech_level >= 1 && c.inventory[1] >= 3 && c.inventory[6] >= 2 {
                         c.inventory[1] = c.inventory[1].saturating_sub(3);
                         c.inventory[6] = c.inventory[6].saturating_sub(2);
@@ -849,7 +578,7 @@ pub(crate) fn act_craft(
                         c.tool_durability = 800;
                         c.craft_cooldown = 30;
                     }
-                    // Hammer: 5 stone + 3 metal (tech 1) - better building
+
                     else if c.tool == Tool::None && c.tech_level >= 1 && c.inventory[0] >= 5 && c.inventory[1] >= 3 {
                         c.inventory[0] = c.inventory[0].saturating_sub(5);
                         c.inventory[1] = c.inventory[1].saturating_sub(3);
@@ -857,7 +586,7 @@ pub(crate) fn act_craft(
                         c.tool_durability = 1500;
                         c.craft_cooldown = 30;
                     }
-                    // Drill: 3 copper + 2 metal (tech 2) - fast mining
+
                     else if c.tool == Tool::None && c.tech_level >= 2 && c.inventory[2] >= 3 && c.inventory[1] >= 2 {
                         c.inventory[2] = c.inventory[2].saturating_sub(3);
                         c.inventory[1] = c.inventory[1].saturating_sub(2);
@@ -865,7 +594,7 @@ pub(crate) fn act_craft(
                         c.tool_durability = 600;
                         c.craft_cooldown = 40;
                     }
-                    // Scanner: 2 gold + 1 crystal (tech 3) - long range sensing
+
                     else if c.tool == Tool::None && c.tech_level >= 3 && c.inventory[3] >= 2 && c.inventory[4] >= 1 {
                         c.inventory[3] = c.inventory[3].saturating_sub(2);
                         c.inventory[4] = c.inventory[4].saturating_sub(1);
@@ -873,9 +602,7 @@ pub(crate) fn act_craft(
                         c.tool_durability = 2000;
                         c.craft_cooldown = 50;
                     }
-                    // Bow: 3 wood + 2 string(plant) (tech 1).
-                    // A colony that has worked out the craft can make one
-                    // from wood alone.
+
                     else if c.tool == Tool::None
                         && c.tech_level >= 1
                         && (knows_ranged || (c.inventory[6] >= 3 && c.inventory[6] >= 2))
@@ -885,7 +612,7 @@ pub(crate) fn act_craft(
                         c.tool_durability = if knows_ranged { 800 } else { 500 };
                         c.craft_cooldown = 30;
                     }
-                    // Spear: 2 wood + 1 stone (tech 0)
+
                     else if c.tool == Tool::None && c.inventory[6] >= 2 && c.inventory[0] >= 1 {
                         c.inventory[6] = c.inventory[6].saturating_sub(2);
                         c.inventory[0] = c.inventory[0].saturating_sub(1);
@@ -893,7 +620,7 @@ pub(crate) fn act_craft(
                         c.tool_durability = 400;
                         c.craft_cooldown = 20;
                     }
-                    // Shield: 3 wood + 2 metal (tech 1)
+
                     else if c.tool == Tool::None && c.tech_level >= 1 && c.inventory[6] >= 3 && c.inventory[1] >= 2 {
                         c.inventory[6] = c.inventory[6].saturating_sub(3);
                         c.inventory[1] = c.inventory[1].saturating_sub(2);
@@ -901,7 +628,7 @@ pub(crate) fn act_craft(
                         c.tool_durability = 700;
                         c.craft_cooldown = 30;
                     }
-                    // Staff: 1 wood + 1 crystal (tech 3) - for shaman spells
+
                     else if c.tool == Tool::None && c.tech_level >= 3 && c.inventory[6] >= 1 && c.inventory[4] >= 1 {
                         c.inventory[6] = c.inventory[6].saturating_sub(1);
                         c.inventory[4] = c.inventory[4].saturating_sub(1);
@@ -909,7 +636,7 @@ pub(crate) fn act_craft(
                         c.tool_durability = 1200;
                         c.craft_cooldown = 40;
                     }
-                    // Amulet: 1 gold + 1 gem (tech 4)
+
                     else if c.tool == Tool::None && c.tech_level >= 4 && c.inventory[3] >= 1 && c.inventory[5] >= 1 {
                         c.inventory[3] = c.inventory[3].saturating_sub(1);
                         c.inventory[5] = c.inventory[5].saturating_sub(1);
@@ -917,14 +644,14 @@ pub(crate) fn act_craft(
                         c.tool_durability = 1500;
                         c.craft_cooldown = 50;
                     }
-                    // Backpack: 4 leather + 2 wood (tech 2) - more carry
+
                     else if c.tool == Tool::None && c.tech_level >= 2 && c.inventory[6] >= 2 {
                         c.inventory[6] = c.inventory[6].saturating_sub(4);
                         c.tool = Tool::Backpack;
                         c.tool_durability = 800;
                         c.craft_cooldown = 40;
                     }
-                    // Cart: 5 wood + 3 metal (tech 2)
+
                     else if c.tool == Tool::None && c.tech_level >= 2 && c.inventory[6] >= 5 && c.inventory[1] >= 3 {
                         c.inventory[6] = c.inventory[6].saturating_sub(5);
                         c.inventory[1] = c.inventory[1].saturating_sub(3);
@@ -932,21 +659,21 @@ pub(crate) fn act_craft(
                         c.tool_durability = 1000;
                         c.craft_cooldown = 60;
                     }
-                    // Boat: 6 wood + 1 rope (tech 2)
+
                     else if c.tool == Tool::None && c.tech_level >= 2 && c.inventory[6] >= 6 {
                         c.inventory[6] = c.inventory[6].saturating_sub(6);
                         c.tool = Tool::Boat;
                         c.tool_durability = 900;
                         c.craft_cooldown = 60;
                     }
-                    // Glider: 4 wood + 2 cloth (tech 3)
+
                     else if c.tool == Tool::None && c.tech_level >= 3 && c.inventory[6] >= 4 {
                         c.inventory[6] = c.inventory[6].saturating_sub(4);
                         c.tool = Tool::Glider;
                         c.tool_durability = 700;
                         c.craft_cooldown = 70;
                     }
-                    // Bomb: 3 gunpowder + 2 wood - thrown at rivals
+
                     else if c.bombs < 3
                         && knows_siegecraft
                         && c.inventory[9] >= 3
@@ -957,9 +684,7 @@ pub(crate) fn act_craft(
                         c.bombs += 1;
                         c.craft_cooldown = 40;
                     }
-                    // Salve: 2 plant + 1 crystal - heals a wounded colonymate.
-                    // A colony that has worked out medicine can make one
-                    // from plants alone.
+
                     else if c.salves < 3
                         && c.inventory[9] == 0
                         && knows_medicine
@@ -972,27 +697,11 @@ pub(crate) fn act_craft(
                         c.salves += 1;
                         c.craft_cooldown = 40;
                     }
-                    // Nothing was made: the materials are missing.
-                    //
-                    // A failed attempt must NOT cost the full price of a
-                    // craft. Charging for work that never happened turned
-                    // every toolless creature into an energy sink: it
-                    // tried to craft every few steps, paid 5 energy each
-                    // time, and starved next to the materials it could
-                    // never afford. A failed attempt now costs nothing and
-                    // puts the creature on a short cooldown so it stops
-                    // hammering the same impossible recipe.
+
                     else {
                         c.craft_cooldown = 25;
                     }
 
-                    // ---- What the colony knows how to make ----
-                    //
-                    // A colony cannot make a thing it has not worked out
-                    // how to make: the sword comes with smithing, the bow
-                    // with ranged craft, the sunfire with sanctification.
-                    // If it tries, it puts the tools down again and keeps
-                    // its materials.
                     if c.tool != tool_before && !can_make(c.tool) {
                         c.tool = tool_before;
                         c.inventory = inv_before;
@@ -1000,13 +709,11 @@ pub(crate) fn act_craft(
                     }
                 }
 
-                // The energy is only spent when something is actually made.
                 if c.tool != tool_before || c.bombs != bombs_before || c.salves != salves_before {
                     c.energy = (c.energy - energy_cost::CRAFT / skill).max(0.0);
                     crafted = true;
                 }
 
-                // Tool durability decay
                 if c.tool != tool_before {
                     events.push(SimEvent::Craft {
                         x: c.x,
@@ -1022,7 +729,6 @@ pub(crate) fn act_craft(
                     }
                 }
 
-                // Tech progression based on resources gathered
                 if c.tech_level == 0 && (c.inventory[2] >= 1 || c.inventory[1] >= 1) { c.tech_level = 1; }
                 else if c.tech_level == 1 && c.inventory[1] >= 3 { c.tech_level = 2; }
                 else if c.tech_level == 2 && c.inventory[3] >= 1 { c.tech_level = 3; }
@@ -1030,7 +736,6 @@ pub(crate) fn act_craft(
     crafted
 }
 
-/// Attack and shoot. Returns whether the creature wants to melee.
 pub(crate) fn act_combat(
     c: &mut Creature,
     out: &[f32],
@@ -1041,8 +746,7 @@ pub(crate) fn act_combat(
     diplomacy: &Diplomacy,
 ) -> bool {
     let mut wants_attack = false;
-                // The nearest foreign creature: the species it belongs to
-                // decides whether a first strike is allowed at all.
+
                 let mut nearest_foreign: Option<(u32, f32)> = None;
                 grid.near(c.x, c.y, 16, |idx| {
                     let a = &agents[idx as usize];
@@ -1054,37 +758,25 @@ pub(crate) fn act_combat(
                         nearest_foreign = Some((a.3, d));
                     }
                 });
-                // A ceasefire suppresses the first strike: the two species
-                // have agreed to stop, and only a defensive blow breaks it.
+
                 let truce = nearest_foreign.map_or(false, |(sp, _)| {
                     diplomacy.has_treaty(c.species, sp, Treaty::Ceasefire)
                         && !diplomacy.at_war(c.species, sp)
                 });
 
-                // Attack intent (output[4] = attack)
-                //
-                // A bold animal needs less provocation to start a fight, a
-                // timid one needs more, and a juvenile has no business
-                // fighting at all.
                 let bold = c.personality.aggression;
                 let attack_threshold = 0.45 - (bold - 0.5) * 0.3;
                 if out[4] > attack_threshold && !truce && c.stage.can_fight() {
-                    // Peaceful species refuse to start a fight.
+
                     if c.traits & trait_bits::PEACEFUL == 0 {
                         wants_attack = true;
                     }
                 }
 
-                // Madness drives a creature to attack its own kind. A colony
-                // with madness in it tears itself apart.
                 if c.is_mad() {
                     wants_attack = true;
                 }
 
-                // A war overrides the peaceful temperament: once the banners
-                // are up, a peaceful species fights back. Only enemies that
-                // are actually close count, otherwise the whole world would
-                // be at war with the whole world.
                 if out[4] > 0.25 || out[outputs::HOSTILE] > 0.5 {
                     let mut enemy_near = false;
                     grid.near(c.x, c.y, 18, |idx| {
@@ -1101,11 +793,8 @@ pub(crate) fn act_combat(
                     }
                 }
 
-                // Defend (output[19]): strike at anything closing in on the
-                // colony, even without a general attack impulse.
                 if out[19] > 0.3 {
-                    // Anything of another kind that comes close to the
-                    // colony is a target for the defenders.
+
                     let mut intruder_near = false;
                     grid.near(c.base_x, c.base_y, 30, |idx| {
                         let a = &agents[idx as usize];
@@ -1123,16 +812,12 @@ pub(crate) fn act_combat(
                     }
                 }
 
-                // Ranged attack. A creature that managed to craft a bow or a
-                // staff shoots at the nearest enemy instead of closing in.
-                // The shoot output asks for it; soldiers open fire anyway.
                 let ranged_range = match c.tool {
                     Tool::Bow => 30.0,
                     Tool::Staff => 24.0,
                     _ => 0.0,
                 };
-                // Ranged craft: the bow flies further. Siegecraft: the
-                // colony's shots fly further and hit harder.
+
                 let mut ranged_range = ranged_range;
                 let mut shot_damage = 1.0f32;
                 if c.knows_tech(Discovery::Ranged) && c.tool == Tool::Bow {
@@ -1150,7 +835,7 @@ pub(crate) fn act_combat(
                         if a.0 == c.id || a.3 == c.species {
                             return;
                         }
-                        // Allies are never shot at.
+
                         if diplomacy.are_allied(c.species, a.3) {
                             return;
                         }

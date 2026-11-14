@@ -1,8 +1,4 @@
-//! Headless simulation harness: mirrors the real interactive simulation so
-//! bench numbers reflect what the player actually sees.
-//!
-//! cargo run --release --bin bench -- [steps] [png-out]
-
+#![allow(dead_code)]
 #[path = "../creature/mod.rs"]
 mod creature;
 #[path = "../elements/mod.rs"]
@@ -24,7 +20,6 @@ use world::World;
 const W: usize = 1280;
 const H: usize = 720;
 
-/// Same seed logic as main.rs: time + pid, no persistent counter.
 fn get_random_seed() -> u64 {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
     let nanos = now.as_nanos() as u64;
@@ -49,7 +44,6 @@ fn main() {
     let mut creatures = CreatureSystem::new(seed.wrapping_add(0x1234_5678_9ABC_DEF0));
     creatures.populate(&world, 64);
 
-    // Seed-time census: all elements present right after world generation
     let mut seed_counts = [0u32; Elem::MAX as usize + 1];
     for &k in &world.kind {
         if k == Elem::Empty as u8 { continue; }
@@ -61,7 +55,6 @@ fn main() {
     let water_idx = Elem::Water as usize;
     println!("  Water cells at seed: {}", seed_counts[water_idx]);
 
-    // Sanity check: no solid resources should be floating above the terrain.
     let mut sky_resources = 0u32;
     for x in 0..W as i32 {
         let surf = world.surface_y(x);
@@ -84,7 +77,6 @@ fn main() {
         creatures.stats.species
     );
 
-    // Track which systems get exercised during the bench run.
     let mut tools_seen: [bool; 15] = [false; 15];
     let mut spells_seen: [bool; 10] = [false; 10];
     let mut mounts_seen: [bool; 5] = [false; 5];
@@ -97,7 +89,6 @@ fn main() {
         world.step();
         creatures.step(&mut world);
 
-        // Sample system usage every frame.
         for c in &creatures.list {
             let t = c.tool as usize;
             if t < tools_seen.len() {
@@ -134,8 +125,7 @@ fn main() {
                 creatures.stats.births,
                 creatures.stats.deaths
             );
-            // The five independent environmental pressures, so the difficulty
-            // curve can be read straight off the bench output.
+
             let p = world.pressure;
             println!(
                 "          pressure: scarcity {:.2}  depletion {:.2}  harshness {:.2}  extremes {:.2}  volcanic {:.2}",
@@ -201,7 +191,6 @@ fn main() {
         elapsed * 1000.0 / steps as f64
     );
 
-    // ---- System usage verification ----
     let tool_names = [
         "None", "Pickaxe", "Sword", "Hammer", "Drill", "Scanner", "Bow", "Spear",
         "Shield", "Staff", "Amulet", "Backpack", "Cart", "Boat", "Glider",
@@ -242,10 +231,8 @@ fn main() {
     println!("spells cast: {}", creatures.stats.spells_cast);
     println!("mounts tamed: {}", creatures.stats.mounts);
 
-    // ---- Element census: which elements ever existed in the world ----
-    // We approximate by counting what's present at the end plus what was eaten/built.
     let mut element_counts = [0u32; Elem::MAX as usize + 1];
-    // Count current world contents
+
     for &k in &world.kind {
         if k == Elem::Empty as u8 {
             continue;
@@ -256,7 +243,6 @@ fn main() {
         }
     }
 
-    // Diagnostic: which elements lost/gained the most cells over the run.
     let mut deltas: Vec<(&str, i64)> = Vec::new();
     for e in 1..=Elem::MAX {
         let s = seed_counts[e as usize] as i64;
@@ -287,10 +273,9 @@ fn main() {
         println!("  {:>12}: {}", name, cnt);
     }
 
-    let total_present: u32 = present.iter().map(|(_, c)| c).sum();
+    let _total_present: u32 = present.iter().map(|(_, c)| c).sum();
     println!("total distinct elements present: {}/{}", present.len(), Elem::MAX as usize);
 
-    // Print missing elements
     let mut missing: Vec<&str> = Vec::new();
     for e in 1..=Elem::MAX {
         if element_counts[e as usize] == 0 {
@@ -301,7 +286,6 @@ fn main() {
         println!("missing elements: {:?}", missing);
     }
 
-    // Write a PNG snapshot of the final frame
     let mut buf = vec![0u8; (W * H * 4) as usize];
     let mut renderer = render::Renderer::new();
     renderer.render_world(&world, &creatures, &mut buf, 0.0, 0.25, 0, world.weather);

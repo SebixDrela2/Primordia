@@ -4,7 +4,6 @@ use crate::world::World;
 use crate::W;
 use macroquad::prelude::*;
 
-/// Rolling ecology history for the sparkline + event feed.
 pub struct Telemetry {
     pop: Vec<f32>,
     species: Vec<f32>,
@@ -102,8 +101,6 @@ impl Telemetry {
     }
 }
 
-
-/// Top-right ecology panel: population/species sparkline plus recent events.
 pub fn draw_telemetry(t: &Telemetry, x: f32, y: f32) {
     let w = 314.0f32;
     let h = 226.0f32;
@@ -205,8 +202,6 @@ pub fn draw_telemetry(t: &Telemetry, x: f32, y: f32) {
     }
 }
 
-
-/// The species with the most members and the traits it has evolved.
 pub fn dominant_lineage(creatures: &CreatureSystem) -> (Option<u32>, Vec<&'static str>) {
     let mut counts: Vec<(u32, u32)> = Vec::new();
     for c in &creatures.list {
@@ -228,10 +223,6 @@ pub fn dominant_lineage(creatures: &CreatureSystem) -> (Option<u32>, Vec<&'stati
     (Some(sp), traits)
 }
 
-/// The mind of a lineage.
-///
-/// How big the brains of a species are, and what they fire with. A player
-/// can watch the tier climb as the colony works out how to think better.
 fn mind_summary(creatures: &CreatureSystem, species: u32) -> String {
     let mut net: Option<&crate::creature::Net> = None;
     for c in &creatures.list {
@@ -259,9 +250,7 @@ fn mind_summary(creatures: &CreatureSystem, species: u32) -> String {
 pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f32, seed: u64, sim_speed: f32, paused: bool, zoom: f32, revival: u32) {    let stats = &creatures.stats;
     let biome_name = world.biome_at((cam_x as i32).clamp(0, W as i32 - 1)).name();
     let weather_name = world.weather.name();
-    // Where the camera is: on the surface, or somewhere in the deep. The
-    // deep has its own zones, and the player needs to know which one they
-    // are digging through.
+
     let cam_col = (cam_x as i32).clamp(0, W as i32 - 1);
     let cam_depth = (cam_y as i32) - world.surface_y(cam_col);
     let place = if cam_depth > 14 {
@@ -270,7 +259,7 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
     } else {
         biome_name.to_string()
     };
-    // The dominant lineage and the traits it evolved.
+
     let (leader, leader_traits) = dominant_lineage(creatures);
 
     draw_text(
@@ -289,9 +278,7 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         "seed {}   REVIVAL {}   {} organisms   {} species   gen {}",
         seed, revival, stats.population, stats.species, stats.max_generation
     );
-    // The deep: how many ZORGs are left, and whether their cave is open.
-    // This is the one thing the player has to do something about, so it
-    // belongs on the first line of the screen.
+
     let zorgs = creatures.zorg_count();
     let deep = if world.zorg_cave_sealed {
         format!("{} ZORGs, THE DEEP IS SEALED", zorgs)
@@ -302,8 +289,7 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         "{} particles   avg energy {:.0}   fitness {:.2}   {}",
         world.census.particles, stats.avg_energy, stats.avg_fitness, deep
     );
-    // The air where the camera is. The deep is a stale place, and the one
-    // thing that changes about it is where the undergroves are.
+
     let cam_air = world.fresh_air(cam_col, (cam_y as i32).clamp(0, world.h as i32 - 1), 4);
     let air_name = if cam_air > 0.55 {
         "fresh air"
@@ -354,13 +340,6 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         None => "lineage: none".to_string(),
     };
 
-    // The environmental pressure, shown as separate bars. Each one rises for
-    // its own reason, so the player can see which part of the world is
-    // turning against them.
-    //
-    // The difficulty is the sum of all of them plus the run's own
-    // progress, and it is the number that decides how hard the world is
-    // on a creature right now, so it is worth watching.
     let p = &world.pressure;
     let line7 = format!(
         "pressure: scarcity {:.0}%  depletion {:.0}%  harshness {:.0}%  extremes {:.0}%  volcanic {:.0}%   difficulty {:.0}%",
@@ -371,10 +350,9 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         p.volcanic * 100.0,
         world.hardship() * 100.0
     );
-    // The diplomatic state of the world, in one line.
+
     let line8 = diplomacy_summary(creatures);
-    // The life of the world: how the colony is aged, and what it has
-    // learned.
+
     let line9 = format!(
         "ages: {} young  {} old   pairs {}   splits {}   practices {}   discoveries {}",
         stats.juveniles,
@@ -384,8 +362,7 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         stats.practices,
         stats.discoveries
     );
-    // The colonies that have lost their queen. They hold no ground and
-    // build nothing, so the player should know about it.
+
     let crises = creatures.species_in_crisis();
     let line10 = if crises.is_empty() {
         String::new()
@@ -410,7 +387,6 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         draw_text(&line10, 18.0, 258.0, 15.0, Color::new(0.95, 0.55, 0.35, 0.9));
     }
 
-    // The volcano: a warning banner while the mountain is awake.
     match world.volcano_state() {
         crate::world::Volcano::Erupting => {
             let flash = 0.6 + 0.4 * (get_time() as f32 * 6.0).sin();
@@ -466,4 +442,3 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         draw_text(hint, (screen_width() - hd.width) / 2.0, y + 22.0, 15.0, Color::new(0.7, 0.78, 0.85, 0.85));
     }
 }
-

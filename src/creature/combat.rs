@@ -1,12 +1,8 @@
 use super::*;
 
-// Combat resolution: turrets, bombs, projectiles, melee and deaths.
-// These run after every creature has decided what it wants to do.
-
 impl CreatureSystem {
     pub(crate) fn resolve_turrets(&mut self, world: &mut World, shots: &mut Vec<Projectile>) {
-    // Turrets of extinct species decay away, armed turrets shoot.
-        // ---- Turrets of extinct species decay away ----
+
         if self.tick % 60 == 0 {
             let alive: Vec<u32> = self.list.iter().map(|c| c.species).collect();
             let mut removed: Vec<Structure> = Vec::new();
@@ -36,7 +32,6 @@ impl CreatureSystem {
             }
         }
 
-        // ---- Turrets fire at other species ----
         for s in self.structures.iter_mut() {
             if !s.armed { continue; }
             if s.cooldown > 0 {
@@ -46,7 +41,7 @@ impl CreatureSystem {
             let mut target: Option<(f32, f32, f32)> = None;
             for other in self.list.iter() {
                 if other.species == s.species { continue; }
-                // Turrets hold their fire against allies.
+
                 if self.diplomacy.are_allied(s.species, other.species) { continue; }
                 let dx = other.x - s.x;
                 let dy = other.y - s.y;
@@ -85,20 +80,19 @@ impl CreatureSystem {
 
 impl CreatureSystem {
     pub(crate) fn resolve_bombs(&mut self, world: &mut World) {
-    // Bombs arc through the air and detonate on impact.
-        // ---- Bombs in flight ----
+
         if !self.bombs.is_empty() {
             let current = std::mem::take(&mut self.bombs);
             for mut b in current {
                 b.x += b.vx;
                 b.y += b.vy;
-                b.vy += 0.08; // gravity
+                b.vy += 0.08;
                 b.life = b.life.saturating_sub(1);
                 let tx = b.x.round() as i32;
                 let ty = b.y.round() as i32;
                 let hit_wall = b.life == 0 || world.is_blocked(tx, ty);
                 if hit_wall {
-                    // Detonation: everything close by takes damage.
+
                     let bx = b.x;
                     let by = b.y;
                     for j in 0..self.list.len() {
@@ -109,7 +103,7 @@ impl CreatureSystem {
                         if ospecies == b.owner {
                             continue;
                         }
-                        // A bomb spares the allies of the one who threw it.
+
                         if self.diplomacy.are_allied(b.owner, ospecies) {
                             continue;
                         }
@@ -119,9 +113,7 @@ impl CreatureSystem {
                             self.list[j].health -= 55.0;
                         }
                     }
-                    // Scorch the ground. The scorch is ash and charcoal rather
-                    // than fire: a block of fire would be a burst of light
-                    // sources and would flash the whole cave white.
+
                     self.spawn_energy_burst(world, tx, ty, 16, b.color);
                     for dx in -1..=1 {
                         for dy in -1..=1 {
@@ -150,8 +142,7 @@ impl CreatureSystem {
 
 impl CreatureSystem {
     pub(crate) fn resolve_projectiles(&mut self, world: &mut World, shots: Vec<Projectile>) {
-    // Arrows, mana bolts and turret fire travel and hit things.
-        // ---- Projectiles in flight ----
+
         let current: Vec<Projectile> = std::mem::take(&mut self.projectiles);
         let mut survivors: Vec<Projectile> = Vec::new();
         for mut p in current {
@@ -164,7 +155,7 @@ impl CreatureSystem {
             let tx = p.x.round() as i32;
             let ty = p.y.round() as i32;
             if world.is_blocked(tx, ty) {
-                // Impact: a puff of smoke where the shot hit rock.
+
                 self.spawn_impact_puff(world, tx, ty, 2);
                 continue;
             }
@@ -172,7 +163,7 @@ impl CreatureSystem {
             let mut hit: Option<usize> = None;
             for (j, other) in self.list.iter().enumerate() {
                 if other.species == p.species { continue; }
-                // A shot never stops at an ally.
+
                 if self.diplomacy.are_allied(p.species, other.species) { continue; }
                 if other.health <= 0.0 { continue; }
                 if segment_distance(other.x, other.y, p.px, p.py, p.x, p.y) < other.size.max(1.6) {
@@ -182,9 +173,7 @@ impl CreatureSystem {
             }
             if let Some(j) = hit {
                 self.list[j].health -= p.damage;
-                // Remember where the shot came from. This is the lesson
-                // the creature has to learn: it was hurt, and the hurt came
-                // from over there.
+
                 self.list[j].hurt_dir = crate::creature::senses::direction_of(
                     p.x - self.list[j].x,
                     p.y - self.list[j].y,
@@ -212,18 +201,14 @@ impl CreatureSystem {
 
 impl CreatureSystem {
     pub(crate) fn resolve_attacks(&mut self, grid: &SpatialGrid, attackers: &[usize]) {
-    // Melee: soldiers target enemy queens, squads focus fire.
-        // Resolve attacks - soldiers target enemy queens/bases, workers defend.
-        // Squads coordinate: whoever spots a target first calls it out, and
-        // the rest of the squad concentrates fire on the same victim.
+
         let mut squad_targets: Vec<(u16, usize)> = Vec::new();
         for &a in attackers {
             let (ax, ay, a_species, a_role, a_squad) = {
                 let c = &self.list[a];
                 (c.x, c.y, c.species, c.role, c.squad_id)
             };
-            // A colony that has learned to hunt is looking for food, not
-            // for a fight: it goes after the weakest animal it can find.
+
             let hunter = self.list[a].knows(Culture::Hunting);
             let mut best: Option<(usize, f32)> = None;
             grid.near(ax, ay, 16, |ji| {
@@ -233,9 +218,7 @@ impl CreatureSystem {
                 }
                 let other = &self.list[j];
                 if other.species == a_species {
-                    // Madness drives a creature to attack its own kind.
-                    // Nothing else does - except a pacific creature, which
-                    // will not raise a hand against its own people at all.
+
                     if !self.list[a].is_mad() {
                         return;
                     }
@@ -243,28 +226,13 @@ impl CreatureSystem {
                         return;
                     }
                 }
-                // Allies are never attacked. Breaking the treaty turns the
-                // ally back into a normal enemy, so it only has to be torn
-                // up once.
+
                 if self.diplomacy.are_allied(a_species, other.species) {
                     return;
                 }
-                // Who to hit.
-                //
-                // There used to be a rule here: a soldier went for the
-                // queen, a hunter went for the worker, and a colony at war
-                // went for anyone. The code was choosing the victim, so
-                // the animal never had to work out what it was attacking
-                // or why.
-                //
-                // Now the swing goes into whatever is nearest. Which
-                // creature that is, and what it is worth, is something the
-                // network's own decisions have to earn: the creature that
-                // keeps finding itself next to the enemy learns that
-                // going that way is what the killing is for.
+
                 let priority = 0.0;
-                // A species we are formally at war with comes first: the
-                // war is the reason the creature is swinging at all.
+
                 let war_penalty = if self.diplomacy.at_war(a_species, other.species) {
                     0.0
                 } else {
@@ -278,8 +246,7 @@ impl CreatureSystem {
                     best = Some((j, d));
                 }
             });
-            // A trespasser is the first thing a colony throws itself at:
-            // another species walking through its claim is asking for it.
+
             if a_role == Role::Soldier {
                 if let Some((cx, cy, radius)) = self.claim_of(a_species) {
                     let mut trespass: Option<(usize, f32)> = None;
@@ -309,7 +276,7 @@ impl CreatureSystem {
                     }
                 }
             }
-            // No target of its own? Follow the squad's call.
+
             if best.is_none() && a_squad > 0 {
                 if let Some((_, tj)) = squad_targets.iter().find(|(sq, _)| *sq == a_squad) {
                     let d = {
@@ -321,9 +288,7 @@ impl CreatureSystem {
                     }
                 }
             }
-            // Mutual defence: with no target of its own, a creature takes
-            // on whoever is fighting one of its allies. An alliance is
-            // therefore worth real soldiers, not just a shared label.
+
             if best.is_none() {
                 let allies = self.diplomacy.allies_of(a_species);
                 if !allies.is_empty() {
@@ -337,7 +302,7 @@ impl CreatureSystem {
                         if other.species == a_species {
                             return;
                         }
-                        // Only the enemies of our allies are fair game.
+
                         if !allies.iter().any(|al| self.diplomacy.at_war(*al, other.species)) {
                             return;
                         }
@@ -365,45 +330,37 @@ impl CreatureSystem {
                         Tool::Staff => 15.0,
                         _ => 0.0,
                     };
-                    // Ferocious species hit harder.
+
                     if attacker.traits & trait_bits::FEROCIOUS != 0 {
                         dmg *= 1.35;
                     }
-                    // A colony that has learned to fight fights better.
+
                     dmg *= attacker.culture_factor(Culture::Warfare);
-                    // A bold animal swings harder than a timid one.
+
                     dmg *= 0.8 + attacker.personality.aggression * 0.4;
-                    // And a colony that has worked out how to make a blade
-                    // properly hits harder still.
+
                     if self.species_discoveries(a_species) & discovery_bits::SMITHING != 0 {
                         dmg *= 1.3;
                     }
-                    // Smelting: the ore is worked where it is found, and
-                    // the edge it takes is better.
+
                     if self.species_discoveries(a_species) & discovery_bits::SMELTING != 0 {
                         dmg *= 1.25;
                     }
-                    // A Sunfire is made for the deep, not for a rival. It
-                    // scours a ZORG where it stands, but against ordinary
-                    // flesh it is barely better than a torch - a colony that
-                    // leans on it against its rivals will find itself at a
-                    // disadvantage.
+
                     if attacker.tool == Tool::Sunfire {
                         let target_is_zorg = self.list[j].faction == Faction::Zorg;
                         dmg *= sanctify::sunfire_damage(attacker.tech, target_is_zorg);
                     }
                     if attacker.active_spell == Spell::Fireball && attacker.spell_cd[1] == 0 { dmg += 20.0; }
-                    // The victim's own build decides how much of it lands.
+
                     let dmg = self.list[j].damage_taken(dmg);
                     self.list[j].health -= dmg;
-                    // Remember where the blow came from, so that the
-                    // creature can learn which way to run.
+
                     self.list[j].hurt_dir = crate::creature::senses::direction_of(
                         self.list[a].x - self.list[j].x,
                         self.list[a].y - self.list[j].y,
                     ) as i8;
-                    // Melee costs energy: swinging is work, and it used to
-                    // hand the attacker energy instead.
+
                     self.list[a].energy =
                         (self.list[a].energy - energy_cost::ATTACK).max(0.0);
                     self.events.push(SimEvent::Hit {
@@ -412,19 +369,14 @@ impl CreatureSystem {
                         color: self.list[a].team_color,
                         damage: dmg,
                     });
-                    // A venomous attacker poisons the wound it made. The
-                    // poison keeps working after the bite, so a venomous
-                    // species wins fights it should lose.
+
                     if self.list[a].traits & trait_bits::VENOMOUS != 0
                         && self.list[j].disease == Disease::None
                     {
                         self.list[j].disease = Disease::Poison;
                         self.list[j].disease_timer = 260;
                     }
-                    // A ZORG does not merely bite: it infects. Everything it
-                    // wounds catches the sickness it carries out of the
-                    // deep, and from there it walks into the colony and
-                    // takes it apart from the inside.
+
                     if self.list[a].faction == Faction::Zorg
                         && self.list[j].disease == Disease::None
                         && self.list[a].disease != Disease::None
@@ -439,30 +391,22 @@ impl CreatureSystem {
                     }
                     if self.list[j].health <= 0.0 {
                         self.list[a].kills += 1;
-                        // Remember which way the prey was in. The strike
-                        // landed because the creature went that way, and
-                        // that is what it has to learn.
+
                         self.list[a].kill_dir = crate::creature::senses::direction_of(
                             self.list[j].x - self.list[a].x,
                             self.list[j].y - self.list[a].y,
                         ) as i8;
                         self.list[a].energy = (self.list[a].energy + 140.0).min(self.list[a].max_energy);
-                        // A hunter feeds on what it has killed: the kill is
-                        // the meal, and the carcass is only what is left.
+
                         if hunter {
                             self.list[a].energy =
                                 (self.list[a].energy + 160.0).min(self.list[a].max_energy);
                             self.list[a].hunger = (self.list[a].hunger - 45.0).clamp(0.0, 100.0);
                         }
-                        // A corpse between two species is how a rivalry
-                        // starts. Every kill costs the two species a little
-                        // trust, which is what eventually tips a truce into
-                        // a war.
+
                         let victim_species = self.list[j].species;
                         self.adjust_trust(a_species, victim_species, -2.5);
-                        // The prey remembers the hunter. The fear belongs to
-                        // the whole species, so the animals that never saw
-                        // the kill still know of it.
+
                         self.predation.record_kill(victim_species, a_species);
                     }
                 }
@@ -473,8 +417,7 @@ impl CreatureSystem {
 
 impl CreatureSystem {
     pub(crate) fn resolve_deaths(&mut self, world: &mut World, dead: &[usize]) {
-    // The dead are removed and burst into energy.
-        // Remove the dead
+
         for &i in dead.iter().rev() {
             let (cx, cy, color, size, dx, dy, bond) = {
                 let c = &self.list[i];
@@ -493,15 +436,11 @@ impl CreatureSystem {
                 (c.role == Role::Queen, c.species)
             };
             world.scavenge(cx, cy, species);
-            // When the queen dies the colony falls into a crisis: it holds
-            // no ground, builds nothing and loses heart. The rivals take
-            // the chance, and the colony has to find a new queen to pull
-            // itself together again.
+
             if was_queen {
                 self.begin_succession(species);
             }
-            // A creature that loses its partner grieves: it loses heart and
-            // it loses weight for a while.
+
             if let Some(partner_id) = bond {
                 for c in self.list.iter_mut() {
                     if c.id == partner_id && c.health > 0.0 {
@@ -512,7 +451,7 @@ impl CreatureSystem {
                     }
                 }
             }
-            // A dying organism bursts into a spray of energy particles.
+
             let burst = 8 + self.rng.range(9);
             self.spawn_energy_burst(world, cx, cy, burst, color);
             self.events.push(SimEvent::Death {
@@ -523,12 +462,7 @@ impl CreatureSystem {
             });
             self.list.remove(i);
             self.deaths_total += 1;
-            // If that was the last of a species, its history ends here and
-            // now: the relations it held with the other species are of no
-            // interest to anybody. The slow prune would get round to them
-            // in a minute or two, but a species that dies out and is still
-            // in the diplomatic record for two minutes is a species that
-            // everybody thinks is at war with somebody.
+
             if !self.list.iter().any(|c| c.species == species) {
                 self.prune_diplomacy();
             }
@@ -538,11 +472,10 @@ impl CreatureSystem {
 
 impl CreatureSystem {
     pub(crate) fn resolve_births(&mut self, world: &mut World, births: Vec<(f32, f32, Creature)>) {
-    // Newborns are placed next to the colony.
-        // Births
-        for (x, y, mut child) in births {
+
+        for (x, y, child) in births {
             if self.list.len() >= MAX_POP { break; }
-            // Summon spell creates a minion at caster pos
+
             let cx = x + self.rng.range_i(-4, 5) as f32;
             let cy = y + self.rng.range_i(-4, 5) as f32;
             if world.is_blocked(cx.round() as i32, cy.round() as i32) { continue; }
@@ -552,23 +485,19 @@ impl CreatureSystem {
                     y: cy,
                     color: child.team_color,
                 });
-                // A new queen takes the throne, and the crisis is over.
+
                 if child.role == Role::Queen {
                     self.end_succession(child.species);
                 }
             }
         }
 
-        // No automatic re-seeding: species must be able to go extinct (and one
-        // last lineage to win). A fully dead world is handled by the
-        // extinction/revival screen in the main loop instead.
     }
 }
 
 impl CreatureSystem {
     pub(crate) fn apply_status(&mut self, spell_targets: Vec<(usize, usize, f32)>, disease_targets: Vec<usize>, heal_targets: Vec<(u32, f32, f32)>) {
-    // Spell damage, curses and salve healing.
-        // Apply spell damage and disease to targets
+
         for (caster_idx, target_idx, damage) in spell_targets {
             if let Some(target) = self.list.get_mut(target_idx) {
                 target.health -= damage;
@@ -587,10 +516,8 @@ impl CreatureSystem {
             }
         }
 
-        // Apply healing from salves.
         for (target_id, _hx, _hy) in heal_targets {
-            // The species of the one being healed decides how good the salve
-            // is.
+
             let power = {
                 let species = self
                     .list

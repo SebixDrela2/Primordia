@@ -1,8 +1,4 @@
-//! Temporary diagnostic: how crowded is the colony, and how close is it to
-//! the food? Compares the same seed before and after a change.
-//!
-//! cargo run --release --bin crowdcheck -- [steps] [seed]
-
+#![allow(dead_code)]
 #[path = "../creature/mod.rs"]
 mod creature;
 #[path = "../elements/mod.rs"]
@@ -15,7 +11,6 @@ mod rng;
 mod world;
 
 use creature::CreatureSystem;
-use elements::Elem;
 use world::World;
 
 const W: usize = 1280;
@@ -55,7 +50,7 @@ fn main() {
         if n >= 8 {
             in_crowd += 1;
         }
-        // How much food is under the creature's own feet?
+
         let mut best = false;
         for (dx, dy) in [
             (0i32, 0i32),

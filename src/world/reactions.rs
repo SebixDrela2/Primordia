@@ -28,7 +28,7 @@ impl World {
                         }
                     }
                 }
-                // Water + gunpowder = wet gunpowder (useless)
+
                 if self.rng.chance(0.1) {
                     for (dx, dy) in DIRS4 {
                         if self.get(x + dx, y + dy) == Elem::Gunpowder {
@@ -62,7 +62,7 @@ impl World {
                         }
                         Elem::Metal | Elem::Copper | Elem::Tin | Elem::Bronze | Elem::Iron | Elem::Steel | Elem::Gold | Elem::Silver => {
                             if self.rng.chance(0.02) {
-                                self.set_xy(x + dx, y + dy, Elem::Magma); // melted metal
+                                self.set_xy(x + dx, y + dy, Elem::Magma);
                             }
                         }
                         Elem::Stone | Elem::Brick | Elem::Concrete => {
@@ -84,22 +84,20 @@ impl World {
                         }
                         Elem::Stone => {
                             if self.rng.chance(0.0005) {
-                                self.set_xy(x + dx, y + dy, Elem::Magma); // spreads
+                                self.set_xy(x + dx, y + dy, Elem::Magma);
                             }
                         }
                         _ => {}
                     }
                 }
-                // Magma cools to stone/obsidian
+
                 if self.rng.chance(0.001) {
                     let to_obsidian = self.rng.chance(0.3);
                     self.set_at(i, if to_obsidian { Elem::Obsidian } else { Elem::Stone });
                 }
             }
             Elem::Acid => {
-                // Corrode slowly and conservatively: rock becomes sand (weathered
-                // debris that still exists) and the acid is spent. This keeps
-                // acid dangerous without letting it erase the whole world.
+
                 if self.rng.chance(0.06) {
                     for (dx, dy) in DIRS4 {
                         let t = self.get(x + dx, y + dy);
@@ -132,9 +130,7 @@ impl World {
                 }
             }
             Elem::Fire => {
-                // Fire needs air. A flame with no oxygen around it does
-                // not spread at all: it is a fire in a sealed cave, and it
-                // burns itself out.
+
                 let mut air = false;
                 for (dx, dy) in DIRS8 {
                     if self.get(x + dx, y + dy) == Elem::Oxygen {
@@ -142,8 +138,7 @@ impl World {
                         break;
                     }
                 }
-                // Fire spreads to flammable neighbors, but only where there
-                // is air to feed it.
+
                 if air && self.rng.chance(0.15) {
                     for (dx, dy) in DIRS8 {
                         let t = self.get(x + dx, y + dy);
@@ -152,7 +147,7 @@ impl World {
                         }
                     }
                 }
-                // Fire + sulfur = plasma (briefly)
+
                 if self.rng.chance(0.05) {
                     for (dx, dy) in DIRS4 {
                         if self.get(x + dx, y + dy) == Elem::Sulfur {
@@ -160,7 +155,7 @@ impl World {
                         }
                     }
                 }
-                // Fire + gunpowder = explosion
+
                 if self.rng.chance(0.1) {
                     for (dx, dy) in DIRS4 {
                         if self.get(x + dx, y + dy) == Elem::Gunpowder {
@@ -169,7 +164,7 @@ impl World {
                         }
                     }
                 }
-                // Fire + methane = bigger fire
+
                 if self.rng.chance(0.05) {
                     for (dx, dy) in DIRS4 {
                         if self.get(x + dx, y + dy) == Elem::Methane {
@@ -189,7 +184,7 @@ impl World {
                 }
             }
             Elem::Sulfur => {
-                // Sulfur + lava/magma = gas
+
                 if self.rng.chance(0.1) {
                     for (dx, dy) in DIRS4 {
                         let t = self.get(x + dx, y + dy);
@@ -201,7 +196,7 @@ impl World {
                 }
             }
             Elem::Mercury => {
-                // Mercury amalgamates with gold/copper/silver
+
                 for (dx, dy) in DIRS4 {
                     let t = self.get(x + dx, y + dy);
                     if matches!(t, Elem::Gold | Elem::Copper | Elem::Silver) {
@@ -212,7 +207,7 @@ impl World {
                 }
             }
             Elem::Plasma => {
-                // Plasma cools to gas
+
                 if self.rng.chance(0.2) {
                     self.set_at(i, Elem::Gas);
                 }
@@ -241,9 +236,7 @@ impl World {
                 }
             }
             Elem::Oxygen => {
-                // Oxygen is what a fire eats. It does not make the fire
-                // into plasma: it feeds it, so the flame burns hotter and
-                // lasts longer, and the oxygen itself is used up.
+
                 if self.rng.chance(0.2) {
                     for (dx, dy) in DIRS4 {
                         if self.get(x + dx, y + dy) == Elem::Fire {
@@ -252,7 +245,7 @@ impl World {
                         }
                     }
                 }
-                // Oxygen and methane together are a bang.
+
                 if self.rng.chance(0.02) {
                     for (dx, dy) in DIRS4 {
                         if self.get(x + dx, y + dy) == Elem::Methane {
@@ -277,13 +270,13 @@ impl World {
                     for (dx, dy) in DIRS4 {
                         let t = self.get(x + dx, y + dy);
                         if matches!(t, Elem::Plant | Elem::Fungus | Elem::Moss | Elem::Roots) {
-                            // speeds growth (handled in grow step)
+
                         }
                     }
                 }
             }
             Elem::Virus => {
-                // Virus spreads slowly - rare and dangerous but not OP
+
                 if self.rng.chance(0.05) {
                     for (dx, dy) in DIRS4 {
                         let t = self.get(x + dx, y + dy);
@@ -304,10 +297,10 @@ impl World {
                 }
             }
             Elem::Egg => {
-                // Hatches after lifetime
+
                 if self.age[i] > 1800 && self.rng.chance(0.01) {
                     self.set_at(i, Elem::Empty);
-                    // Creature spawn handled elsewhere
+
                 }
             }
             Elem::Corpse => {
@@ -318,7 +311,7 @@ impl World {
                         }
                     }
                 }
-                // Decomposes to bones/dust
+
                 if self.age[i] > 3000 && self.rng.chance(0.01) {
                     let to_bone = self.rng.chance(0.5);
                     self.set_at(i, if to_bone { Elem::Bone } else { Elem::Dust });
@@ -343,10 +336,10 @@ impl World {
                 }
             }
             Elem::Rune => {
-                // Runes activate with mana
+
             }
             Elem::Ward => {
-                // Wards repel viruses/bacteria
+
             }
             _ => {}
         }
@@ -372,5 +365,4 @@ impl World {
         }
     }
 
-    // Keeps the ecosystem running without any input.
 }

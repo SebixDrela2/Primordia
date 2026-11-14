@@ -1,7 +1,4 @@
-//! Temporary diagnostic: what does a colony actually eat?
-//!
-//! cargo run --release --bin foodcheck -- [steps]
-
+#![allow(dead_code)]
 #[path = "../creature/mod.rs"]
 mod creature;
 #[path = "../elements/mod.rs"]

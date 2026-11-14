@@ -1,20 +1,4 @@
-//! Headless check for the minds.
-//!
-//! cargo run --release --bin braincheck -- [steps] [seed]
-//!
-//! This is the check for the great change: the receptors are primitive now,
-//! and the brain has to work out for itself what things mean.
-//!
-//! It has three parts:
-//!
-//! 1. **The senses are primitive.** The input vector must hold colours,
-//!    smells and body state, and no answers.
-//! 2. **The brain can learn.** A mind that is shown a sweet smell in one
-//!    direction and then rewarded for wanting that direction must learn
-//!    to want it. This is the machinery the whole world depends on.
-//! 3. **The world still works.** The colony must feed itself, and it must
-//!    not go extinct.
-
+#![allow(dead_code)]
 #[path = "../creature/mod.rs"]
 mod creature;
 #[path = "../elements/mod.rs"]
@@ -46,7 +30,6 @@ fn main() {
     println!("=== brain check ===");
     println!("steps: {}", steps);
 
-    // ---- 1. The senses ----
     println!("--- the senses ---");
     println!("  inputs: {}", creature::INPUTS);
     println!("  outputs: {}", creature::OUTPUTS);
@@ -56,11 +39,6 @@ fn main() {
         failures += 1;
     }
 
-    // ---- 2. The learning ----
-    //
-    // The single most important thing in the whole simulation: can a mind
-    // learn that a smell means a direction? If it cannot, nothing else
-    // works.
     println!("--- the learning ---");
     let instinct = test_instinct();
     if instinct {
@@ -77,7 +55,6 @@ fn main() {
         failures += 1;
     }
 
-    // ---- 3. The world ----
     println!("--- the world ---");
     let mut world = World::new(W, H, seed);
     world.seed();
@@ -89,9 +66,7 @@ fn main() {
     let mut samples_first = 0u32;
     let mut samples_second = 0u32;
     for i in 0..steps {
-        // The world has to keep running too: the weather changes, the
-        // plants grow back and the ground is worn down. A check that only
-        // moved the creatures would measure a world that never changes.
+
         world.step();
         creatures.step(&mut world);
         if i % 300 == 0 {
@@ -124,7 +99,7 @@ fn main() {
     println!("  hunger in the first half:  {:.1}", hunger_first);
     println!("  hunger in the second half: {:.1}", hunger_second);
     println!("  meals: {}", creatures.eats_total);
-    // What the colony is living on.
+
     let mut meals: Vec<(&str, u32)> = Vec::new();
     for (i, n) in creatures.eats_by_elem.iter().enumerate() {
         if *n > 0 {
@@ -135,7 +110,7 @@ fn main() {
     for (name, n) in meals.iter().take(8) {
         println!("    {} meals: {}", name, n);
     }
-    // Why did they die? Count the ways.
+
     let mut starved = 0u32;
     let mut hurt = 0u32;
     for c in &creatures.list {
@@ -147,8 +122,7 @@ fn main() {
         }
     }
     println!("  the living: {} starving, {} hurt", starved, hurt);
-    // How often does the network even *ask* to eat? If the eat output
-    // never rises, the creature can never learn that it should.
+
     let mut over = 0u32;
     let mut total = 0u32;
     for c in &creatures.list {
@@ -158,7 +132,7 @@ fn main() {
         }
     }
     println!("  asking to eat: {}/{}", over, total);
-    // How many creatures have food within reach, and how many are resting?
+
     let mut with_food = 0u32;
     let mut resting = 0u32;
     let mut tired = 0u32;
@@ -186,8 +160,7 @@ fn main() {
         "  food within reach: {}/{}   resting: {}   short of energy: {}",
         with_food, total, resting, tired
     );
-    // How deep are they? A colony that has wandered into the deep is
-    // starving in a place where nothing grows.
+
     let mut depth = 0.0f32;
     for c in &creatures.list {
         let cx = c.x.round() as i32;
@@ -218,12 +191,6 @@ fn main() {
     }
 }
 
-/// Does a newborn mind already want the direction something smells in?
-///
-/// Every animal is born with the bias that a sweet smell is worth walking
-/// towards. This checks that the bias is really in the weights: a mind
-/// shown a sweet smell in one direction must want that direction more
-/// than the others, with no learning at all.
 fn test_instinct() -> bool {
     let mut rng = crate::rng::Rng::new(0xC0FFEE);
     let net = creature::Net::random(&creature::brain_sizes_for(0), &mut rng);
@@ -237,7 +204,7 @@ fn test_instinct() -> bool {
     input[base + sight::NEAR] = 0.5;
     input[base + sight::GREEN] = 0.8;
     input[base + sight::SOFT] = 0.9;
-    // The smell channels come after the sight ones inside a direction.
+
     input[base + sight::CHANNELS + smell::SWEET] = 1.0;
     net.forward_into(&input, &mut act, &mut next);
 
@@ -254,28 +221,17 @@ fn test_instinct() -> bool {
     best == want
 }
 
-/// Can a mind learn to want the direction something smells in?
-///
-/// A mind is shown a sweet smell in one direction, over and over, and each
-/// time it is rewarded for wanting that direction. After a few hundred
-/// rounds it must want that direction much more than the others.
-///
-/// This is the whole learning of the simulation in miniature: the mind is
-/// never told that the smell means food, it is only told that wanting
-/// that direction was a good idea.
 fn test_learning() -> bool {
     let mut rng = crate::rng::Rng::new(0xBEEF_1234);
     let mut net = creature::Net::random(&creature::brain_sizes_for(0), &mut rng);
-    // Take the instincts away, so this measures the *learning* and not
-    // the bias every animal is born with. A mind that starts with
-    // nothing must work out the smell for itself.
+
     net.skip.iter_mut().for_each(|v| *v = 0.0);
     net.skip_up = 0.0;
     let mut act = Vec::new();
     let mut next = Vec::new();
 
     let want = 3usize;
-    // The input: a sweet smell in one direction, and nothing else.
+
     let mut input = vec![0.0f32; creature::INPUTS];
     let mut net_ok = true;
 
@@ -283,7 +239,7 @@ fn test_learning() -> bool {
     let mut desire_after = 0.0f32;
 
     for round in 0..600 {
-        // Show the smell.
+
         input.iter_mut().for_each(|v| *v = 0.0);
         let base = want * DIR_CHANNELS;
         input[base + sight::NEAR] = 0.5;
@@ -298,7 +254,7 @@ fn test_learning() -> bool {
         if round == 599 {
             desire_after = d;
         }
-        // Reward it for wanting that direction.
+
         net.credit_desire(want, 0.5, 0.05);
         net_learn_ok(&mut net);
         net_ok = net_ok && true;
@@ -308,10 +264,8 @@ fn test_learning() -> bool {
     net_ok && desire_after > desire_before + 0.1
 }
 
-/// A small helper so the test reads clearly.
 fn net_learn_ok(_net: &mut creature::Net) {}
 
-/// A small helper so the test can read the network's own answer.
 trait NetExt {
     fn out_cache_or(&self, act: &[f32], idx: usize) -> f32;
 }
@@ -321,4 +275,3 @@ impl NetExt for creature::Net {
         act.get(idx).copied().unwrap_or(0.0)
     }
 }
-

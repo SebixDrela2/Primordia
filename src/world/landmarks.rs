@@ -1,42 +1,32 @@
-//! Landmarks: the places worth living in.
-//!
-//! The world is not uniform. A crystal grove hums with mana, a hot spring
-//! keeps the cold out, a bone field is a good place to hunt and an old ruin
-//! still holds the memory of the people who built it. A colony that settles
-//! beside one of them does better than a colony that does not, and the
-//! colonies that settle in the same place end up fighting over it.
-
 use super::*;
 
-/// The kind of place a landmark is.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Landmark {
-    /// A grove of crystal: mana flows through the ground here.
+
     CrystalGrove,
-    /// A hot spring: the cold does not reach here.
+
     HotSpring,
-    /// A field of bones: a good hunting ground.
+
     BoneField,
-    /// Rich soil: food grows here.
+
     FertileSoil,
-    /// An old ruin: the knowledge of the people who lived here.
+
     OldRuin,
-    /// A warren of fungus: sickness breeds here.
+
     FungalWarren,
-    /// A salt flat: the deep's corruption cannot take hold in salt.
+
     SaltFlat,
-    /// A drowned temple: the old people left their learning here.
+
     SunkenTemple,
-    /// A field of amber: the stone of the deep, hardened into resin.
+
     AmberField,
-    /// A stone that whispers: the colony thinks more sharply beside it.
+
     WhisperingStone,
-    /// A hollow in the rock full of metal: the ground gives it up easily.
+
     IronWomb,
-    /// A spire the lightning keeps striking: the air is full of charge.
+
     Stormspire,
-    /// A grove that grew in the dark: the deep has air here, and a colony
-    /// that settles beside it breathes easier than one in stale rock.
+
     Undergrove,
 }
 
@@ -77,7 +67,6 @@ impl Landmark {
         }
     }
 
-    /// How much of the world the landmarks take up.
     pub fn radius(self) -> f32 {
         match self {
             Landmark::CrystalGrove => 26.0,
@@ -96,7 +85,6 @@ impl Landmark {
         }
     }
 
-    /// Every kind of landmark.
     pub fn all() -> [Landmark; 13] {
         [
             Landmark::CrystalGrove,
@@ -116,7 +104,6 @@ impl Landmark {
     }
 }
 
-/// A place in the world with a name.
 #[derive(Clone, Copy)]
 pub struct LandmarkSite {
     pub kind: Landmark,
@@ -125,40 +112,32 @@ pub struct LandmarkSite {
 }
 
 impl LandmarkSite {
-    /// How far a point is from the heart of this landmark.
+
     pub fn distance_to(&self, x: f32, y: f32) -> f32 {
         ((x - self.x).powi(2) + (y - self.y).powi(2)).sqrt()
     }
 
-    /// Is a point inside the landmark?
     pub fn covers(&self, x: f32, y: f32) -> bool {
         self.distance_to(x, y) <= self.kind.radius()
     }
 }
 
 impl World {
-    /// Scatter the landmarks across the world.
-    ///
-    /// They are placed on the surface, spread out, so that no two of them
-    /// fight over the same patch of ground.
+
     pub(crate) fn generate_landmarks(&mut self, w: i32, _h: i32) {
         let kinds = Landmark::all();
-        // How many the world gets: enough to divide the map between the
-        // species, few enough that they stay worth fighting over.
+
         let count = 8 + self.rng.range(5);
         let mut placed: Vec<(f32, f32)> = Vec::new();
         for _ in 0..count {
-            // The kinds are drawn at random, so every world has its own
-            // mixture of places to settle beside. The undergrove is not one
-            // of them: it grows in the deep, and it is placed on its own
-            // below.
+
             let kind = loop {
                 let k = kinds[self.rng.range(kinds.len() as u32) as usize];
                 if k != Landmark::Undergrove {
                     break k;
                 }
             };
-            // Find a spot on the surface that is far enough from the others.
+
             let mut spot: Option<(i32, i32)> = None;
             for _ in 0..60 {
                 let x = self.rng.range(w as u32) as i32;
@@ -186,22 +165,14 @@ impl World {
             });
             self.paint_landmark(kind, x, y);
         }
-        // The undergrove is the one landmark that lives in the deep: a
-        // pocket of cave where something has been growing without any sun
-        // at all, and where the air is good enough to breathe.
+
         self.generate_undergroves(w);
     }
 
-    /// Grow the undergroves in the deep.
-    ///
-    /// An undergrove is a chamber of the caves filled with pale, glowing
-    /// fungus. The fungus breathes out oxygen in the dark, so a colony
-    /// that digs down to one has found the only fresh air under the
-    /// ground: it is a place worth settling, and worth fighting over.
     pub(crate) fn generate_undergroves(&mut self, w: i32) {
         let count = 2 + self.rng.range(3);
         for _ in 0..count {
-            // Find an open pocket of cave well below the surface.
+
             let mut spot: Option<(i32, i32)> = None;
             for _ in 0..400 {
                 let x = self.rng.range(w as u32) as i32;
@@ -210,7 +181,7 @@ impl World {
                 if y >= self.h as i32 - 12 {
                     continue;
                 }
-                // The pocket has to be open, with a floor under it.
+
                 if self.get(x, y) != Elem::Empty {
                     continue;
                 }
@@ -233,8 +204,7 @@ impl World {
                 continue;
             };
             let radius = Landmark::Undergrove.radius() as i32;
-            // A dome of pale fungus, with the plants hanging from the roof
-            // and the oxygen collecting in the middle of the chamber.
+
             for dy in -radius..=radius {
                 for dx in -radius..=radius {
                     let d2 = dx * dx + dy * dy;
@@ -252,7 +222,7 @@ impl World {
                     }
                     let roll = self.rng.f32();
                     if d2 < radius * radius / 3 {
-                        // The air of the grove: it collects in the middle.
+
                         if e == Elem::Empty && roll < 0.5 {
                             self.set_xy(px, py, Elem::Oxygen);
                         }
@@ -271,12 +241,6 @@ impl World {
         }
     }
 
-    /// Put something on the ground, never in the air.
-    ///
-    /// The terrain slopes, so a landmark that paints at a fixed height
-    /// leaves stone hanging over the slope. Everything a landmark puts
-    /// down goes through here, so it always rests on the ground of its
-    /// own column.
     fn paint_ground(&mut self, px: i32, py: i32, e: Elem) {
         if py < self.surface_y(px) {
             return;
@@ -287,13 +251,11 @@ impl World {
         self.paint_ground(px, py, e);
     }
 
-    /// Paint the cells of a landmark into the world.
     fn paint_landmark(&mut self, kind: Landmark, x: i32, y: i32) {
         let r = kind.radius() as i32;
         match kind {
             Landmark::CrystalGrove => {
-                // A cluster of crystal spires, standing up out of the
-                // ground the way a grove does.
+
                 for _ in 0..7 {
                     let cx = x + self.rng.range_i(-r / 2, r / 2 + 1);
                     let surf = self.surface_y(cx);
@@ -309,9 +271,7 @@ impl World {
                 }
             }
             Landmark::HotSpring => {
-                // A pool of warm water with a ring of stone around it. The
-                // pool is dug into the ground of each column, so the water
-                // sits in it instead of floating over the slope.
+
                 for dx in -6..=6 {
                     let px = x + dx;
                     let surf = self.surface_y(px);
@@ -327,7 +287,7 @@ impl World {
                 }
             }
             Landmark::BoneField => {
-                // Old bones scattered on the ground.
+
                 for _ in 0..26 {
                     let px = x + self.rng.range_i(-r, r + 1);
                     let py = y + self.rng.range_i(-2, 4);
@@ -342,7 +302,7 @@ impl World {
                 }
             }
             Landmark::FertileSoil => {
-                // Rich ground: plants and crops, and soil that feeds them.
+
                 for dy in -2..=2 {
                     for dx in -r..=r {
                         let px = x + dx;
@@ -359,7 +319,7 @@ impl World {
                 }
             }
             Landmark::OldRuin => {
-                // The remains of a settlement, with a totem at its heart.
+
                 for dy in -3..=3 {
                     for dx in -7..=7 {
                         let px = x + dx;
@@ -381,9 +341,7 @@ impl World {
                 }
             }
             Landmark::FungalWarren => {
-                // A mound of fungus, with spores hanging over it. Sickness
-                // lives here: it is the one place a colony should think
-                // twice before it settles.
+
                 for dy in -3..=2 {
                     for dx in -9..=9 {
                         let px = x + dx;
@@ -405,8 +363,7 @@ impl World {
                 }
             }
             Landmark::SaltFlat => {
-                // A pan of salt, white and dead. Nothing grows in it, and
-                // the filth of the deep cannot take hold in it either.
+
                 for dy in -1..=2 {
                     for dx in -13..=13 {
                         let px = x + dx;
@@ -418,8 +375,7 @@ impl World {
                 }
             }
             Landmark::SunkenTemple => {
-                // A temple that the water got into. The old learning is
-                // still here, under the green.
+
                 for dy in -2..=3 {
                     for dx in -8..=8 {
                         let px = x + dx;
@@ -441,12 +397,10 @@ impl World {
                 }
             }
             Landmark::Undergrove => {
-                // The undergrove is painted by its own generator, down in
-                // the caves, so there is nothing to do here.
+
             }
             Landmark::AmberField => {
-                // A field of amber: the stone of the deep, hardened into
-                // glassy gold and dug out of the ground.
+
                 for _ in 0..40 {
                     let px = x + self.rng.range_i(-r, r + 1);
                     let py = y + self.rng.range_i(-2, 4);
@@ -462,9 +416,7 @@ impl World {
                 }
             }
             Landmark::WhisperingStone => {
-                // A standing stone with runes cut into it, and a ring of
-                // quiet ground around it. The colony that settles here
-                // thinks more sharply.
+
                 for dy in -4..=1 {
                     for dx in -4..=4 {
                         let px = x + dx;
@@ -482,8 +434,7 @@ impl World {
                 }
             }
             Landmark::IronWomb => {
-                // A hollow in the rock packed with metal: iron, copper and
-                // the odd piece of steel, waiting to be dug out.
+
                 for dy in -3..=3 {
                     for dx in -9..=9 {
                         let px = x + dx;
@@ -502,8 +453,7 @@ impl World {
                 }
             }
             Landmark::Stormspire => {
-                // A spire of glassy rock that the lightning keeps striking.
-                // The ground around it is burnt and full of charge.
+
                 for dy in -6..=1 {
                     let px = x;
                     let py = y + dy;
@@ -528,7 +478,6 @@ impl World {
         }
     }
 
-    /// The landmark a point is standing in, if any.
     pub fn landmark_at(&self, x: f32, y: f32) -> Option<Landmark> {
         self.landmarks
             .iter()
@@ -536,9 +485,6 @@ impl World {
             .map(|l| l.kind)
     }
 
-    /// How much a point is worth because of the landmark it is in.
-    ///
-    /// This is what a colony gets from settling in the right place.
     pub fn landmark_bonus(&self, x: f32, y: f32) -> LandmarkBonus {
         let mut bonus = LandmarkBonus::default();
         for l in self.landmarks.iter() {
@@ -565,34 +511,32 @@ impl World {
     }
 }
 
-/// What a piece of ground gives to the creature standing on it.
 #[derive(Clone, Copy, Default)]
 pub struct LandmarkBonus {
-    /// A multiplier on the mana that comes back.
+
     pub mana: f32,
-    /// The cold does not bite here.
+
     pub warmth: bool,
-    /// Hunting is easier here.
+
     pub hunting: bool,
-    /// Food is plentiful here.
+
     pub food: bool,
-    /// The old knowledge helps here.
+
     pub craft: bool,
-    /// Sickness breeds here: the colony falls ill more easily.
+
     pub plague: bool,
-    /// The salt of the deep: the filth of the ZORGs cannot take hold.
+
     pub purity: bool,
-    /// The old learning lies here: the colony works things out faster.
+
     pub lore: bool,
-    /// Building stone lies here: the colony raises its buildings faster.
+
     pub stone: bool,
-    /// The mind is sharper here: the animals learn faster inside their
-    /// own lives.
+
     pub mind: bool,
-    /// The rock is rich with metal: what is dug out of it is worth more.
+
     pub metal: bool,
-    /// The air is charged: the colony is quick and strong here.
+
     pub energy: bool,
-    /// The air is fresh: the colony breathes easier here.
+
     pub air: bool,
 }

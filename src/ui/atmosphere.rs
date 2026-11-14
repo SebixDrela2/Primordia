@@ -1,19 +1,7 @@
-//! The air itself.
-//!
-//! The world is a heap of particles, but a world without anything floating
-//! in it looks like a diagram. This draws the things that hang in the air:
-//! dust in the light, embers over the lava, spores over the mire and
-//! bubbles under the water.
-//!
-//! The motes are not stored anywhere: each one is worked out from its
-//! number and the time, so they never cost a memory and they never jump
-//! about when the camera moves.
-
 use crate::elements::Elem;
 use crate::world::World;
 use macroquad::prelude::*;
 
-/// A stable random number for a mote.
 fn hash(n: u32) -> f32 {
     let mut x = n.wrapping_mul(0x9E37_79B9);
     x ^= x >> 15;
@@ -22,15 +10,14 @@ fn hash(n: u32) -> f32 {
     (x >> 8) as f32 / 16_777_216.0
 }
 
-/// What a mote is, and how it behaves.
 enum Mote {
-    /// Dust in the air: it drifts sideways and catches the light.
+
     Dust,
-    /// An ember over the fire: it rises and fades.
+
     Ember,
-    /// A spore over the fungus: it rises slowly and turns.
+
     Spore,
-    /// A bubble under the water: it rises and pops.
+
     Bubble,
 }
 
@@ -47,13 +34,10 @@ pub fn draw_atmosphere(
     let scr_h = screen_height();
     let scale_x = scr_w / view_w;
     let scale_y = scr_h / view_h;
-    // How much light there is: the dust only shows when there is light to
-    // catch, and at night the embers are all there is.
+
     let day = 0.5 - 0.5 * (day_night * std::f32::consts::TAU).cos();
     let light = 0.25 + 0.75 * day;
 
-    // The closer the camera, the fewer motes are needed, because each one
-    // covers more of the picture.
     let zoom = scr_w / view_w.max(1.0);
     let count = (220.0 / zoom.max(0.6)) as u32;
 
@@ -63,8 +47,6 @@ pub fn draw_atmosphere(
         let hz = hash(i.wrapping_mul(11).wrapping_add(29));
         let hw = hash(i.wrapping_mul(13).wrapping_add(41));
 
-        // The mote drifts sideways and wraps around the view, so the air is
-        // always moving without anything ever appearing out of nowhere.
         let speed = 3.0 + hw * 9.0;
         let drift = (time * speed + hx * view_w) % view_w.max(1.0);
         let wx = view_x + drift;
@@ -77,7 +59,6 @@ pub fn draw_atmosphere(
         }
         let surface = world.surface_y(cx);
 
-        // What the mote is depends on what is under it.
         let (kind, rise) = {
             let below = world.get(cx, surface - 2);
             let at = world.get(cx, surface - 6);
@@ -94,7 +75,6 @@ pub fn draw_atmosphere(
             }
         };
 
-        // How high the mote floats, and how it moves up and down.
         let height = 2.0 + hy * 12.0;
         let bob = (time * (0.6 + hz) + hy * 10.0).sin() * (0.8 + hz * 1.6);
         let wy = surface as f32 - height - bob - rise * ((time * 0.5 + hz * 8.0) % 12.0);
@@ -115,7 +95,7 @@ pub fn draw_atmosphere(
                 (0.85, 0.86, 0.90, fade * light)
             }
             Mote::Ember => {
-                // An ember brightens and fades as it rises.
+
                 let t = ((time * 0.7 + hz * 5.0) % 1.0) as f32;
                 (1.0, 0.55 - t * 0.3, 0.18 - t * 0.15, (0.75 - t * 0.6) * (0.4 + hz * 0.6))
             }

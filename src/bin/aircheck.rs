@@ -1,16 +1,4 @@
-//! Headless check for the air of the world.
-//!
-//! cargo run --release --bin aircheck -- [steps] [seed]
-//!
-//! The air is one of the newest parts of the simulation, so it gets its
-//! own check. It runs a world without a renderer and asserts the things
-//! that have to be true of the air:
-//! - the surface has fresh air in it, because the plants breathe
-//! - the deep does not, because nothing down there makes any
-//! - an undergrove does, and it is well below the surface
-//! - fire in a sealed cave goes out, and fire in the open does not
-//! - a creature in stale air tires faster than one in fresh air
-
+#![allow(dead_code)]
 #[path = "../creature/mod.rs"]
 mod creature;
 #[path = "../elements/mod.rs"]
@@ -45,9 +33,6 @@ fn main() {
 
     let mut failures = 0u32;
 
-    // ---- The undergroves ----
-    //
-    // They are the one landmark in the deep, and they have to be deep.
     let groves: Vec<_> = world
         .landmarks
         .iter()
@@ -67,7 +52,7 @@ fn main() {
             println!("FAIL: an undergrove is not in the deep");
             failures += 1;
         }
-        // The air of the grove has to be there.
+
         let air = world.fresh_air(g.x as i32, g.y as i32, 6);
         println!("    the air in it: {:.0}%", air * 100.0);
         if air < 0.2 {
@@ -79,9 +64,6 @@ fn main() {
         println!("NOTE: this world has no undergroves");
     }
 
-    // ---- The surface has air, the deep does not ----
-    //
-    // The plants breathe in the daylight, so the open air is fresh.
     world.daylight = 1.0;
     for _ in 0..steps {
         world.step();
@@ -93,11 +75,11 @@ fn main() {
     let mut deep_samples = 0u32;
     for x in (60..W as i32 - 60).step_by(17) {
         let surf = world.surface_y(x);
-        // Just above the ground: this is the open air.
+
         let a = world.fresh_air(x, surf - 3, 3);
         surface_air += a;
         surface_samples += 1;
-        // Well below: this is the deep.
+
         let b = world.fresh_air(x, surf + 60, 3);
         deep_air += b;
         deep_samples += 1;
@@ -115,11 +97,6 @@ fn main() {
         failures += 1;
     }
 
-    // ---- Fire needs air ----
-    //
-    // A fire with oxygen around it burns on; a fire in a sealed cave
-    // eats its own air and goes out. The two are measured directly: a
-    // chamber is built, a fire is lit in it, and the fire is watched.
     println!("--- fire ---");
     let open = fire_lifetime(true);
     let sealed = fire_lifetime(false);
@@ -134,7 +111,6 @@ fn main() {
         failures += 1;
     }
 
-    // ---- A creature in stale air tires faster ----
     println!("--- the cost of stale air ---");
     let stale = stale_cost(false);
     let fresh = stale_cost(true);
@@ -153,23 +129,15 @@ fn main() {
     }
 }
 
-/// How long a fire lives in a chamber, with air in it or without.
-///
-/// A chamber is built in the rock, a fire is lit in it, and the world is
-/// run until the fire goes out. A fire with oxygen around it has a supply
-/// of air; a fire in a sealed chamber has only the air it brings with it.
 fn fire_lifetime(with_air: bool) -> u32 {
-    // A tall world, so the chamber can be well below the surface: nothing
-    // down there makes any oxygen of its own.
+
     let mut w = World::new(64, 100, 77);
     w.seed();
-    // A tiny chamber, so the creature cannot walk about: the measurement
-    // has to be of the air and not of how much walking costs.
-    let (x0, x1) = (30i32, 33i32);
+
+    let (_x0, _x1) = (30i32, 33i32);
     let (x0, x1) = (24i32, 40i32);
     let (y0, y1) = (70i32, 78i32);
-    // A chamber in the rock, sealed on every side. Everything in it and
-    // around it is cleared, so the world cannot have left any oxygen in it.
+
     for y in y0 - 3..y1 + 3 {
         for x in x0 - 3..x1 + 3 {
             w.set_xy(x, y, Elem::Stone);
@@ -195,12 +163,11 @@ fn fire_lifetime(with_air: bool) -> u32 {
             }
         }
     }
-    // Light the fire on the floor of the chamber. There is no fuel around
-    // it, so the only thing that can keep it alive is the air.
+
     for x in x0 + 4..x0 + 12 {
         w.set_xy(x, y1 - 2, Elem::Fire);
     }
-    // Watch it burn.
+
     let mut steps = 0u32;
     while steps < 900 {
         w.step();
@@ -220,22 +187,14 @@ fn fire_lifetime(with_air: bool) -> u32 {
     steps
 }
 
-/// How much energy a creature loses in a tick, in stale air and in fresh.
-///
-/// A little world is built with a chamber in it, and the chamber is either
-/// full of oxygen or full of nothing at all. A creature is put in the
-/// chamber and the energy it burns in a hundred ticks is measured.
 fn stale_cost(fresh: bool) -> f32 {
-    // A tall world, so the chamber can be well below the surface: nothing
-    // down there makes any oxygen of its own.
+
     let mut w = World::new(64, 100, 99);
     w.seed();
-    // A tiny chamber, so the creature cannot walk about: the measurement
-    // has to be of the air and not of how much walking costs.
+
     let (x0, x1) = (30i32, 33i32);
     let (y0, y1) = (70i32, 73i32);
-    // A chamber in the deep, sealed on every side. Everything around it is
-    // cleared, so the world cannot have left any oxygen in it.
+
     for y in y0 - 3..y1 + 3 {
         for x in x0 - 3..x1 + 3 {
             w.set_xy(x, y, Elem::Stone);
@@ -255,64 +214,49 @@ fn stale_cost(fresh: bool) -> f32 {
         w.set_xy(x, y1, Elem::Stone);
     }
     if fresh {
-        // The air is in the roof of the chamber, not in the creatures'
-        // own cells: they breathe it, but they are not standing in it.
+
         for x in x0..x1 {
             w.set_xy(x, y0, Elem::Oxygen);
         }
     }
-    // No mining and no tools: the creature must not dig its way out of
-    // the chamber, or the measurement would be of the rock outside and
-    // not of the air inside.
+
     w.mine_budget = 0;
     w.daylight = 1.0;
 
     let mut creatures = CreatureSystem::new(4242);
     creatures.populate(&w, 8);
-    // No pick and no drill: the walls of the chamber stay walls. And no
-    // spells: a fire in a room full of oxygen is a bomb, and the
-    // measurement is of the air and not of an explosion.
+
     for c in creatures.list.iter_mut() {
         c.tool = creature::Tool::None;
         c.tool_durability = 0;
         c.known_spells = 0;
         c.active_spell = creature::Spell::None;
     }
-    // Put every creature in the chamber.
+
     for c in creatures.list.iter_mut() {
         c.x = 30.0;
         c.y = (y1 - 1) as f32;
     }
-    // Let them settle.
+
     for _ in 0..20 {
         creatures.step(&mut w);
     }
-    // Make them all tired, so they lie down and recover their wind. The
-    // measurement is then of the wind they get back, which is what the
-    // air actually changes.
+
     for c in creatures.list.iter_mut() {
         c.energy = c.max_energy * 0.6;
         c.stamina = 0.0;
     }
     let before: f32 = creatures.list.iter().map(|c| c.stamina).sum();
     for _ in 0..60 {
-        // Put them back in the chamber and fill it with air again, so the
-        // measurement is of the air and not of what the creatures do to
-        // the room they are in: a creature that digs a tunnel, or a fire
-        // that eats the floor, would otherwise take the whole chamber
-        // away and the two cases would measure the same stale rock.
+
         for c in creatures.list.iter_mut() {
             c.x = 30.0;
             c.y = (y1 - 1) as f32;
-            // Nothing kills them and nothing tires them: the measurement
-            // is of the wind they get back, and of nothing else. They are
-            // kept healthy, fed and lying down, so that the only thing
-            // that can change the number is the air they are breathing.
+
             c.health = c.max_health();
             c.energy = c.max_energy * 0.6;
             c.disease = creature::Disease::None;
-            // The deep is a sick place and the plague is in it: a creature
-            // that catches it cannot be measured on its wind.
+
             for i in 0..c.immunity.len() {
                 c.immunity[i] = 2;
             }
@@ -326,13 +270,12 @@ fn stale_cost(fresh: bool) -> f32 {
             }
         }
         creatures.step(&mut w);
-        // Keep them lying down, so the measurement is of the recovery and
-        // not of a creature that got up.
+
         for c in creatures.list.iter_mut() {
             c.stamina = c.stamina.min(c.max_stamina * 0.5);
         }
     }
     let after: f32 = creatures.list.iter().map(|c| c.stamina).sum();
-    // The wind they got back, per creature per tick.
+
     ((after - before) / creatures.list.len().max(1) as f32 / 60.0).max(0.0)
 }

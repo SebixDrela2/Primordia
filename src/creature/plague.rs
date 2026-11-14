@@ -1,37 +1,25 @@
-//! Disease: the plagues that run through a colony.
-//!
-//! A disease is not a label on a creature: it changes what the creature
-//! can do, how fast it burns its energy and how long it has left. Some
-//! diseases are catching, some kill, and some turn a colony mad.
-//!
-//! The point of the system is that a colony can be **destroyed from the
-//! inside**. A species that has spread too wide, lived too long in one
-//! place and let its neighbours trade with it can find its whole
-//! population wiped out by something no sword can stop.
-
 use super::*;
 
-/// How a disease behaves.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Plague {
-    /// Catches easily, weakens the body, and burns out on its own.
+
     Flu,
-    /// Catches very easily and kills. It ends with the host.
+
     Plague,
-    /// Spreads through wounds. The venom of a venomous animal.
+
     Poison,
-    /// Does not spread, but wears the victim down.
+
     Curse,
-    /// Spreads through the flesh and kills slowly.
+
     Infection,
-    /// Lives on the host and drinks its energy without killing it.
+
     Parasite,
-    /// Drives the host to attack its own kind.
+
     Madness,
 }
 
 impl Plague {
-    /// Every disease.
+
     pub fn all() -> [Plague; 7] {
         [
             Plague::Flu,
@@ -44,7 +32,6 @@ impl Plague {
         ]
     }
 
-    /// The name shown in the tooltip.
     pub fn name(self) -> &'static str {
         match self {
             Plague::Flu => "flu",
@@ -57,7 +44,6 @@ impl Plague {
         }
     }
 
-    /// What the disease does.
     pub fn blurb(self) -> &'static str {
         match self {
             Plague::Flu => "catches easily, weakens and burns out",
@@ -70,10 +56,6 @@ impl Plague {
         }
     }
 
-    /// How likely the disease is to jump to a neighbour, per tick.
-    ///
-    /// A disease that spreads through the air catches far more easily than
-    /// one that needs a wound.
     pub fn contagiousness(self) -> f32 {
         match self {
             Plague::Flu => 0.010,
@@ -86,7 +68,6 @@ impl Plague {
         }
     }
 
-    /// How much health the disease takes per tick.
     pub fn lethality(self) -> f32 {
         match self {
             Plague::Flu => 0.0,
@@ -99,7 +80,6 @@ impl Plague {
         }
     }
 
-    /// How much energy the disease burns per tick.
     pub fn drain(self) -> f32 {
         match self {
             Plague::Flu => 0.10,
@@ -112,7 +92,6 @@ impl Plague {
         }
     }
 
-    /// How much the disease slows the host down.
     pub fn slowness(self) -> f32 {
         match self {
             Plague::Flu => 0.7,
@@ -125,18 +104,10 @@ impl Plague {
         }
     }
 
-    /// Whether the disease drives the host to attack its own kind.
     pub fn maddens(self) -> bool {
         matches!(self, Plague::Madness)
     }
 
-    /// How hard the disease wears the body down.
-    ///
-    /// A sick animal burns through what it has: it eats more than it
-    /// would otherwise, and it tires sooner. This is the difference
-    /// between a disease that is a label and one that is a real illness,
-    /// and it is what makes a sick colony a colony that cannot feed
-    /// itself.
     pub fn debility(self) -> f32 {
         match self {
             Plague::Flu => 0.35,
@@ -149,10 +120,6 @@ impl Plague {
         }
     }
 
-    /// How long the disease lasts, in ticks.
-    ///
-    /// A disease with no duration never ends on its own: it has to be
-    /// survived or fatal.
     pub fn duration(self) -> u16 {
         match self {
             Plague::Flu => 420,
@@ -165,23 +132,18 @@ impl Plague {
         }
     }
 
-    /// Is this disease still around?
     pub fn is_active(self) -> bool {
         true
     }
 }
 
 impl Creature {
-    /// What the disease does to this creature on a single tick.
-    ///
-    /// The return value is the health the disease took.
+
     pub fn apply_disease(&mut self) -> f32 {
         if self.disease == Disease::None {
             return 0.0;
         }
-        // A ZORG wears its sickness like a coat: it was born in the poison
-        // of the deep and the filth does not touch it. It is the source of
-        // the sickness, not its victim.
+
         if self.faction == Faction::Zorg {
             return 0.0;
         }
@@ -192,7 +154,6 @@ impl Creature {
         harm
     }
 
-    /// How fast this creature moves while it is sick.
     pub fn disease_speed_factor(&self) -> f32 {
         if self.disease == Disease::None {
             return 1.0;
@@ -203,22 +164,14 @@ impl Creature {
         Plague::from(self.disease).slowness()
     }
 
-    /// Whether the disease makes this creature attack its own kind.
     pub fn is_mad(&self) -> bool {
         self.disease != Disease::None && Plague::from(self.disease).maddens()
     }
 
-    /// The resistance this creature has to a disease.
-    ///
-    /// `0` is no resistance, `1` is resistance and `2` is immunity.
     pub fn resistance(&self, disease: Disease) -> u8 {
         self.immunity[disease as usize]
     }
 
-    /// How likely the disease is to take hold in this creature.
-    ///
-    /// A resistant animal shrugs it off most of the time; an immune one
-    /// never catches it at all.
     pub fn catch_chance(&self, disease: Disease) -> f32 {
         match self.resistance(disease) {
             0 => 1.0,
@@ -228,12 +181,6 @@ impl Creature {
     }
 }
 
-/// The genes that give resistance to a disease, and the disease they guard
-/// against.
-///
-/// Resistance is genetic, so it is inherited and it evolves: a plague that
-/// sweeps through a colony selects for the animals that can stand it, and
-/// their descendants are born resistant.
 pub const IMMUNITY_GENES: [(usize, Disease); 4] = [
     (23, Disease::Flu),
     (24, Disease::Plague),
@@ -241,7 +188,6 @@ pub const IMMUNITY_GENES: [(usize, Disease); 4] = [
     (26, Disease::Madness),
 ];
 
-/// The resistance a genome gives, worked out from the genes.
 pub fn immunity_from_genes(genes: &[f32; 32]) -> [u8; 8] {
     let mut immunity = [0u8; 8];
     for (gene, disease) in IMMUNITY_GENES {
@@ -255,10 +201,6 @@ pub fn immunity_from_genes(genes: &[f32; 32]) -> [u8; 8] {
     immunity
 }
 
-/// Turn the old disease enum into the richer plague table.
-///
-/// The enum stays as it is because it is stored in a byte and used by the
-/// network, but the rules live in `Plague`.
 impl From<Disease> for Plague {
     fn from(d: Disease) -> Plague {
         match d {
@@ -275,14 +217,7 @@ impl From<Disease> for Plague {
 }
 
 impl CreatureSystem {
-    /// A disease breaks out in a crowded colony.
-    ///
-    /// Diseases do not only come from venom and curses: a colony that has
-    /// grown too crowded breeds them. Every so often one animal falls ill,
-    /// and from there the disease does its own work.
-    ///
-    /// A colony that has settled beside a fungal warren breeds them faster:
-    /// the sickness has somewhere to live.
+
     pub(crate) fn maybe_outbreak(&mut self, world: &World) {
         if self.tick % 400 != 0 || self.list.len() <= 20 {
             return;
@@ -292,7 +227,7 @@ impl CreatureSystem {
             .iter()
             .filter(|c| c.disease != Disease::None)
             .count();
-        // The warren: sickness breeds faster beside one.
+
         let mut warren = 0.0f32;
         for c in self.list.iter() {
             if world.landmark_bonus(c.x, c.y).plague {
@@ -300,12 +235,11 @@ impl CreatureSystem {
             }
         }
         let breed = 0.25 + warren / (self.list.len() as f32).max(1.0) * 1.5;
-        // A colony that is already suffering is not ready for another
-        // outbreak.
+
         if sick * 6 >= self.list.len() || !self.rng.chance(breed) {
             return;
         }
-        // The outbreak starts where the sickness lives: in the warren.
+
         let victim = if warren > 0.0 && self.rng.chance(0.6) {
             let mut best: Option<usize> = None;
             for (i, c) in self.list.iter().enumerate() {
@@ -345,19 +279,11 @@ impl CreatureSystem {
         });
     }
 
-    /// Spread the diseases through the colonies.
-    ///
-    /// A sick animal infects its own kind: the disease moves through the
-    /// colony, and a colony that has been trading with its neighbours gets
-    /// it from them too.
-    ///
-    /// This runs every few ticks rather than every tick: a disease that
-    /// jumps once per tick would sweep a colony in seconds.
     pub(crate) fn spread_diseases(&mut self, grid: &SpatialGrid) {
         if self.tick % 3 != 0 {
             return;
         }
-        // Which creatures are sick, and with what.
+
         let sick: Vec<(usize, Disease, f32)> = self
             .list
             .iter()
@@ -374,7 +300,7 @@ impl CreatureSystem {
         if sick.is_empty() {
             return;
         }
-        // The infections that happened this tick.
+
         let mut infected: Vec<(usize, Disease)> = Vec::new();
         for (i, disease, chance) in sick {
             if chance <= 0.0 {
@@ -390,8 +316,7 @@ impl CreatureSystem {
                     return;
                 }
                 let other = &self.list[j];
-                // A disease spreads through a colony, and also between
-                // colonies that are close enough to meet.
+
                 if other.species != sspecies && chance < 0.008 {
                     return;
                 }
@@ -402,7 +327,7 @@ impl CreatureSystem {
                 if d > 14.0 {
                     return;
                 }
-                // A resistant animal mostly shrugs the disease off.
+
                 let catch = other.catch_chance(disease);
                 if catch <= 0.0 {
                     return;
@@ -418,20 +343,11 @@ impl CreatureSystem {
         }
     }
 
-    /// The ZORGs are carriers of sickness.
-    ///
-    /// They live in the poison of the deep and they wear the disease they
-    /// were born with. Anything that stands close to one of them can catch
-    /// what it is carrying, and from there the disease walks into the
-    /// colony it has caught.
-    ///
-    /// This is the ZORGs' real weapon: they do not have to kill a colony,
-    /// they only have to get close to it.
     pub(crate) fn spread_zorg_plague(&mut self, grid: &SpatialGrid) {
         if self.tick % 10 != 0 {
             return;
         }
-        // The carriers and what they carry.
+
         let carriers: Vec<(f32, f32, Disease)> = self
             .list
             .iter()
@@ -442,17 +358,14 @@ impl CreatureSystem {
             return;
         }
         let mut infected: Vec<(usize, Disease)> = Vec::new();
-        // Purge: a colony that has worked out how to scour the filth of
-        // the deep resists what the ZORGs carry.
+
         let mut purge = 1.0f32;
         for (_, d) in self.discoveries.iter() {
             if *d & discovery_bits::PURGE != 0 {
                 purge *= 0.5;
             }
         }
-        // One buffer for all the carriers: the neighbours of a carrier are
-        // collected first so the world can be borrowed while they are
-        // looked at.
+
         let mut near: Vec<usize> = Vec::new();
         for (sx, sy, disease) in carriers {
             near.clear();
@@ -462,8 +375,7 @@ impl CreatureSystem {
                     continue;
                 }
                 let other = &self.list[j];
-                // A ZORG cannot infect another ZORG: the filth is already
-                // theirs.
+
                 if other.faction == Faction::Zorg
                     || other.disease != Disease::None
                     || other.health <= 0.0
@@ -474,7 +386,7 @@ impl CreatureSystem {
                 if d > 9.0 {
                     continue;
                 }
-                // A resistant animal mostly shrugs the disease off.
+
                 let catch = other.catch_chance(disease);
                 if catch <= 0.0 {
                     continue;

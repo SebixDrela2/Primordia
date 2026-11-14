@@ -1,8 +1,4 @@
-//! Generates the element table section of `docs/SIMULATION.md` straight from
-//! the element properties, so the documentation can never drift from the code.
-//!
-//! cargo run --release --bin docgen
-
+#![allow(dead_code)]
 #[path = "../creature/mod.rs"]
 mod creature;
 #[path = "../elements/mod.rs"]

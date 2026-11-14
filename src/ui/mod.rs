@@ -1,17 +1,3 @@
-//! User interface: HUD, minimap, knowledge window and effects.
-//!
-//! Split by responsibility:
-//! - effects.rs    transient animations for every interaction
-//! - hud.rs        the heads-up display and the ecology panel
-//! - knowledge.rs  hover tooltips and the encyclopedia
-//! - minimap.rs    minimap, weather overlay and vignette
-//! - victory.rs    the victory / extinction screen
-//! - actors.rs     creatures, projectiles and world overlays
-//! - atmosphere.rs the dust, the embers and the spores in the air
-//! - minds.rs      the inspector: what the cleverest animals are thinking
-//! - diplomacy.rs  the relations between species and their treaties
-//! - tech.rs       the tech tree window and the tech panel
-
 pub mod actors;
 pub mod atmosphere;
 pub mod diplomacy;

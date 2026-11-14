@@ -4,7 +4,6 @@ use macroquad::prelude::*;
 use super::knowledge::HoverTarget;
 use super::minimap::draw_weather;
 
-/// Draw the creatures, their shots and the world overlays.
 pub fn draw_actors(
     creatures: &CreatureSystem,
     world: &mut World,
@@ -17,7 +16,6 @@ pub fn draw_actors(
     now: f32,
 ) {
 
-        // Draw creature bodies and names (only those in view)
         let show_all_names = zoom >= 2.5;
         let hovered_creature: Option<u32> = match ui_hover {
             HoverTarget::Creature { id } => Some(*id),
@@ -26,9 +24,6 @@ pub fn draw_actors(
         let scr_w = screen_width();
         let scr_h = screen_height();
 
-        // Colony campfires: every species that still has a queen burns a light
-        // at its nest, so settlements are visible from across the world.
-        // A colony without wood does not have a fire, and its nest is dark.
         {
             let mut fires: Vec<(f32, f32, [u8; 3])> = Vec::new();
             for c in &creatures.list {
@@ -55,8 +50,7 @@ pub fn draw_actors(
                 let sx = (fx - view_x) * scale_x;
                 let sy = (fy - view_y) * scale_y;
                 let flicker = 0.75 + 0.25 * ((now * 6.0 + fx) * 1.7).sin();
-                // A wide, very faint wash of the species colour: the map
-                // slowly becomes a picture of who holds what.
+
                 for (radius, alpha) in [(120.0f32, 0.018f32), (70.0, 0.026)] {
                     draw_circle(
                         sx,
@@ -92,7 +86,6 @@ pub fn draw_actors(
             }
         }
 
-        // Fireflies: little lights drifting over the ground at night.
         {
             let night = (creatures.day_night - 0.55).abs() > 0.45;
             if night && zoom < 3.0 {
@@ -100,7 +93,7 @@ pub fn draw_actors(
                 let scale_y = scr_h / view_h;
                 for i in 0..70 {
                     let fi = i as f32;
-                    // A slow, looping drift so the motes never sit still.
+
                     let px = view_x
                         + ((fi * 37.1 + now * 6.0 + (fi * 13.0).sin() * 9.0)
                             .rem_euclid(view_w.max(1.0)));
@@ -119,7 +112,6 @@ pub fn draw_actors(
             }
         }
 
-        // The territory each colony holds, drawn as a faint ring.
         {
             let mut claims: Vec<(f32, f32, f32, [u8; 3])> = Vec::new();
             for c in &creatures.list {
@@ -144,7 +136,7 @@ pub fn draw_actors(
                 if sx + r < 0.0 || sx - r > scr_w || sy + r < 0.0 || sy - r > scr_h {
                     continue;
                 }
-                // A dashed border: the edge of what the colony holds.
+
                 let segments = 48;
                 for i in 0..segments {
                     if i % 2 == 1 {
@@ -167,8 +159,7 @@ pub fn draw_actors(
                     );
                 }
             }
-            // A colony in crisis: its border flickers and breaks, because
-            // there is nobody left to defend the ground.
+
             for (species, _) in &creatures.succession {
                 let Some((cx, cy, radius)) = creatures.claim_of(*species) else {
                     continue;
@@ -196,7 +187,6 @@ pub fn draw_actors(
             }
         }
 
-        // The bonds: a thin line between two animals that are partners.
         for c in &creatures.list {
             let Some(partner_id) = c.bond else {
                 continue;
@@ -243,8 +233,7 @@ pub fn draw_actors(
             let s = scale_x.min(scale_y);
             let sx = (c.x - view_x) * scale_x;
             let sy = (c.y - view_y) * scale_y;
-            // A juvenile is drawn small and an elder slightly large, so a
-            // colony shows its ages at a glance.
+
             let r = (c.body_size() * s).max(2.0);
             let base = Color::new(
                 c.team_color[0] as f32 / 255.0,
@@ -254,8 +243,6 @@ pub fn draw_actors(
             );
             let core = Color::new(1.0, 1.0, 0.95, 0.92);
 
-            // Soft drop shadow + species glow make the colony pop out of the
-            // terrain.
             draw_circle(
                 sx,
                 sy + r * 0.85,
@@ -271,7 +258,6 @@ pub fn draw_actors(
                 );
             }
 
-            // Role silhouettes make the colony readable at a glance.
             match c.role {
                 Role::Soldier => {
                     let angle = c.vy.atan2(c.vx) - std::f32::consts::FRAC_PI_2;
@@ -296,8 +282,7 @@ pub fn draw_actors(
                     draw_circle(sx, sy, (r * 0.28).max(1.0), core);
                 }
                 Role::Envoy => {
-                    // A diplomat: a diamond with a bright core, and a little
-                    // banner so envoys stand out in a crowd.
+
                     draw_poly(sx, sy, 4, r * 1.3, 0.0, base);
                     draw_circle(sx, sy, (r * 0.26).max(1.0), core);
                     draw_line(
@@ -322,9 +307,6 @@ pub fn draw_actors(
                 }
             }
 
-            // The life stage is drawn as a ring around the animal: a thin
-            // ring for a juvenile, a plain one for an adult and a broken
-            // one for an elder.
             match c.stage {
                 Stage::Juvenile => {
                     draw_circle_lines(
@@ -336,7 +318,7 @@ pub fn draw_actors(
                     );
                 }
                 Stage::Elder => {
-                    // A second, fainter ring marks the old ones.
+
                     draw_circle_lines(
                         sx,
                         sy,
@@ -348,7 +330,6 @@ pub fn draw_actors(
                 Stage::Adult => {}
             }
 
-            // After dark the animals catch the light with their eyes.
             if (creatures.day_night - 0.55).abs() > 0.45 {
                 let eye = (r * 0.16).max(0.9);
                 let shine = 0.55 + 0.45 * ((now * 3.0 + c.id as f32) * 0.7).sin();
@@ -362,9 +343,6 @@ pub fn draw_actors(
                 }
             }
 
-            // A sick animal wears its illness: a ring of the sickness
-            // pulsing round it. The plague that the ZORGs carry is
-            // visible in the colony long before it kills anything.
             if c.disease != crate::creature::Disease::None {
                 let beat = 0.5 + 0.5 * ((now * 3.4 + c.id as f32 * 0.7).sin());
                 draw_circle_lines(
@@ -376,8 +354,6 @@ pub fn draw_actors(
                 );
             }
 
-            // A creature that has left its colony is marked with a pale
-            // outline: it does not belong to the colony any more.
             if c.migrating {
                 draw_circle_lines(
                     sx,
@@ -388,13 +364,10 @@ pub fn draw_actors(
                 );
             }
 
-            // A creature that is courting shows a small heart above it, so
-            // the player can watch the courtship of a colony.
             if c.mate.is_some() && c.sired > 0 {
                 draw_circle(sx, sy - r * 1.9, (r * 0.22).max(1.0), Color::new(1.0, 0.45, 0.6, 0.85));
             }
 
-            // Damage bar (only when hurt).
             let hp = (c.health / 100.0).clamp(0.0, 1.0);
             if hp < 0.999 {
                 let bw = (r * 2.6).max(6.0);
@@ -410,7 +383,6 @@ pub fn draw_actors(
                 draw_rectangle(sx - bw / 2.0, by, bw * hp, 2.0, col);
             }
 
-            // Hover ring.
             if hovered_creature == Some(c.id) {
                 draw_circle_lines(
                     sx,
@@ -421,8 +393,6 @@ pub fn draw_actors(
                 );
             }
 
-            // Names only for queens, the hovered creature, tiny populations,
-            // or when zoomed in. Keeps the view clean and avoids text churn.
             let show_name = show_all_names
                 || c.role == Role::Queen
                 || hovered_creature == Some(c.id)
@@ -444,7 +414,6 @@ pub fn draw_actors(
             }
         }
 
-        // ---- Shots in flight ----
         let vscale_x = scr_w / view_w;
         let vscale_y = scr_h / view_h;
         for p in &creatures.projectiles {
@@ -486,7 +455,6 @@ pub fn draw_actors(
             draw_circle(sx, sy, 2.2, glow);
         }
 
-        // ---- Turret markers ----
         for s in &creatures.structures {
             if !s.armed {
                 continue;
@@ -507,7 +475,6 @@ pub fn draw_actors(
             );
         }
 
-        // ---- Bombs in flight ----
         for b in &creatures.bombs {
             let sx = (b.x - view_x) * vscale_x;
             let sy = (b.y - view_y) * vscale_y;
@@ -521,23 +488,17 @@ pub fn draw_actors(
             );
         }
 
-        // ---- Ambient atmosphere ----
-        //
-        // The air is never still. Motes drift in the light, leaves fall in
-        // the autumn and ash comes down from the volcano. These are drawn
-        // from the clock alone, so they cost nothing to simulate.
         {
             let scale_x = scr_w / view_w;
             let scale_y = scr_h / view_h;
             let season = world.season;
             let volcano = world.volcano();
-            // Motes of dust and pollen, always present but stronger in the
-            // warm light of the day.
+
             let motes = 46;
             for i in 0..motes {
                 let fi = i as f32;
                 let seed = fi * 1.618;
-                // Each mote drifts on its own little circle.
+
                 let px = (seed * 137.0 + now * (7.0 + (i % 5) as f32 * 2.5)) % scr_w;
                 let py = (seed * 91.0 + now * (4.0 + (i % 3) as f32 * 1.7)) % scr_h;
                 let sway = ((now * 1.3 + seed) * 2.0).sin() * 7.0;
@@ -549,7 +510,7 @@ pub fn draw_actors(
                     Color::new(1.0, 0.96, 0.85, alpha),
                 );
             }
-            // Falling leaves in the autumn, and ash from the volcano.
+
             if season == 2 || volcano.is_some() {
                 let n = if season == 2 { 26 } else { 14 };
                 for i in 0..n {
@@ -559,14 +520,14 @@ pub fn draw_actors(
                     let py = (seed * 61.0 + now * (34.0 + (i % 4) as f32 * 11.0)) % scr_h;
                     let sway = ((now * 2.1 + seed) * 3.0).sin() * 11.0;
                     let (r, g, b) = if season == 2 {
-                        // Leaves: rust, gold and the last green.
+
                         match i % 3 {
                             0 => (0.82, 0.48, 0.16),
                             1 => (0.90, 0.72, 0.24),
                             _ => (0.55, 0.62, 0.22),
                         }
                     } else {
-                        // Ash from the crater: grey and slow.
+
                         (0.55, 0.53, 0.52)
                     };
                     draw_line(
@@ -579,7 +540,7 @@ pub fn draw_actors(
                     );
                 }
             }
-            // Fireflies on a warm summer night.
+
             if season == 1 && (creatures.day_night - 0.55).abs() > 0.4 {
                 for i in 0..22 {
                     let fi = i as f32;
@@ -594,12 +555,8 @@ pub fn draw_actors(
             let _ = (scale_x, scale_y);
         }
 
-        // ---- Weather overlay ----
         draw_weather(world.weather, now);
 
-        // ---- Meteors ----
-        // A meteor comes down as a bright streak and leaves a flash where it
-        // lands.
         for (mx, my, life) in &world.meteor_events {
             let t = *life as f32 / 22.0;
             let sx = (mx - view_x) * vscale_x;
@@ -617,5 +574,4 @@ pub fn draw_actors(
             draw_circle(sx, sy, 7.0 * t + 2.0, Color::new(1.0, 0.9, 0.65, 0.7 * t));
         }
 
-        // ---- Interaction animations ----
 }

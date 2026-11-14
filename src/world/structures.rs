@@ -2,7 +2,7 @@ use super::*;
 
 impl World {
     pub(crate) fn generate_underground_structures(&mut self, w: i32, h: i32) {
-        // Ancient ruins
+
         for _ in 0..5 {
             let cx = self.rng.range((w / 2) as u32) as i32 + w / 4;
             let cy = self.surface_y(cx) + 25 + self.rng.range(60) as i32;
@@ -26,8 +26,6 @@ impl World {
             }
         }
 
-        // Crystal towers. The base is placed relative to the terrain, so the
-        // tower grows out of the ground instead of hanging in the sky.
         for _ in 0..3 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.surface_y(cx) + 20 + self.rng.range(60) as i32;
@@ -46,11 +44,10 @@ impl World {
             }
         }
 
-        // Ancient bridges
         for _ in 0..2 {
             let x1 = self.rng.range((w / 3) as u32) as i32 + w / 6;
             let x2 = self.rng.range((w / 3) as u32) as i32 + 2 * w / 3;
-            // The bridge follows the terrain so it never floats above it.
+
             let y = self.surface_y((x1 + x2) / 2) + 12 + self.rng.range(40) as i32;
             let start = x1.min(x2);
             let end = x1.max(x2);
@@ -65,14 +62,13 @@ impl World {
             }
         }
 
-        // Dungeon entrances
         for _ in 0..4 {
             let x = self.rng.range(w as u32) as i32;
             let surface = self.surface_y(x);
             let y = surface - 1;
             if self.get(x, y) == Elem::Empty {
                 self.set_xy(x, y, Elem::Door);
-                // Add some loot inside
+
                 for dy in 1..=3 {
                     if self.get(x, y + dy) == Elem::Empty {
                         match self.rng.range(5) {
@@ -87,10 +83,6 @@ impl World {
             }
         }
 
-        // The scattered remains of older settlements: a hearth still
-        // burning somewhere, a totem raised by a tribe that is long gone.
-        // These are what the first creatures find, and what they learn to
-        // build for themselves.
         for _ in 0..5 {
             let x = self.rng.range(w as u32) as i32;
             let surface = self.surface_y(x);
@@ -104,7 +96,7 @@ impl World {
                 2 => self.set_xy(x, y, Elem::Granary),
                 _ => self.set_xy(x, y, Elem::Market),
             }
-            // A little of the old settlement around it.
+
             for (dx, dy) in DIRS8 {
                 if self.rng.chance(0.35) {
                     let px = x + dx;
@@ -118,7 +110,7 @@ impl World {
     }
 
     pub(crate) fn generate_surface_structures(&mut self, w: i32, h: i32) {
-        // Ancient towers
+
         for _ in 0..3 {
             let cx = self.rng.range((w / 2) as u32) as i32 + w / 4;
             let surface = self.surface_y(cx);
@@ -137,13 +129,12 @@ impl World {
                     }
                 }
             }
-            // Tower top
+
             if self.get(cx, surface - height) == Elem::Empty {
                 self.set_xy(cx, surface - height, Elem::Crystal);
             }
         }
 
-        // Ancient statues
         for _ in 0..4 {
             let x = self.rng.range(w as u32) as i32;
             let surface = self.surface_y(x);
@@ -159,7 +150,6 @@ impl World {
             }
         }
 
-        // Geysers
         for _ in 0..4 {
             let x = self.rng.range(w as u32) as i32;
             let surface = self.surface_y(x);
@@ -171,7 +161,6 @@ impl World {
             }
         }
 
-        // Tar pits
         for _ in 0..2 {
             let x = self.rng.range(w as u32) as i32;
             let surface = self.surface_y(x);
@@ -188,7 +177,6 @@ impl World {
             }
         }
 
-        // Mushroom circles
         for _ in 0..5 {
             let cx = self.rng.range(w as u32) as i32;
             let surface = self.surface_y(cx);
@@ -214,7 +202,6 @@ impl World {
             }
         }
 
-        // Crystal formations
         for _ in 0..4 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.surface_y(cx) - 2;
@@ -234,9 +221,5 @@ impl World {
             }
         }
     }
-
-    // ------------------------------------------------------------------
-    // Simulation
-    // ------------------------------------------------------------------
 
 }

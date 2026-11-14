@@ -1,13 +1,10 @@
 use super::*;
 
-/// Per-element data: colour, physical behaviour and the numbers the
-/// simulation runs on. Everything here is reached through the lookup tables
-/// in `mod.rs` inside the hot loops.
 impl Elem {
     pub fn color(self) -> [u8; 3] {
         match self {
             Elem::Empty => [10, 14, 23],
-            // Powders
+
             Elem::Sand => [232, 197, 138],
             Elem::Sulfur => [255, 220, 60],
             Elem::Salt => [220, 220, 230],
@@ -18,7 +15,7 @@ impl Elem {
             Elem::Mud => [120, 100, 80],
             Elem::Snow => [238, 244, 252],
             Elem::Crop => [226, 196, 86],
-            // Liquids
+
             Elem::Water => [56, 132, 255],
             Elem::Oil => [58, 46, 34],
             Elem::Acid => [154, 255, 82],
@@ -28,7 +25,7 @@ impl Elem {
             Elem::Alcohol => [200, 200, 220],
             Elem::Honey => [255, 200, 60],
             Elem::Tar => [28, 22, 20],
-            // Gases
+
             Elem::Steam => [196, 214, 226],
             Elem::Smoke => [96, 104, 116],
             Elem::Gas => [130, 200, 150],
@@ -36,7 +33,7 @@ impl Elem {
             Elem::Chlorine => [180, 255, 180],
             Elem::Methane => [100, 100, 120],
             Elem::Oxygen => [150, 200, 255],
-            // Solids
+
             Elem::Stone => [116, 120, 128],
             Elem::Metal => [172, 182, 196],
             Elem::Copper => [184, 115, 51],
@@ -53,7 +50,7 @@ impl Elem {
             Elem::Obsidian => [30, 20, 40],
             Elem::Granite => [92, 86, 96],
             Elem::Rust => [126, 74, 38],
-            // Organic
+
             Elem::Wood => [124, 86, 48],
             Elem::Plant => [52, 186, 92],
             Elem::Spore => [148, 92, 214],
@@ -64,7 +61,7 @@ impl Elem {
             Elem::Bone => [230, 225, 210],
             Elem::Leather => [160, 120, 80],
             Elem::Charcoal => [38, 36, 38],
-            // Energy/Exotic
+
             Elem::Fire => [255, 107, 32],
             Elem::Energy => [255, 232, 64],
             Elem::Ice => [168, 222, 255],
@@ -74,7 +71,7 @@ impl Elem {
             Elem::Mana => [180, 100, 255],
             Elem::Soul => [255, 255, 200],
             Elem::Ember => [220, 90, 30],
-            // Constructed
+
             Elem::Brick => [178, 90, 60],
             Elem::Concrete => [140, 140, 145],
             Elem::Wire => [120, 120, 140],
@@ -92,17 +89,17 @@ impl Elem {
             Elem::Tower => [110, 110, 120],
             Elem::Bridge => [130, 120, 110],
             Elem::Road => [80, 80, 85],
-            // Magical
+
             Elem::Rune => [255, 150, 255],
             Elem::Ward => [150, 255, 255],
             Elem::Portal => [255, 200, 255],
-            // Biological
+
             Elem::Egg => [240, 230, 180],
             Elem::Corpse => [80, 70, 60],
             Elem::Virus => [255, 80, 80],
             Elem::Bacteria => [200, 180, 100],
             Elem::Food => [200, 180, 120],
-            // Settlement
+
             Elem::Market => [190, 150, 90],
             Elem::Workshop => [150, 130, 110],
             Elem::Granary => [160, 140, 80],
@@ -112,9 +109,6 @@ impl Elem {
         }
     }
 
-    /// Light this element radiates, as an RGB multiplier. `[0,0,0]` means the
-    /// element is not a light source. The renderer builds a light field from
-    /// these values so caves are lit by the lava and crystals inside them.
     pub fn emission(self) -> [f32; 3] {
         match self {
             Elem::Fire => [1.00, 0.42, 0.10],
@@ -136,9 +130,7 @@ impl Elem {
             Elem::Hearth => [1.00, 0.45, 0.12],
             Elem::Totem => [0.50, 0.26, 0.72],
             Elem::Void => [0.0, 0.0, 0.0],
-            // The corruption of the deep glows, faintly. It is what the
-            // ZORGs leave behind them, and the deep should look alive with
-            // it.
+
             Elem::Poison => [0.11, 0.19, 0.07],
             Elem::Acid => [0.15, 0.21, 0.05],
             Elem::Virus => [0.24, 0.05, 0.08],
@@ -148,7 +140,6 @@ impl Elem {
         }
     }
 
-    /// Elements that have a branch in `World::try_reaction`.
     pub fn is_reactive(self) -> bool {
         matches!(
             self,
@@ -192,9 +183,6 @@ impl Elem {
         )
     }
 
-    /// True when a cell can never change on its own: no reaction, no
-    /// behaviour and no lifetime. The world step skips these entirely, which
-    /// is what keeps the simulation fast (most of the world is stone).
     pub fn is_inert(self) -> bool {
         !self.is_reactive()
             && self.behavior() == Behavior::Static
@@ -247,7 +235,7 @@ impl Elem {
             Elem::Metal | Elem::Iron | Elem::Steel => 22,
             Elem::Copper | Elem::Tin | Elem::Bronze | Elem::Wire | Elem::Gold | Elem::Silver => 22,
             Elem::Glass | Elem::Crystal | Elem::Gem | Elem::Diamond | Elem::Obsidian => 18,
-            Elem::Circuit | Elem::Tool | Elem::Machine | Elem::Door | Elem::Chest | Elem::Forge | Elem::Farm | Elem::Temple | Elem::Bridge | Elem::Road => 24,
+            Elem::Circuit | Elem::Tool | Elem::Machine | Elem::Door | Elem::Chest | Elem::Farm | Elem::Temple | Elem::Bridge | Elem::Road => 24,
             Elem::Market | Elem::Workshop | Elem::Granary | Elem::Beacon | Elem::Hearth | Elem::Totem => 22,
             Elem::Rune | Elem::Ward | Elem::Portal | Elem::Egg => 15,
             Elem::Corpse => 12,
@@ -266,8 +254,7 @@ impl Elem {
             Elem::Fungus => 15.0,
             Elem::Moss => 8.0,
             Elem::Roots => 12.0,
-            // Energy is not food. It glows, it drifts and it is a sign of
-            // what the deep holds, but no mouth in this world eats it.
+
             Elem::Energy => 0.0,
             Elem::Gas => 20.0,
             Elem::Stone => 2.0,
@@ -304,12 +291,11 @@ impl Elem {
             Elem::Corpse => 40.0,
             Elem::Mud => 5.0,
             Elem::Food => 25.0,
-            // A cultivated crop is worth more than a wild plant: farming
-            // has to be worth the effort of tending it.
+
             Elem::Crop => 55.0,
             Elem::Charcoal => 5.0,
             Elem::Snow => 1.0,
-            // Gases/energy: small nutrition
+
             Elem::Chlorine => 1.0,
             Elem::Methane => 5.0,
             Elem::Oxygen => 2.0,
@@ -319,20 +305,16 @@ impl Elem {
             Elem::Ember => 1.0,
             Elem::Virus => 0.5,
             Elem::Bacteria => 0.5,
-            // Constructed/decorative: not food
+
             Elem::Chest => 0.0,
             Elem::Farm => 0.0,
             Elem::Temple => 0.0,
-            Elem::Machine => 0.0,
-            Elem::Tower => 0.0,
+                        Elem::Tower => 0.0,
             Elem::Bridge => 0.0,
             Elem::Road => 0.0,
             Elem::Wall => 0.0,
             Elem::Door => 0.0,
-            Elem::Wire => 0.0,
-            Elem::Circuit => 0.0,
-            Elem::Tool => 0.0,
-            Elem::Tar => 0.0,
+                                                Elem::Tar => 0.0,
             _ => 0.0,
         }
     }
@@ -370,9 +352,7 @@ impl Elem {
             Elem::Plasma => 120,
             Elem::Chlorine => 300,
             Elem::Methane => 200,
-            // Oxygen lives a long time: it hangs in the air rather than
-            // being made and unmade every step, which keeps the world
-            // cheap without making the air any less real.
+
             Elem::Oxygen => 400,
             Elem::Mana => 1000,
             Elem::Soul => 500,
@@ -385,10 +365,6 @@ impl Elem {
         }
     }
 
-    /// True for things a creature can actually eat/drink. Structural rock,
-    /// ores and refined materials are *not* food even though they may have a
-    /// small `nutrition` value used elsewhere. This stops creatures from
-    /// eating the terrain bare.
     pub fn is_edible(self) -> bool {
         matches!(
             self,
@@ -430,9 +406,7 @@ impl Elem {
                 | Elem::Honey
                 | Elem::Blood
                 | Elem::Poison
-                // The remains of a creature are not a wall. A body on the
-                // ground is walked over: a colony that dies a lot must not
-                // wall itself in with its own dead.
+
                 | Elem::Corpse
                 | Elem::Bone
                 | Elem::Meat
@@ -657,11 +631,10 @@ impl Elem {
         )
     }
 
-    /// Human-readable name of the element.
     pub fn name(self) -> &'static str {
         match self {
             Elem::Empty => "Empty",
-            // Powders
+
             Elem::Sand => "Sand",
             Elem::Sulfur => "Sulfur",
             Elem::Salt => "Salt",
@@ -672,7 +645,7 @@ impl Elem {
             Elem::Mud => "Mud",
             Elem::Snow => "Snow",
             Elem::Crop => "Crop",
-            // Liquids
+
             Elem::Water => "Water",
             Elem::Oil => "Oil",
             Elem::Acid => "Acid",
@@ -682,7 +655,7 @@ impl Elem {
             Elem::Alcohol => "Alcohol",
             Elem::Honey => "Honey",
             Elem::Tar => "Tar",
-            // Gases
+
             Elem::Steam => "Steam",
             Elem::Smoke => "Smoke",
             Elem::Gas => "Gas",
@@ -690,7 +663,7 @@ impl Elem {
             Elem::Chlorine => "Chlorine",
             Elem::Methane => "Methane",
             Elem::Oxygen => "Oxygen",
-            // Solids
+
             Elem::Stone => "Stone",
             Elem::Metal => "Metal",
             Elem::Copper => "Copper",
@@ -707,7 +680,7 @@ impl Elem {
             Elem::Obsidian => "Obsidian",
             Elem::Granite => "Granite",
             Elem::Rust => "Rust",
-            // Organic
+
             Elem::Wood => "Wood",
             Elem::Plant => "Plant",
             Elem::Spore => "Spore",
@@ -718,7 +691,7 @@ impl Elem {
             Elem::Bone => "Bone",
             Elem::Leather => "Leather",
             Elem::Charcoal => "Charcoal",
-            // Energy/Exotic
+
             Elem::Fire => "Fire",
             Elem::Energy => "Energy",
             Elem::Ice => "Ice",
@@ -728,7 +701,7 @@ impl Elem {
             Elem::Mana => "Mana",
             Elem::Soul => "Soul",
             Elem::Ember => "Ember",
-            // Constructed
+
             Elem::Brick => "Brick",
             Elem::Concrete => "Concrete",
             Elem::Wire => "Wire",
@@ -746,11 +719,11 @@ impl Elem {
             Elem::Tower => "Tower",
             Elem::Bridge => "Bridge",
             Elem::Road => "Road",
-            // Magical
+
             Elem::Rune => "Rune",
             Elem::Ward => "Ward",
             Elem::Portal => "Portal",
-            // Biological
+
             Elem::Egg => "Egg",
             Elem::Corpse => "Corpse",
             Elem::Virus => "Virus",
@@ -765,11 +738,10 @@ impl Elem {
         }
     }
 
-    /// Short encyclopedia description shown in the knowledge window and hover tooltip.
     pub fn description(self) -> &'static str {
         match self {
             Elem::Empty => "Nothing here. Creatures can move freely.",
-            // Powders
+
             Elem::Sand => "Fine granular powder. Falls under gravity. Melts into glass near lava.",
             Elem::Sulfur => "Bright yellow powder. Flammable; reacts with lava to make gas.",
             Elem::Salt => "White crystalline powder. Harmless seasoning.",
@@ -780,7 +752,7 @@ impl Elem {
             Elem::Mud => "Wet dirt. Forms where water meets soil.",
             Elem::Snow => "Cold powder that falls in winter. Melts back into water.",
             Elem::Crop => "A ripe crop, grown from a plant on a tilled farm. Better food than a wild plant.",
-            // Liquids
+
             Elem::Water => "Flowing liquid. Essential for life and plants. Extinguishes fire.",
             Elem::Oil => "Flammable dark liquid. Burns readily and can be gathered for energy.",
             Elem::Acid => "Corrosive green liquid. Dissolves most solids on contact.",
@@ -790,7 +762,7 @@ impl Elem {
             Elem::Alcohol => "Clear flammable liquid. Burns with a clean flame.",
             Elem::Honey => "Thick golden sweet liquid. High energy food.",
             Elem::Tar => "Sticky black residue of burnt oil. Slow to burn, hard to wash off.",
-            // Gases
+
             Elem::Steam => "Hot water vapor. Rises and condenses back to water.",
             Elem::Smoke => "Grey gas from fires. Rises and fades over time.",
             Elem::Gas => "Generic flammable gas. Rises and can explode.",
@@ -798,7 +770,7 @@ impl Elem {
             Elem::Chlorine => "Toxic pale-green gas. Poisons water and organic matter.",
             Elem::Methane => "Flammable gas from swamps. Explodes near fire.",
             Elem::Oxygen => "Breathable gas. Makes fires burn hotter.",
-            // Solids
+
             Elem::Stone => "Hard common rock. Forms the crust of the world.",
             Elem::Metal => "Generic sturdy metal. Can be melted and alloyed.",
             Elem::Copper => "Reddish metal. Early-age conductor and tool material.",
@@ -815,7 +787,7 @@ impl Elem {
             Elem::Obsidian => "Volcanic glass. Forms where water meets lava.",
             Elem::Granite => "Deep igneous rock. Slow to melt and harder than stone.",
             Elem::Rust => "Iron oxide. Feeds iron ore back into the ground.",
-            // Organic
+
             Elem::Wood => "Solid plant material. Burns and floats on water.",
             Elem::Plant => "Living vegetation. Grows near water and spreads slowly.",
             Elem::Spore => "Reproductive dust from fungi and plants. Drifts on air.",
@@ -826,7 +798,7 @@ impl Elem {
             Elem::Bone => "Hard skeletal remains. Slow to decay.",
             Elem::Leather => "Treated hide. Durable crafting material.",
             Elem::Charcoal => "Burnt carbon. Burns slowly but burns hot.",
-            // Energy/Exotic
+
             Elem::Fire => "Hot flame. Spreads to flammable neighbors and rises.",
             Elem::Energy => "Pure energy drifts above ground. It lights the air, and nothing in this world can eat it.",
             Elem::Ice => "Frozen water. Melts near heat sources.",
@@ -836,7 +808,7 @@ impl Elem {
             Elem::Mana => "Magical energy. Powers spells and activates runes.",
             Elem::Soul => "Rare spiritual energy. Very high nutrition.",
             Elem::Ember => "Glowing coal. Lights the dark and fades slowly.",
-            // Constructed
+
             Elem::Brick => "Fired clay block. Used in ancient ruins.",
             Elem::Concrete => "Strong artificial stone.",
             Elem::Wire => "Conductive filament for simple circuits.",
@@ -854,11 +826,11 @@ impl Elem {
             Elem::Tower => "A tall ancient observation tower.",
             Elem::Bridge => "A span crossing over gaps or water.",
             Elem::Road => "A paved path for travel.",
-            // Magical
+
             Elem::Rune => "A magical sigil. Activates when touched by mana.",
             Elem::Ward => "A protective charm that repels disease.",
             Elem::Portal => "A gateway to another place. Rare and unstable.",
-            // Biological
+
             Elem::Egg => "Hatches into a new creature after time passes.",
             Elem::Corpse => "Remains of a dead creature. It remembers whose body it was: a rival's is a meal, your own is not. Decays into bone or dust.",
             Elem::Virus => "Microscopic disease. Spreads rapidly through organic matter.",
@@ -873,7 +845,6 @@ impl Elem {
         }
     }
 
-    /// Category for grouping in the knowledge window.
     pub fn category(self) -> &'static str {
         match self {
             Elem::Empty => "Void",

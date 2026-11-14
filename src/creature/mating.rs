@@ -1,31 +1,9 @@
-//! Courtship and mating.
-//!
-//! A creature that wants offspring does not simply bud off a copy of
-//! itself: it goes looking for a mate. When two animals of the same kind
-//! find each other, the child inherits from *both* of them — blended genes,
-//! a mixed temperament, and the vigour that comes from two different
-//! parents.
-//!
-//! Mate choice is what makes this interesting. A creature prefers a partner
-//! that is close enough in kind to be compatible, but different enough not
-//! to be inbreeding, and the ideal distance is somewhere in the middle. Two
-//! near-identical animals produce a weak child; two completely different
-//! ones produce a child that does not belong.
-
 use super::*;
 
-/// The distance at which two temperaments are considered a good match.
-///
-/// Too close is inbreeding, too far apart is incompatibility.
 pub const IDEAL_MATE_DISTANCE: f32 = 0.35;
 
-/// The gene distance at which two animals are considered unrelated enough.
 pub const IDEAL_GENE_DISTANCE: f32 = 0.12;
 
-/// How well two creatures suit each other as parents, in the range 0..1.
-///
-/// The score is zero when the two are too alike to be worth pairing and
-/// falls off when they are too unlike to work together.
 pub fn compatibility(a: &Creature, b: &Creature) -> f32 {
     let pd = a.personality.distance(&b.personality);
     let gd = gene_distance(&a.genes, &b.genes);
@@ -35,10 +13,7 @@ pub fn compatibility(a: &Creature, b: &Creature) -> f32 {
 }
 
 impl CreatureSystem {
-    /// Resolve the courtship that was started during the tick.
-    ///
-    /// `willing` says, for each creature, whether it was looking for a mate.
-    /// The children that were conceived are returned for the birth phase.
+
     pub(crate) fn resolve_mating(
         &mut self,
         willing: &[bool],
@@ -49,14 +24,13 @@ impl CreatureSystem {
         if pop_now >= REPRO_SOFT_CAP {
             return children;
         }
-        // The ZORGs are capped here as well: a pair of them makes a young
-        // too, and the deep has only so much room.
+
         let mut zorg_pop = self
             .list
             .iter()
             .filter(|c| c.faction == Faction::Zorg)
             .count() as u32;
-        // Creatures that have already paired up this tick.
+
         let mut paired: Vec<u32> = Vec::new();
 
         for index in 0..self.list.len() {
@@ -67,7 +41,6 @@ impl CreatureSystem {
                 continue;
             }
 
-            // ---- Find the best candidate ----
             let mut best: Option<(usize, f32)> = None;
             {
                 let c = &self.list[index];
@@ -90,8 +63,7 @@ impl CreatureSystem {
                     if d > 16.0 {
                         return;
                     }
-                    // A sociable animal is willing to be courted even if it
-                    // was not the one that started the approach.
+
                     if !willing.get(j).copied().unwrap_or(false)
                         && other.personality.sociability < 0.6
                     {
@@ -101,8 +73,7 @@ impl CreatureSystem {
                     if fit <= 0.0 {
                         return;
                     }
-                    // The best match wins, but a close one beats a perfect
-                    // match that is far away.
+
                     let score = fit - d * 0.01;
                     if best.map_or(true, |(_, bs)| score > bs) {
                         best = Some((j, score));
@@ -113,12 +84,10 @@ impl CreatureSystem {
                 continue;
             };
 
-            // ---- Pair up ----
             let (a_id, b_id) = (self.list[index].id, self.list[mate_idx].id);
             paired.push(a_id);
             paired.push(b_id);
 
-            // Both parents pay for the child.
             let cost = 130.0;
             let fertile = if self.list[index].traits & trait_bits::FERTILE != 0 {
                 0.6
@@ -130,7 +99,7 @@ impl CreatureSystem {
             {
                 continue;
             }
-            // The deep is full: no more ZORGs are born this tick.
+
             if self.list[index].faction == Faction::Zorg && zorg_pop + 1 > ZORG_POP_CAP {
                 continue;
             }
@@ -148,7 +117,6 @@ impl CreatureSystem {
             self.list[index].mate = Some(b_id);
             self.list[mate_idx].mate = Some(a_id);
 
-            // The child inherits from both parents.
             let parent = &self.list[index];
             let mate = &self.list[mate_idx];
             let mut child = parent.child_blueprint_with(mate);

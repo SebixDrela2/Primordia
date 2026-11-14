@@ -1,34 +1,11 @@
-//! The mind inspector: a look inside the brains of the cleverest animals.
-//!
-//! Press **M** and this window opens. It shows the cleverest creatures of
-//! the cleverest *colony* — never the ZORGs, who are the deep's own
-//! ecology and not a people, and who have no diplomacy worth reading.
-//!
-//! One animal is shown at a time, and it is shown big: the whole network
-//! fills the window. The **scroll wheel** moves from one mind to the next,
-//! so the reader can walk through the cleverest animals of the colony
-//! and watch how their minds differ.
-//!
-//! Each animal is drawn as the network it actually is: the senses on the
-//! left, the hidden layers in the middle, the decisions on the right, and
-//! *every* connection between them drawn as a line. A line that is
-//! pushing a unit the way it is already going is green; one that is
-//! pushing it the other way is red; and one that carries nothing is grey.
-//!
-//! The nodes are sized by how hard they are firing, so you can see the
-//! shape of what the brain is doing at a glance.
-
 use crate::creature::senses::{self, DIR_CHANNELS, DIRS};
 use crate::creature::{CreatureSystem, Faction, MindView};
 use macroquad::prelude::*;
 
-/// How many creatures are listed.
 const SHOWN: usize = 5;
 
-/// The radius of a node.
 const R: f32 = 3.0;
 
-/// One animal, as the inspector sees it.
 struct Subject {
     name: String,
     species: u32,
@@ -38,13 +15,11 @@ struct Subject {
     mind: MindView,
 }
 
-/// Find the cleverest animals of the cleverest colony.
 fn gather(creatures: &CreatureSystem) -> Vec<Subject> {
-    // The cleverest colony: the one with the best total fitness.
+
     let mut colony_fitness: Vec<(u32, f32)> = Vec::new();
     for c in &creatures.list {
-        // The deep is not a people, and its members have no diplomacy
-        // worth reading. They are left out of the picture entirely.
+
         if c.faction == Faction::Zorg {
             continue;
         }
@@ -61,7 +36,6 @@ fn gather(creatures: &CreatureSystem) -> Vec<Subject> {
         return Vec::new();
     };
 
-    // Within that colony, the cleverest.
     let mut best: Vec<&crate::creature::Creature> = creatures
         .list
         .iter()
@@ -86,7 +60,6 @@ fn gather(creatures: &CreatureSystem) -> Vec<Subject> {
         .collect()
 }
 
-/// Draw the whole window.
 pub fn draw_minds(creatures: &CreatureSystem, index: f32) {
     let subjects = gather(creatures);
     let sw = screen_width();
@@ -131,12 +104,9 @@ pub fn draw_minds(creatures: &CreatureSystem, index: f32) {
         return;
     }
 
-    // Which mind is on show. The scroll wheel walks through them.
     let n = subjects.len();
     let idx = (index.round().max(0.0) as usize).min(n - 1);
 
-    // The row of minds along the top: the reader can see them all and
-    // know which one is open.
     let chips_y = y + 72.0;
     let mut cx = x + 18.0;
     for (i, s) in subjects.iter().enumerate() {
@@ -186,14 +156,12 @@ pub fn draw_minds(creatures: &CreatureSystem, index: f32) {
         cx += tw + 8.0;
     }
 
-    // The network itself: the whole of the window below the chips.
     let top = chips_y + 26.0;
     let legend_h = 56.0;
     let area_h = (y + h - legend_h) - top;
     let s = &subjects[idx];
     draw_subject(s, x + 14.0, top, w - 28.0, area_h);
 
-    // The legend, at the foot of the window: one legend for the lot.
     let legend_y = y + h - legend_h;
     draw_rectangle(
         x,
@@ -205,44 +173,39 @@ pub fn draw_minds(creatures: &CreatureSystem, index: f32) {
     draw_legend(x + 18.0, legend_y);
 }
 
-/// One column of the input side: a direction, or the body, or the kin.
 struct InputColumn {
-    /// Where the column sits.
+
     x: f32,
-    /// What the column is.
+
     label: &'static str,
-    /// The first input of the column in the input vector.
+
     first: usize,
-    /// How many inputs it has.
+
     count: usize,
-    /// The node of each input.
+
     ys: Vec<f32>,
 }
 
-/// Where each column of the diagram sits.
 struct Layout {
-    /// The input columns, left to right.
+
     inputs: Vec<InputColumn>,
-    /// The x of each hidden column.
+
     hidden: Vec<f32>,
-    /// The x of the output column.
+
     output: f32,
-    /// The y of the first node.
+
     top: f32,
-    /// The height of the drawing area.
+
     height: f32,
-    /// The distance between two nodes of a hidden layer.
+
     step: f32,
 }
 
-/// Work out where everything sits.
 fn layout(x: f32, y: f32, w: f32, h: f32, mind: &MindView) -> Layout {
-    // The header sits above the diagram, so the diagram starts well below
-    // the top of its area.
+
     let top = y + 74.0;
     let height = (h - 96.0).max(120.0);
-    // The tallest hidden column decides the spacing of the hidden layers
-    // and of the decisions.
+
     let tallest = mind
         .hidden_layers
         .iter()
@@ -252,11 +215,6 @@ fn layout(x: f32, y: f32, w: f32, h: f32, mind: &MindView) -> Layout {
         .max(mind.outputs);
     let step = (height / tallest as f32).min(22.0).max(4.0);
 
-    // ---- The input side ----
-    //
-    // Ten columns: the eight directions, then the body and the kin.
-    // Each column is spread over the whole height, so a short column
-    // (a direction, with seventeen channels) is still readable.
     let dir_ch = DIR_CHANNELS;
     let mut inputs: Vec<InputColumn> = Vec::new();
     let mut cols: Vec<(usize, usize, &'static str)> = Vec::new();
@@ -284,7 +242,6 @@ fn layout(x: f32, y: f32, w: f32, h: f32, mind: &MindView) -> Layout {
         });
     }
 
-    // ---- The hidden side ----
     let out_w = (w * 0.20).max(190.0);
     let ncols = mind.hidden_layers.len().max(1);
     let hid_x = x + in_w + 60.0;
@@ -302,15 +259,10 @@ fn layout(x: f32, y: f32, w: f32, h: f32, mind: &MindView) -> Layout {
     }
 }
 
-/// The eight directions, for the tight column headings.
-///
-/// Short names: the columns stand close together and a long name would
-/// run into its neighbour.
 const DIR_SHORT: [&str; 8] = ["S", "SE", "E", "NE", "N", "NW", "W", "SW"];
 
-/// Draw one animal's mind.
 fn draw_subject(s: &Subject, x: f32, y: f32, w: f32, h: f32) {
-    // The header: who it is and how it is doing.
+
     let col = Color::new(
         s.colour[0] as f32 / 255.0,
         s.colour[1] as f32 / 255.0,
@@ -349,10 +301,9 @@ fn draw_subject(s: &Subject, x: f32, y: f32, w: f32, h: f32) {
     draw_outputs(s, &lay);
 }
 
-/// The colour of a sensory channel, so the legend and the picture agree.
 fn channel_colour(kind: usize, index: usize) -> Color {
     match kind {
-        // Sight.
+
         0 => match index {
             senses::sight::NEAR => Color::new(0.95, 0.95, 1.0, 1.0),
             senses::sight::LIGHT => Color::new(1.0, 0.93, 0.65, 1.0),
@@ -365,7 +316,7 @@ fn channel_colour(kind: usize, index: usize) -> Color {
             senses::sight::SHEEN => Color::new(0.9, 0.85, 0.45, 1.0),
             _ => Color::new(0.55, 0.95, 0.85, 1.0),
         },
-        // Smell.
+
         _ => match index {
             senses::smell::SWEET => Color::new(0.98, 0.72, 0.25, 1.0),
             senses::smell::ROTTEN => Color::new(0.5, 0.75, 0.3, 1.0),
@@ -377,7 +328,6 @@ fn channel_colour(kind: usize, index: usize) -> Color {
     }
 }
 
-/// The name of a sensory channel, for the legend.
 fn channel_name(kind: usize, index: usize) -> &'static str {
     if kind == 0 {
         match index {
@@ -404,7 +354,6 @@ fn channel_name(kind: usize, index: usize) -> &'static str {
     }
 }
 
-/// The name of a decision.
 fn decision_name(o: usize) -> &'static str {
     match o {
         0 => "move x",
@@ -444,7 +393,6 @@ fn decision_name(o: usize) -> &'static str {
     }
 }
 
-/// The legend at the foot of the window.
 fn draw_legend(x: f32, y: f32) {
     draw_text(
         "sight:",
@@ -497,7 +445,6 @@ fn draw_legend(x: f32, y: f32) {
     );
 }
 
-/// The input layer: the eight directions, the body and the kin.
 fn draw_inputs(s: &Subject, lay: &Layout) {
     for col in &lay.inputs {
         draw_text(
@@ -508,8 +455,7 @@ fn draw_inputs(s: &Subject, lay: &Layout) {
             Color::new(0.55, 0.62, 0.7, 0.95),
         );
         for k in 0..col.count {
-            // The direction columns are coloured by their channel; the
-            // body and the kin are drawn in their own colour.
+
             let v = s
                 .mind
                 .channels
@@ -552,7 +498,6 @@ fn draw_inputs(s: &Subject, lay: &Layout) {
     );
 }
 
-/// The hidden layers: a column of nodes for each of them.
 fn draw_hidden(s: &Subject, lay: &Layout) {
     for (c, count) in s.mind.hidden_layers.iter().enumerate() {
         let cx = lay.hidden[c];
@@ -584,7 +529,6 @@ fn draw_hidden(s: &Subject, lay: &Layout) {
     );
 }
 
-/// The output layer: one node per decision, labelled.
 fn draw_outputs(s: &Subject, lay: &Layout) {
     let cx = lay.output;
     draw_text(
@@ -603,8 +547,7 @@ fn draw_outputs(s: &Subject, lay: &Layout) {
             Color::new(0.95, 0.45, 0.4, 0.35 + 0.6 * a)
         };
         draw_circle(cx, lay.top + o as f32 * lay.step, R, col);
-        // Only the decisions that are actually pushing get a name: there
-        // are thirty-three of them and they are a hand's width apart.
+
         if d.abs() > 0.15 {
             draw_text(
                 decision_name(o),
@@ -631,12 +574,6 @@ fn draw_outputs(s: &Subject, lay: &Layout) {
     );
 }
 
-/// The colour of a connection, given the pull it applies and what the
-/// unit it feeds is doing.
-///
-/// A connection that pushes a unit the way it is already going is green:
-/// it is helping. One that pushes it the other way is red: it is
-/// arguing against it.
 fn pull_colour(pull: f32, drive: f32, strength: f32) -> Color {
     let agrees = pull.signum() == drive.signum() && drive.abs() > 0.01;
     let a = (0.05 + 0.42 * strength.min(1.0)).min(0.47);
@@ -647,27 +584,12 @@ fn pull_colour(pull: f32, drive: f32, strength: f32) -> Color {
     }
 }
 
-/// How strong a pull has to be before it is worth colouring.
-///
-/// There are thousands of connections in a mind and they are all drawn, but
-/// only the ones that are actually doing something are picked out in
-/// colour. The rest are the fabric of the network.
 const STRONG: f32 = 0.22;
 
-/// The connections between the layers.
-///
-/// **Every** connection is drawn: the grey ones are the fabric of the
-/// network, and the coloured ones are the ones that are doing something
-/// now. They are coloured the same way at every layer, not only at the
-/// last one: a line from one hidden layer to the next is green when it
-/// pushes the unit it feeds the way that unit is already going, and red
-/// when it pushes it the other way.
 fn draw_connections(s: &Subject, lay: &Layout) {
-    // The fabric: every connection, very faint, so the shape of the network
-    // reads as a web rather than as a solid block.
+
     let grey = Color::new(0.5, 0.58, 0.68, 0.045);
 
-    // ---- The input columns to the first hidden layer ----
     if let Some(&first) = lay.hidden.first() {
         let n0 = s.mind.hidden_layers.first().copied().unwrap_or(0);
         let mut peak = 0.0f32;
@@ -685,7 +607,7 @@ fn draw_connections(s: &Subject, lay: &Layout) {
                 let pull = s.mind.column_pull(0, col.first, col.count, i);
                 let hy = lay.top + i as f32 * lay.step;
                 if pull.abs() < peak * STRONG {
-                    // The fabric: every connection is there, faint.
+
                     draw_line(col.x, sy, first, hy, 0.4, grey);
                     continue;
                 }
@@ -696,7 +618,6 @@ fn draw_connections(s: &Subject, lay: &Layout) {
         }
     }
 
-    // ---- Hidden layer to hidden layer ----
     for c in 0..s.mind.hidden_layers.len().saturating_sub(1) {
         let n0 = s.mind.hidden_layers[c];
         let n1 = s.mind.hidden_layers[c + 1];
@@ -726,7 +647,6 @@ fn draw_connections(s: &Subject, lay: &Layout) {
         }
     }
 
-    // ---- The last hidden layer to the decisions ----
     let last = s.mind.hidden_layers.len().saturating_sub(1);
     if let Some(&lh) = lay.hidden.last() {
         let n = s.mind.hidden_layers.last().copied().unwrap_or(0);

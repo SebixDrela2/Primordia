@@ -1,60 +1,40 @@
-//! The tech tree: what a colony has, from the first hand to the deep.
-//!
-//! The tree is the shape of a civilisation's progress. It holds two kinds
-//! of thing:
-//!
-//! - **Tools**: the things a creature carries. A pickaxe, a bow, a
-//!   sunfire. They are made of stuff, and a colony cannot make one until
-//!   it knows the craft that goes with it.
-//! - **Discoveries**: the things a species knows. How to work steel, how
-//!   to read the stars, how to make the light of the surface into a
-//!   weapon.
-//!
-//! There are ten tiers. The tiers build on each other: nothing in the
-//! fifth tier can be worked out or made before the fourth is finished, and
-//! the tenth tier is the deep itself.
-
 use super::*;
 
-/// What kind of thing an entry in the tree is.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TechKind {
-    /// A tool a creature carries.
+
     Tool(Tool),
-    /// A discovery: something the species knows.
+
     Discovery(Discovery),
-    /// Something the colony makes and throws or uses: a bomb, a salve.
+
     Craft(Consumable),
 }
 
-/// The things a colony makes rather than carries.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Consumable {
     Bomb,
     Salve,
 }
 
-/// One entry in the tech tree.
 #[derive(Clone, Copy)]
 pub struct TechEntry {
     pub kind: TechKind,
-    /// The tier it belongs to, 1 to 10.
+
     pub tier: u8,
     pub name: &'static str,
-    /// What it does, in one line. Every entry has a real effect.
+
     pub effect: &'static str,
-    /// What it is made of, or what it takes to work it out.
+
     pub cost: &'static str,
 }
 
 impl TechEntry {
-    /// Is this entry a discovery?
+
     pub fn is_discovery(&self) -> bool {
         matches!(self.kind, TechKind::Discovery(_))
     }
 }
 
-/// The name of a tier.
 pub fn tier_name(tier: u8) -> &'static str {
     match tier {
         1 => "THE FIRST HANDS",
@@ -70,7 +50,6 @@ pub fn tier_name(tier: u8) -> &'static str {
     }
 }
 
-/// A short description of what a tier is for.
 pub fn tier_blurb(tier: u8) -> &'static str {
     match tier {
         1 => "stone in the hand, and something to hunt with",
@@ -86,10 +65,9 @@ pub fn tier_blurb(tier: u8) -> &'static str {
     }
 }
 
-/// The whole tech tree, tier by tier.
 pub fn tech_tree() -> Vec<TechEntry> {
     vec![
-        // ---- Tier 1: the first hands ----
+
         TechEntry {
             kind: TechKind::Tool(Tool::Pickaxe),
             tier: 1,
@@ -118,7 +96,7 @@ pub fn tech_tree() -> Vec<TechEntry> {
             effect: "hunger grows 15% slower",
             cost: "crafting",
         },
-        // ---- Tier 2: the craft ----
+
         TechEntry {
             kind: TechKind::Tool(Tool::Sword),
             tier: 2,
@@ -147,7 +125,7 @@ pub fn tech_tree() -> Vec<TechEntry> {
             effect: "a bow from wood alone, and it flies 25% further",
             cost: "crafting and warfare",
         },
-        // ---- Tier 3: the workshop ----
+
         TechEntry {
             kind: TechKind::Tool(Tool::Bow),
             tier: 3,
@@ -176,7 +154,7 @@ pub fn tech_tree() -> Vec<TechEntry> {
             effect: "buildings stand 40% longer",
             cost: "crafting and building",
         },
-        // ---- Tier 4: the trade ----
+
         TechEntry {
             kind: TechKind::Tool(Tool::Cart),
             tier: 4,
@@ -205,7 +183,7 @@ pub fn tech_tree() -> Vec<TechEntry> {
             effect: "+20% sight",
             cost: "crafting and warfare",
         },
-        // ---- Tier 5: the medicine ----
+
         TechEntry {
             kind: TechKind::Craft(Consumable::Salve),
             tier: 5,
@@ -241,7 +219,7 @@ pub fn tech_tree() -> Vec<TechEntry> {
             effect: "every mind grows: bigger brains, more to think with",
             cost: "crafting",
         },
-        // ---- Tier 6: the mine ----
+
         TechEntry {
             kind: TechKind::Tool(Tool::Drill),
             tier: 6,
@@ -277,7 +255,7 @@ pub fn tech_tree() -> Vec<TechEntry> {
             effect: "+25% melee damage",
             cost: "crafting and mining",
         },
-        // ---- Tier 7: the stars ----
+
         TechEntry {
             kind: TechKind::Tool(Tool::Staff),
             tier: 7,
@@ -313,7 +291,7 @@ pub fn tech_tree() -> Vec<TechEntry> {
             effect: "the colony moves 15% faster",
             cost: "warfare and crafting",
         },
-        // ---- Tier 8: the light ----
+
         TechEntry {
             kind: TechKind::Tool(Tool::Sunfire),
             tier: 8,
@@ -349,7 +327,7 @@ pub fn tech_tree() -> Vec<TechEntry> {
             effect: "the sickness of the deep is resisted",
             cost: "ritual and crafting",
         },
-        // ---- Tier 9: the war ----
+
         TechEntry {
             kind: TechKind::Craft(Consumable::Bomb),
             tier: 9,
@@ -392,7 +370,7 @@ pub fn tech_tree() -> Vec<TechEntry> {
             effect: "+40% mana",
             cost: "sanctuary and astronomy",
         },
-        // ---- Tier 10: the deep ----
+
         TechEntry {
             kind: TechKind::Tool(Tool::Boat),
             tier: 10,
@@ -445,7 +423,6 @@ pub fn tech_tree() -> Vec<TechEntry> {
     ]
 }
 
-/// The discovery that has to be known before a tool can be made.
 pub fn tool_gate(tool: Tool) -> Option<Discovery> {
     Some(match tool {
         Tool::Pickaxe | Tool::Spear => return None,
@@ -464,7 +441,6 @@ pub fn tool_gate(tool: Tool) -> Option<Discovery> {
     })
 }
 
-/// The discovery that has to be known before a consumable can be made.
 pub fn craft_gate(craft: Consumable) -> Option<Discovery> {
     match craft {
         Consumable::Bomb => Some(Discovery::Siegecraft),

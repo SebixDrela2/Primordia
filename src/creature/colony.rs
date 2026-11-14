@@ -6,10 +6,9 @@ impl CreatureSystem {
             list: Vec::new(),
             rng: Rng::new(seed ^ 0xA5A5_1234_9E37_79B9),
             next_id: 1,
-            // The ZORGs are species zero; the first colony of the run is
-            // species one, and it is the first colour of the wheel.
+
             next_species: 0,
-            // The colony fires start cold: somebody has to bring the wood.
+
             fire_lit: vec![false; 64],
             tick: 0,
             stats: CreatureStats::default(),
@@ -50,7 +49,6 @@ impl CreatureSystem {
         }
     }
 
-    /// What a species has collectively learned.
     pub fn species_culture(&self, species: u32) -> u16 {
         self.culture_pool
             .iter()
@@ -59,7 +57,6 @@ impl CreatureSystem {
             .unwrap_or(0)
     }
 
-    /// Record that a species has learned a new practice.
     pub fn note_culture(&mut self, species: u32, bit: u16) {
         if let Some(entry) = self.culture_pool.iter_mut().find(|(id, _)| *id == species) {
             entry.1 |= bit;
@@ -68,12 +65,6 @@ impl CreatureSystem {
         }
     }
 
-    /// A place for a new colony to settle: a landmark that nobody has
-    /// claimed yet.
-    ///
-    /// A landmark is worth having, so a colony that can have one takes it.
-    /// The second colony to arrive has to make do with ordinary ground - and
-    /// the two colonies end up fighting over the place.
     fn find_landmark_spot(&mut self, world: &World, claimer: u32) -> Option<(f32, f32)> {
         if !self.rng.chance(0.6) {
             return None;
@@ -82,8 +73,7 @@ impl CreatureSystem {
         let mut found = None;
         let mut taken: Vec<(u32, f32, f32)> = Vec::new();
         for l in world.landmarks.iter() {
-            // Is the landmark already taken? If it belongs to another species
-            // this is a territorial dispute, not a free spot.
+
             let holder = self.list.iter().find(|c| {
                 c.role == Role::Queen
                     && ((c.base_x - l.x).powi(2) + (c.base_y - l.y).powi(2)).sqrt()
@@ -95,9 +85,7 @@ impl CreatureSystem {
                 }
                 continue;
             }
-            // Find a spot in the landmark that a colony could stand in.
-            // The middle of a landmark is full of crystal, bone or water,
-            // so the search looks for somewhere passable.
+
             for _ in 0..40 {
                 let a = rng.f32() * std::f32::consts::TAU;
                 let d = rng.f32() * l.kind.radius() * 0.9;
@@ -110,9 +98,7 @@ impl CreatureSystem {
             }
         }
         self.rng = rng;
-        // There was no free landmark left, so this colony has to do with
-        // ordinary ground - and the colony that holds the place is not going
-        // to share it. That is a territorial dispute and it turns into a war.
+
         if found.is_none() && !taken.is_empty() && self.rng.chance(0.35) {
             let i = self.rng.range(taken.len() as u32) as usize;
             let (holder, _, _) = taken[i];
@@ -123,11 +109,6 @@ impl CreatureSystem {
         found
     }
 
-    /// The ground a species holds: the middle of its colony and how far its
-    /// claim reaches.
-    ///
-    /// A colony with buildings holds more ground, so a rich colony pushes the
-    /// others out.
     pub fn claim_of(&self, species: u32) -> Option<(f32, f32, f32)> {
         self.claims
             .iter()
@@ -135,20 +116,13 @@ impl CreatureSystem {
             .map(|(_, cx, cy, r)| (*cx, *cy, *r))
     }
 
-    /// Work out the ground every colony holds.
-    ///
-    /// A colony with buildings holds more ground, so a rich colony pushes
-    /// the others out. The result is cached for the tick: the claim is asked
-    /// for by every soldier that looks for a trespasser, and walking the
-    /// whole population each time would be far too slow.
     pub fn rebuild_claims(&mut self) {
         self.claims.clear();
         let mut centres: Vec<(u32, f32, f32)> = Vec::new();
         let mut builders: Vec<(u32, u32)> = Vec::new();
         for c in self.list.iter() {
             if c.role == Role::Queen {
-                // A colony in crisis has nobody to defend it, so it holds
-                // no ground at all.
+
                 if in_crisis(&self.succession, c.species, self.tick) {
                     continue;
                 }
@@ -173,11 +147,6 @@ impl CreatureSystem {
         }
     }
 
-    /// Scatter a burst of short-lived energy motes into the world.
-    ///
-    /// The motes are deliberately *not* light sources: an explosion would
-    /// otherwise dump a dozen glowing cells into the light field and flash
-    /// the whole cave white.
     pub(crate) fn spawn_energy_burst(&mut self, world: &mut World, x: i32, y: i32, count: u32, color: [u8; 3]) {
         let _ = color;
         for _ in 0..count {
@@ -188,13 +157,11 @@ impl CreatureSystem {
             if world.get(px, py) != Elem::Empty {
                 continue;
             }
-            // Smoke spreads out and dies quickly without lighting anything up.
+
             world.set_xy(px, py, Elem::Smoke);
         }
     }
 
-    /// Scatter a puff of smoke/steam alongside an impact (used when a shot
-    /// hits terrain).
     pub(crate) fn spawn_impact_puff(&mut self, world: &mut World, x: i32, y: i32, count: u32) {
         for _ in 0..count {
             let px = x + self.rng.range_i(-1, 2);
@@ -206,18 +173,14 @@ impl CreatureSystem {
 
     pub fn populate(&mut self, world: &World, count: usize) {
         for _ in 0..count {
-            // Every founder starts alone. Handing each one a guaranteed
-            // partner gave the starting teams a free ally, which meant a
-            // species that spawned badly still survived its first fights.
+
             self.spawn_near_surface(world);
         }
-        // The ZORGs are already down there, waiting.
+
         self.spawn_zorgs(world, ZORG_START);
         self.update_stats();
     }
 
-    /// Snapshot the fittest living member of `species` so the next run can be
-    /// seeded from the winning lineage.
     pub fn champion_from(&self, species: u32) -> Option<RevivalGenome> {
         self.list
             .iter()
@@ -233,21 +196,12 @@ impl CreatureSystem {
                 genes: c.genes,
                 size: c.size,
                 generation: c.generation,
-                // The heritage goes with it: what the colony had learned
-                // to do. The knowledge does not: the tech tree is the
-                // run's own work and is earned again in the next world.
+
                 culture: c.culture,
                 personality: c.personality,
             })
     }
 
-    /// Snapshot the fittest player animal of the whole run.
-    ///
-    /// This is what a run that was **lost** carries into the next one: not
-    /// the biggest colony, but the best lineage — the animal with the
-    /// best genes, the best brain and the most practice behind it. A win
-    /// carries the champion of the winning species; a loss carries the
-    /// champion of the run. Both are the best there was.
     pub fn champion_overall(&self) -> Option<RevivalGenome> {
         self.list
             .iter()
@@ -268,19 +222,6 @@ impl CreatureSystem {
             })
     }
 
-    /// Which genome seeds the next revival.
-    ///
-    /// A win carries the winner's own genome: the species that conquered
-    /// the world is the species that goes on.
-    ///
-    /// A **loss carries the lineage too**. The deep is not a rival
-    /// lineage - the ZORGs are the world's own ecology, and they cannot be
-    /// out-fought, only sealed - so losing to them is a failure of the
-    /// run, not of the evolution. The last player species gets another go
-    /// at the cave with the brains and the genes it had earned.
-    ///
-    /// Only a world with no player left to carry anything starts from a
-    /// fresh random population, and then the lineage really is lost.
     pub fn pick_revival_genome(
         won: bool,
         champion: Option<RevivalGenome>,
@@ -289,22 +230,11 @@ impl CreatureSystem {
         if won {
             champion
         } else {
-            // The last player lineage of the run that just ended, and the
-            // winning genome of an earlier revival behind it.
+
             fallback.or(champion)
         }
     }
 
-    /// Seed a fresh world with mutated descendants of a previous champion.
-    /// Every spawn becomes a new species (and therefore starts as a queen), so
-    /// the winning lineage immediately diversifies into competing clades.
-    ///
-    /// The traditions go with them: the revived species start with the
-    /// practices the lineage had learnt, so the young have something to be
-    /// taught. The **knowledge does not**: the tech tree is what a run is
-    /// for, and it is worked out again in the next world — though a lineage
-    /// that comes back with its practices and its generations behind it gets
-    /// there faster each time.
     pub fn populate_revival(&mut self, world: &World, count: usize, genome: &RevivalGenome) {
         for _ in 0..count {
             if self.list.len() >= MAX_POP {
@@ -323,7 +253,7 @@ impl CreatureSystem {
                 self.list[last].culture = genome.culture;
             }
         }
-        // The ZORGs survive the revival: they are always down there.
+
         self.spawn_zorgs(world, ZORG_START);
         self.update_stats();
     }
@@ -335,27 +265,17 @@ impl CreatureSystem {
         let x = self.rng.range_i(3, world.w as i32 - 3);
         let surface = world.surface_y(x);
         let y = surface - 2;
-        // Find a nearby empty/passable spot so creatures never spawn stuck in solids or deep water.
+
         let (sx, sy) = world
             .find_empty_passable_near(x, y, 8)
             .unwrap_or((x, y));
         self.spawn(world, sx as f32, sy as f32, CreatureGenesis::Random)
     }
 
-    /// A place in the deep caves for the ZORGs to hold.
-    ///
-    /// The ZORGs have a cave of their own: a chamber carved into the deep
-    /// rock, far below the surface, where the poison pools on the floor.
-    /// Every one of them starts there, so the deep has a heart instead of
-    /// a scattering of animals across the bottom of the map.
-    ///
-    /// If the world has no such cave (it is carved during the seed, so it
-    /// normally always has one), the search falls back to the deep caves.
     fn find_zorg_spot(&mut self, world: &World) -> Option<(f32, f32)> {
-        // The cave of the ZORGs comes first.
+
         if let Some((cx, cy)) = world.zorg_cave_center() {
-            // The heart of the chamber is where the queen of the ZORGs
-            // belongs; the rest of them spread out through it.
+
             let (cx, cy) = if self.rng.chance(0.35) {
                 (cx, cy)
             } else {
@@ -367,10 +287,10 @@ impl CreatureSystem {
                 return Some((x as f32, y as f32));
             }
         }
-        // No cave: fall back to the deep caves.
+
         let w = world.w as i32;
         let h = world.h as i32;
-        // The deep: the last third of the world, below the caves.
+
         let deep_start = h * 2 / 3;
         for _ in 0..200 {
             let x = self.rng.range_i(4, w - 4);
@@ -378,12 +298,12 @@ impl CreatureSystem {
             if world.get(x, y) != Elem::Empty {
                 continue;
             }
-            // It has to be a place they can stand: room above and below.
+
             if world.get(x, y - 1).is_solid() && world.get(x, y + 1) != Elem::Empty {
                 return Some((x as f32, y as f32));
             }
         }
-        // Nothing found: the deep is solid here, so take any empty cell.
+
         for _ in 0..200 {
             let x = self.rng.range_i(4, w - 4);
             let y = self.rng.range_i(deep_start, h - 4);
@@ -394,12 +314,6 @@ impl CreatureSystem {
         None
     }
 
-    /// Found the first of the ZORGs in their own cave.
-    ///
-    /// The ZORGs are there from the very beginning of the run: they are
-    /// the thing the players have to beat, and they start growing from the
-    /// first tick. They all start together, in the one place in the world
-    /// that belongs to them.
     pub fn spawn_zorgs(&mut self, world: &World, count: usize) {
         for _ in 0..count {
             if self.list.len() >= MAX_POP {
@@ -412,24 +326,11 @@ impl CreatureSystem {
         }
     }
 
-    /// Keep the deep from ever being emptied.
-    ///
-    /// The ZORGs are not a colony that can be wiped out for good: as long
-    /// as their cave is there, the deep breeds more of them. A player can
-    /// thin them out and beat them back, but the deep always has a few
-    /// left in it.
     pub(crate) fn reseed_the_deep(&mut self, world: &World) {
         if self.tick % 120 != 0 {
             return;
         }
-        // Dominion: a colony that has worked out how to close the deep
-        // holds it closed. The ZORGs breed far more slowly, and the floor
-        // of their numbers is lower.
-        //
-        // The floor also rises with the difficulty: the deep starts as a
-        // handful of beasts and becomes a proper threat as the run goes
-        // on. A colony has to be able to learn to live with the deep
-        // before the deep is worth fighting.
+
         let mut floor = ZORG_MIN + (world.hardship() * (ZORG_POP_CAP / 2) as f32) as u32;
         let mut slow = false;
         for (_, d) in self.discoveries.iter() {
@@ -443,7 +344,7 @@ impl CreatureSystem {
         if self.zorg_count() >= floor {
             return;
         }
-        // A sealed cave breeds nothing. That is the point of sealing it.
+
         if world.zorg_cave_sealed {
             return;
         }
@@ -462,7 +363,6 @@ impl CreatureSystem {
         }
         let mut rng = std::mem::replace(&mut self.rng, Rng::new(1));
 
-        // Extract parent data if child
         let (parent_role, parent_base_x, parent_base_y) = match genesis {
             CreatureGenesis::Child(parent) => (parent.role, parent.base_x, parent.base_y),
             _ => (Role::Worker, 0.0, 0.0),
@@ -472,19 +372,16 @@ impl CreatureSystem {
 
         let (net, color, species, generation, size, genes, mutations) = match genesis {
             CreatureGenesis::Zorg => {
-                // The first ZORG. Its genes are as good a roll as any other
-                // species gets, so it evolves on the same terms as everyone
-                // else: it has to earn its traits.
+
                 let mut g = [0.0f32; 32];
                 for gi in g.iter_mut() {
                     *gi = rng.f32();
                 }
-                // The genes of a ZORG are pushed towards what it needs to
-                // live on rock and poison.
-                g[0] = 0.9; // sturdy
-                g[1] = 0.7; // industrious
-                g[3] = 0.6; // fertile
-                g[5] = 0.8; // scavenger
+
+                g[0] = 0.9;
+                g[1] = 0.7;
+                g[3] = 0.6;
+                g[5] = 0.8;
                 (
                     Net::random(&brain_sizes(), &mut rng),
                     ZORG_COLOR,
@@ -500,9 +397,7 @@ impl CreatureSystem {
                 for gi in g.iter_mut() {
                     *gi = rng.f32();
                 }
-                // The colour of a species is the colour of the palette:
-                // every colony in a run is a different colour of the
-                // wheel, and the ZORGs are always purple.
+
                 self.next_species += 1;
                 let species = self.next_species;
                 let color = species_team_color(&mut rng, species);
@@ -518,35 +413,20 @@ impl CreatureSystem {
             }
             CreatureGenesis::Child(parent) => {
                 let mut net = parent.net.clone_net();
-                // The brain is deeper now, so there are more weights to
-                // shake. The rate is scaled down to keep the total amount of
-                // change in a generation about the same: a young animal
-                // should be its mother's breed with a little of its own.
+
                 net.mutate(&mut rng, 0.085, 0.15);
-                // The shape of the mind is bred as well. Now and then a
-                // young animal is born with one neuron more or less than
-                // its mother had, and the shape that turns out to work is
-                // the one that gets bred.
+
                 if rng.chance(0.12) {
                     net.mutate_shape(&mut rng);
                 }
-                // The instincts are bred too, and this is where evolution
-                // gets its teeth: the bias towards the sweet smell is
-                // stronger in a line that survived on it, and weaker in a
-                // line that starved. Over the generations the whole
-                // species drifts towards whatever actually fed it.
+
                 for s in net.skip.iter_mut() {
                     *s += (rng.f32() * 2.0 - 1.0) * 0.04;
                     *s = s.clamp(-1.5, 1.5);
                 }
-                // A child is of its mother's species, so it is of her
-                // colour exactly: the colour belongs to the species, not
-                // to the individual, and a ZORG's young are purple like
-                // their mother.
+
                 let color = species_team_color(&mut rng, parent.species);
-                // No ongoing speciation: species only disappear through
-                // extinction, so a run can actually converge on one survivor.
-                // New diversity is injected between runs by `Revival`.
+
                 let species = parent.species;
                 let size = (parent.size + rng.f32() * 0.3 - 0.15).clamp(1.0, 2.4);
                 let mut g = parent.genes;
@@ -564,11 +444,9 @@ impl CreatureSystem {
                 )
             }            CreatureGenesis::Revival(base) => {
                 let mut net = base.net.clone_net();
-                // Stronger shake-up: the winning lineage diverges into several
-                // new species that then compete again.
+
                 net.mutate(&mut rng, 0.14, 0.22);
-                // A revived lineage is a new species, so it takes a new
-                // colour from the wheel.
+
                 self.next_species += 1;
                 let species = self.next_species;
                 let color = species_team_color(&mut rng, species);
@@ -591,18 +469,10 @@ impl CreatureSystem {
 
         self.rng = rng;
 
-        // Determine role: first of species = Queen, then ~10% Soldiers, rest Workers
-        // Children of queens become workers/soldiers; children of workers/soldiers inherit with small mutation
-        //
-        // A colony in crisis raises queens far more readily: without a
-        // queen there is nobody to organise the colony, so the animals
-        // put their effort into finding one. This is what ends the crisis.
         let crisis = in_crisis(&self.succession, species, self.tick);
         let is_zorg = species == ZORG_SPECIES;
         let role = if is_zorg && !is_child {
-            // The first of the ZORGs is the queen of the cave: it holds
-            // the heart of it as its base. The rest of them are soldiers
-            // and workers: a ZORG colony is a war party.
+
             let has_queen = self
                 .list
                 .iter()
@@ -615,7 +485,7 @@ impl CreatureSystem {
                 Role::Worker
             }
         } else if is_zorg && is_child {
-            // The ZORGs breed soldiers: every one of them is a weapon.
+
             let r = self.rng.f32();
             if r < 0.12 {
                 Role::Queen
@@ -627,12 +497,10 @@ impl CreatureSystem {
         } else if is_child {
             match parent_role {
                 Role::Queen => {
-                    // Queen's offspring: 78% worker, 10% soldier, 7% envoy,
-                    // 5% queen (a rare princess). Envoys are the diplomats
-                    // that carry treaties between species.
+
                     let r = self.rng.f32();
                     if crisis {
-                        // The colony is looking for a queen.
+
                         if r < 0.35 { Role::Queen }
                         else if r < 0.65 { Role::Worker }
                         else if r < 0.85 { Role::Soldier }
@@ -648,8 +516,7 @@ impl CreatureSystem {
                     }
                 }
                 Role::Worker => {
-                    // Worker offspring: mostly workers, rare soldier or a new
-                    // princess that can found a fresh colony/lineage.
+
                     let r = self.rng.f32();
                     let queen_chance = if crisis { 0.30 } else { 0.05 };
                     if r < queen_chance {
@@ -663,7 +530,7 @@ impl CreatureSystem {
                     }
                 }
                 Role::Soldier => {
-                    // Soldiers mostly breed soldiers, occasionally a queen.
+
                     let r = self.rng.f32();
                     let queen_chance = if crisis { 0.22 } else { 0.03 };
                     if r < queen_chance {
@@ -677,8 +544,7 @@ impl CreatureSystem {
                     }
                 }
                 Role::Envoy => {
-                    // Envoys breed envoys most of the time, but they can also
-                    // produce ordinary workers.
+
                     let r = self.rng.f32();
                     if crisis && r < 0.12 { Role::Queen }
                     else if r < 0.60 { Role::Envoy }
@@ -705,20 +571,10 @@ impl CreatureSystem {
             }
         };
 
-        // Base position: Queen sets it; children inherit; random spawns pick a spot
-        //
-        // A founding colony settles where there is something worth having:
-        // near a landmark if there is one free. Two colonies that both want
-        // the same crystal grove end up fighting over it.
         let (base_x, base_y) = if is_child {
             (parent_base_x, parent_base_y)
         } else if is_zorg {
-            // The ZORGs have their own ground: the cave in the deep. They
-            // do not settle beside a landmark, because a landmark is a
-            // thing of the surface.
-            //
-            // The queen holds the heart of the cave; the rest keep to
-            // their own patch of it.
+
             let queen_base = self
                 .list
                 .iter()
@@ -729,8 +585,7 @@ impl CreatureSystem {
                 None => world
                     .zorg_cave_center()
                     .and_then(|(cx, cy)| {
-                        // The heart of the cave is where the ZORG colony
-                        // makes its home, with the larder a step below it.
+
                         let fy = world.zorg_cave_floor_row();
                         world
                             .find_zorg_cave_cell(cx, fy - 2)
@@ -746,45 +601,33 @@ impl CreatureSystem {
                 None => (x, y),
             }
         } else {
-            // Find species base or use spawn pos
+
             self.list.iter()
                 .find(|c| c.species == species && c.role == Role::Queen)
                 .map(|q| (q.x, q.y))
                 .unwrap_or((x, y))
         };
 
-        // Spell learning at birth: shamans/priests start with spells, others rarely
         let initial_spells = match role {
             Role::Shaman => self.rng.range(2) + 1,
             Role::Priest => if self.rng.chance(0.5) { 1 } else { 0 },
             _ => if self.rng.chance(0.08) { 1 } else { 0 },
         };
 
-        // Traits are decoded from the genes, so they are inherited and evolve.
         let traits = decode_traits(&genes);
         let hardy = traits & trait_bits::HARDY != 0;
 
-        // Every founder starts with its own temperament. Two animals of the
-        // same species with the same genes still behave differently.
-        //
-        // A child inherits the temperament of its blueprint, which is
-        // already the blend of its parents.
         let personality = match genesis {
             CreatureGenesis::Child(parent) => parent.personality,
-            // A revival continues the lineage, so it continues its
-            // temperament too: the animals that come back are the
-            // descendants of the one that carried the line.
+
             CreatureGenesis::Revival(base) => {
                 Personality::inherit(&base.personality, &mut self.rng)
             }
             _ => Personality::random(&mut self.rng),
         };
-        // The affinity is read from the genes, so it is inherited like any
-        // other trait and can change over generations.
+
         let affinity = Affinity::from_roll(genes[16]);
-        // The young inherit what the colony has learned, but a colony
-        // that keeps its traditions can also innovate: a small chance
-        // of picking up a practice the parents did not have.
+
         let culture = match genesis {
             CreatureGenesis::Child(parent) => {
                 parent.culture | self.species_culture(species)
@@ -792,27 +635,20 @@ impl CreatureSystem {
             _ => self.species_culture(species),
         };
 
-        // Starting resources so creatures can immediately craft and build
         let mut starting_inv = [0u16; 16];
-        starting_inv[0] = (self.rng.range(10) + 5) as u16;  // stone
-        starting_inv[2] = (self.rng.range(4) + 1) as u16;   // copper - enables tech progression
-        starting_inv[6] = (self.rng.range(6) + 2) as u16;   // wood/plant
+        starting_inv[0] = (self.rng.range(10) + 5) as u16;
+        starting_inv[2] = (self.rng.range(4) + 1) as u16;
+        starting_inv[6] = (self.rng.range(6) + 2) as u16;
         if role == Role::Builder {
             starting_inv[0] = starting_inv[0].saturating_add(20u16);
-            starting_inv[1] = self.rng.range(5) as u16;   // metal
+            starting_inv[1] = self.rng.range(5) as u16;
         }
         if role == Role::Shaman || role == Role::Priest {
-            starting_inv[4] = self.rng.range(3) as u16;   // crystal
+            starting_inv[4] = self.rng.range(3) as u16;
         }
 
-        // The resistance this animal has to the diseases, worked out from
-        // its genes. It is inherited, so a lineage that has been through a
-        // plague becomes a plague-proof lineage.
-        let immunity = immunity_from_genes(&genes);
+        let _immunity = immunity_from_genes(&genes);
 
-        // A ZORG is born filthy: it carries the sickness of the deep from
-        // the moment it opens its eyes. It does not suffer from it, but
-        // everything that stands close to it catches it.
         let carried = if is_zorg {
             zorg_carried_disease(self.rng.range(5))
         } else {
@@ -936,22 +772,21 @@ impl CreatureSystem {
 }
 impl Creature {
     pub(crate) fn child_blueprint(&self) -> Creature {
-        // Mutate the genes first so the inherited traits can be decoded.
+
         let mut child_genes = self.genes;
         for i in 0..32 {
-            // Deterministic mutation based on id, age, and gene index
+
             let mut seed = self.id.wrapping_mul(i as u32 + 1).wrapping_add(self.age);
             seed ^= seed >> 13;
             seed ^= seed << 17;
             seed ^= seed >> 5;
             let rand_val = (seed as f32 / u32::MAX as f32) * 2.0 - 1.0;
             if (seed % 20) == 0 {
-                // 5% chance
+
                 child_genes[i] = (child_genes[i] + rand_val * 0.1).clamp(0.0, 1.0);
             }
         }
-        // A newborn is a juvenile: small, slow and unable to fight. It only
-        // grows into an adult as it ages.
+
         let mut rng = Rng::new(self.id.wrapping_mul(0x9E37_79B9) as u64 ^ self.age as u64);
         let personality = Personality::inherit(&self.personality, &mut rng);
         let affinity = Affinity::from_roll(child_genes[16]);
@@ -1011,8 +846,7 @@ impl Creature {
             tech_level: self.tech_level,
             inventory: [0; 16],
             craft_cooldown: 0,
-            // A ZORG young is born with the sickness of the deep already
-            // in it, the same one its mother carried.
+
             disease: if self.faction == Faction::Zorg {
                 self.disease
             } else {
@@ -1046,15 +880,12 @@ impl Creature {
             mount_stamina: 100.0,
             genes: child_genes,
             mutations: self.mutations + 1,
-            // The traits are decoded from the mutated genes, so a species can
-            // evolve a new trait between generations.
+
             traits: decode_traits(&child_genes),
             personality,
             stage: Stage::Juvenile,
             affinity,
-            // The young inherit what the colony has learned, but a colony
-            // that keeps its traditions can also innovate: a small chance
-            // of picking up a practice the parents did not have.
+
             culture: self.inherited_culture(&mut rng),
             mate: None,
             sired: 0,
@@ -1075,14 +906,9 @@ impl Creature {
         }
     }
 
-    /// What the young inherit of the colony's culture.
-    ///
-    /// Most of the colony's practices are passed on, and there is a small
-    /// chance the young pick up something new: a colony that farms for a
-    /// thousand generations will eventually find a second way to live.
     fn inherited_culture(&self, rng: &mut Rng) -> u16 {
         let mut culture = self.culture;
-        // Every practice is one chance in three of being lost.
+
         for bit in [
             culture_bits::CULTIVATION,
             culture_bits::MINING,
@@ -1097,8 +923,7 @@ impl Creature {
                 culture &= !bit;
             }
         }
-        // A small chance of innovation: the young learn something the
-        // parents did not know.
+
         if rng.chance(0.06) {
             let all = [
                 culture_bits::CULTIVATION,
@@ -1116,11 +941,6 @@ impl Creature {
         culture
     }
 
-    /// The blueprint for a child sired with a mate.
-    ///
-    /// The child inherits from *both* parents: the genes are blended, the
-    /// temperament is a mix of the two, and the offspring of two different
-    /// animals is usually more vigorous than either of them.
     pub(crate) fn child_blueprint_with(&self, mate: &Creature) -> Creature {
         let mut child = self.child_blueprint();
         let mut rng = Rng::new(
@@ -1128,25 +948,22 @@ impl Creature {
                 ^ mate.id.wrapping_mul(0x85EB_CA6B) as u64
                 ^ self.age as u64,
         );
-        // Blend the genes of the two parents.
+
         for i in 0..32 {
             let mid = (self.genes[i] + mate.genes[i]) * 0.5;
             let blend = mid + (rng.f32() * 2.0 - 1.0) * 0.12;
             child.genes[i] = blend.clamp(0.0, 1.0);
         }
-        // The temperament is a mix of the two.
+
         child.personality = Personality::blend(&self.personality, &mate.personality, &mut rng);
-        // The traits are re-decoded from the blended genes.
+
         child.traits = decode_traits(&child.genes);
         child.affinity = Affinity::from_roll(child.genes[16]);
-        // The culture of both parents is merged.
+
         child.culture = self.inherited_culture(&mut rng) | mate.culture;
-        // The size sits between the parents, with a little drift.
+
         child.size = ((self.size + mate.size) * 0.5 + rng.f32() * 0.2 - 0.1).clamp(1.0, 2.4);
 
-        // Hybrid vigour: a child of two different parents is usually
-        // stronger than either of them. Two near-identical parents produce
-        // a weak child, which is the price of inbreeding.
         let distance = gene_distance(&self.genes, &mate.genes);
         let vigour = (distance - 0.06).clamp(-0.25, 0.30);
         child.max_energy = (child.max_energy * (1.0 + vigour)).max(200.0);
@@ -1154,9 +971,3 @@ impl Creature {
         child
     }
 }
-
-
-
-
-
-

@@ -4,7 +4,7 @@ impl World {
     pub(crate) fn place_rare_vaults(&mut self, w: i32, h: i32) {
         let step = (w as f32 / 34.0) as i32;
         let vaults: &[(Elem, i32, i32, i32, i32)] = &[
-            // (element, vault_index, cy_min, radius, count)
+
             (Elem::Sulfur, 1, h / 2, 3, 25),
             (Elem::Ash, 2, h / 2, 3, 25),
             (Elem::Salt, 3, h / 2, 3, 25),
@@ -61,8 +61,7 @@ impl World {
                 let dx = angle.cos() * r;
                 let dy = angle.sin() * r;
                 let x = (cx as f32 + dx) as i32;
-                // Depth below the terrain, varied per vault. Never absolute
-                // heights, which used to float above the surface.
+
                 let surf = self.surface_y(x);
                 let depth = 8 + (vault_idx.rem_euclid(7)) * 12 + self.rng.range(6) as i32;
                 let _ = cy_min;

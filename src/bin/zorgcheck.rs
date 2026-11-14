@@ -1,16 +1,4 @@
-//! Headless check for the ZORG cave.
-//!
-//! cargo run --release --bin zorgcheck -- [seed]
-//!
-//! The ZORGs have a cave of their own in the deep, and every one of them
-//! is born inside it. This checks that:
-//! - the world really has a cave, and that it is far below the surface
-//! - the cave is hollow, with a floor to stand on
-//! - the cave holds the things a ZORG eats
-//! - every founding ZORG starts inside it, and none is buried in rock
-//! - and that the ZORGs survive and breed over a run, instead of starving
-//!   in the hole they made
-
+#![allow(dead_code)]
 #[path = "../creature/mod.rs"]
 mod creature;
 #[path = "../elements/mod.rs"]
@@ -28,7 +16,7 @@ use world::World;
 
 const W: usize = 1280;
 const H: usize = 720;
-/// How many steps the run at the end is watched for.
+
 const RUN: u64 = 6000;
 
 fn main() {
@@ -46,7 +34,6 @@ fn main() {
     println!("=== zorg cave check ===");
     let mut failures = 0u32;
 
-    // ---- The cave itself ----
     let Some((cx, cy)) = world.zorg_cave_center() else {
         println!("FAIL: the world has no ZORG cave");
         std::process::exit(1);
@@ -58,7 +45,6 @@ fn main() {
         cx, cy, depth
     );
 
-    // How big is it, and how hollow?
     let mut min_x = i32::MAX;
     let mut max_x = i32::MIN;
     let mut min_y = i32::MAX;
@@ -108,8 +94,6 @@ fn main() {
         failures += 1;
     }
 
-    // It has to be deep: this is the bottom of the world, not a hole a
-    // colony stumbles into under the grass.
     if depth < 120 {
         println!("FAIL: the cave is only {} below the surface", depth);
         failures += 1;
@@ -120,7 +104,6 @@ fn main() {
         failures += 1;
     }
 
-    // ---- The founding ZORGs ----
     let mut outside = 0;
     let mut inside = 0;
     let mut buried = 0;
@@ -158,11 +141,6 @@ fn main() {
         std::process::exit(1);
     }
 
-    // ---- And what happens to them over a run ----
-    //
-    // The deep has to be a home for them: they have to live off the rock
-    // and the poison of their own cave, and they have to breed there. A
-    // cave that is stripped bare in a few thousand ticks is no home at all.
     println!("\n--- the deep over time ---");
     let mut creatures = CreatureSystem::new(seed.wrapping_add(0x1234_5678_9ABC_DEF0));
     creatures.populate(&world, 64);
@@ -186,7 +164,7 @@ fn main() {
             .iter()
             .filter(|c| world.in_zorg_cave(c.x.round() as i32, c.y.round() as i32))
             .count();
-        // How much food is left in the cave?
+
         let mut left = 0u32;
         for y in (cy - 30)..(cy + 30) {
             for x in (cx - 45)..(cx + 45) {
@@ -206,7 +184,7 @@ fn main() {
             world.census.plants
         );
     }
-    // They have to have survived the run and grown.
+
     let alive = creatures.zorg_count();
     println!("  {} ZORGs alive at the end (peak {})", alive, peak);
     if alive == 0 {
@@ -218,10 +196,6 @@ fn main() {
         failures += 1;
     }
 
-    // The endgame: the run can only end against the deep if the deep can
-    // be closed. A colony that has worked out sanctification can raise a
-    // ward of sanctified fire, and a ward raised in the deep seals the
-    // cave: the ZORGs stop breeding and the run can be won.
     let player_species = {
         let mut v: Vec<u32> = creatures
             .list
@@ -242,11 +216,6 @@ fn main() {
         println!("NOTE: the deep is still open: the run cannot end against it");
     }
 
-    // ---- The answer to the deep ----
-    //
-    // The ZORGs cannot be out-fought, so there has to be a way to close
-    // their cave. The colony that works out sanctification can raise a
-    // ward of sanctified fire, and a ward in the deep seals the cave.
     let sanctified: Vec<u32> = creatures
         .discoveries
         .iter()
@@ -291,10 +260,6 @@ fn main() {
         println!("NOTE: no ward has been raised yet");
     }
 
-    // ---- The filth of the deep ----
-    //
-    // The ZORGs are a dirty faction: they carry their sickness and they
-    // leave their poison behind them. The world has to show it.
     let carriers = creatures
         .list
         .iter()
@@ -313,7 +278,7 @@ fn main() {
         println!("FAIL: not one ZORG is carrying a sickness");
         failures += 1;
     }
-    // The corruption the ZORGs leave behind.
+
     let mut filth = 0u32;
     let mut on_the_surface = 0u32;
     for x in 0..world.w as i32 {
@@ -340,8 +305,7 @@ fn main() {
         failures += 1;
     }
     if on_the_surface == 0 {
-        // Not a failure: the corruption only reaches the surface when the
-        // ZORGs come up out of the deep, which takes a while.
+
         println!("NOTE: the corruption has not reached the surface yet");
     }
 

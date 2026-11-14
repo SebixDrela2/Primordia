@@ -1,15 +1,3 @@
-//! Rendering.
-//!
-//! Split by responsibility:
-//! - mod.rs    the renderer, sky and terrain shading
-//! - light.rs  the dynamic light field cast by emissive cells
-//! - bloom.rs  the glow of the light sources
-//!
-//! The hot loop lives in `paint`, a free function that takes plain slices.
-//! Keeping it out of a `&mut self` method matters: the compiler cannot
-//! prove that the pixel buffer does not alias the renderer's own fields, so
-//! every pixel would reload them from memory.
-
 pub mod bloom;
 pub mod fx;
 pub mod light;
@@ -21,43 +9,29 @@ use bloom::Bloom;
 use fx::{fx_table, Fx, FxEntry};
 use light::LightField;
 
-/// Reusable renderer state. All buffers are allocated once and reused, so
-/// rendering never allocates in the hot path.
-
 pub struct Renderer {
-    /// The dynamic light field for the visible region.
+
     light: LightField,
-    /// Cloud noise grid, refreshed every frame.
+
     cloud_row: Vec<f32>,
-    /// The light field, copied out of the `LightField` so the pixel loop can
-    /// read it through a plain shared slice. Sharing the field directly would
-    /// make the compiler reload its pointer on every pixel write.
+
     light_rows: Vec<[f32; 3]>,
-    /// Per-element visual effects, so the pixel loop never matches on the
-    /// element enum.
+
     fx: [FxEntry; fx::FX_TABLE_LEN],
-    /// Per-column aurora band height. The band only depends on the column, so
-    /// it is worked out once per frame instead of twice per pixel.
+
     aurora_col: Vec<f32>,
-    /// Per-column biome tint delta (the tint minus one), so the pixel loop only
-    /// has to add it.
+
     biome_delta: Vec<[f32; 3]>,
-    /// Per-column sky gradient: the colour at the horizon and the slope over
-    /// the height of the sky. The sky is the biggest part of the screen, so
-    /// the gradient is worked out once per column instead of per pixel.
+
     sky_base: Vec<[f32; 3]>,
     sky_slope: Vec<[f32; 3]>,
-    /// Per-column shadow cast by the clouds above.
+
     cloud_shadow: Vec<f32>,
-    /// Per-column strength of the sun shafts: where the cloud is thin, the
-    /// light comes down in a shaft and lands on the ground.
+
     sun_shaft: Vec<f32>,
-    /// Per-column horizontal distance from the middle of the view, squared.
-    /// It is used for the vignette, so it is worked out once per frame.
+
     vig_col: Vec<f32>,
-    /// The bloom: the glow of the light sources, blurred and added back on
-    /// top, so that fire, lava and crystals bleed into the dark around
-    /// them.
+
     bloom: Bloom,
 }
 
@@ -79,7 +53,6 @@ impl Renderer {
         }
     }
 
-    /// Paint the whole world into an RGBA buffer.
     pub fn render_world(
         &mut self,
         world: &World,
@@ -105,10 +78,6 @@ impl Renderer {
         );
     }
 
-    /// Paint only the visible part of the world. `buf` holds `rw * rh` pixels.
-    ///
-    /// `time` drives the animated shimmer/glow effects, `day_night` is 0.0 at
-    /// midnight and 0.5 at noon, and `season` is 0..=3.
     #[allow(clippy::too_many_arguments)]
     pub fn render_region(
         &mut self,
@@ -127,25 +96,8 @@ impl Renderer {
         let w = world.w;
         let h = world.h;
 
-        // ---- Dynamic light field -----------------------------------------
-        // Emissive cells inside the region seed the field; the blur spreads
-        // the light so a lava chamber lights the whole cave around it.
-        //
-        // The field is anchored to *world* coordinates, not to the region:
-        // a light cell always covers the same four world cells whatever the
-        // camera is doing. Anchoring it to the region instead made the
-        // lighting slide every time the camera panned or zoomed.
-        //
-        // Only the underground part of the world needs lighting: above the
-        // ground the sun already provides the illumination, so the sky rows
-        // are skipped entirely. That keeps the extra pass small even when the
-        // whole world is on screen.
         const SCALE: i32 = light::LIGHT_SCALE as i32;
-        // The light cell that covers world column x is x / SCALE, so the
-        // window starts on the cell boundary that contains x0. The margin is
-        // the blur radius: with it, every cell in the middle of the region
-        // gets exactly the same light it would get if the whole world were
-        // in view.
+
         const MARGIN: i32 = 3;
         let gx0 = x0.div_euclid(SCALE) - MARGIN;
         let gy0 = y0.div_euclid(SCALE) - MARGIN;
@@ -155,12 +107,9 @@ impl Renderer {
         let lh = (gy1 - gy0 + 1) as usize;
         self.light.resize(lw, lh);
         self.light.clear();
-        // The glow buffer is sized to the region, with a margin of one cell
-        // on each side so the blur has room to spread.
+
         self.bloom.resize(rw as usize, rh as usize);
-        // Seed the field from the emissive cells. Whole light cells are
-        // scanned, so a cell gathers exactly the same light no matter where
-        // the camera is looking.
+
         let sx0 = (gx0 * SCALE).max(0);
         let sy0 = (gy0 * SCALE).max(0);
         let sx1 = ((gx1 + 1) * SCALE).min(w as i32);
@@ -173,8 +122,7 @@ impl Renderer {
                 if world.emissive[k as usize] {
                     let lx = (x.div_euclid(SCALE) - gx0) as usize;
                     self.light.add(lx, ly, world.emission[k as usize]);
-                    // The same light is the seed of the glow: it is what
-                    // bleeds into the dark around it.
+
                     let e = world.emission[k as usize];
                     self.bloom.add(
                         (x - x0) as usize,
@@ -186,16 +134,10 @@ impl Renderer {
                 }
             }
         }
-        // Spread the light outwards with a decaying falloff. This keeps the
-        // brightness of the source instead of averaging it away, so a lava
-        // chamber really lights the cave around it.
+
         self.light.blur(2);
         self.light.finalize();
 
-        // ---- Sky ---------------------------------------------------------
-        // Cloud layer: domain-warped fractal noise sampled from a coarse grid.
-        // The grid is stretched horizontally so the clouds come out as wide,
-        // flat banks instead of round blobs.
         const GSX: f32 = 30.0;
         const GSY: f32 = 13.0;
         let gw = (w as f32 / GSX) as usize + 2;
@@ -212,31 +154,23 @@ impl Renderer {
             }
         }
 
-        // Copy the light field into a flat buffer. The pixel loop then reads
-        // it through a plain shared slice, which the compiler knows cannot
-        // alias the pixel buffer.
         if self.light_rows.len() != self.light.buf.len() {
             self.light_rows.clear();
             self.light_rows.resize(self.light.buf.len(), [0.0; 3]);
         }
         self.light_rows.copy_from_slice(&self.light.buf);
 
-        // The aurora band depends only on the column, so it is worked out
-        // once per frame instead of twice for every pixel of that column.
         if self.aurora_col.len() != rw as usize {
             self.aurora_col.clear();
             self.aurora_col.resize(rw as usize, 0.0);
         }
         for i in 0..rw as usize {
             let x = x0 + i as i32;
-            self.aurora_col[i] = ((x as f32 * 0.021 + time * 0.08).sin() * 34.0
+            self.aurora_col[i] = (x as f32 * 0.021 + time * 0.08).sin() * 34.0
                 + (x as f32 * 0.007 - time * 0.03).sin() * 22.0
-                + 90.0);
+                + 90.0;
         }
 
-        // The shadow the clouds cast on the ground. It is sampled from the
-        // same noise grid as the clouds, a little further down, so the shade
-        // drifts with the weather.
         if self.cloud_shadow.len() != rw as usize {
             self.cloud_shadow.clear();
             self.cloud_shadow.resize(rw as usize, 1.0);
@@ -258,14 +192,10 @@ impl Renderer {
             let c01 = self.cloud_row[(gy0 + 1) * cgw + gx0];
             let c11 = self.cloud_row[(gy0 + 1) * cgw + gx0 + 1];
             let cv = (c00 * (1.0 - tx) + c10 * tx) * (1.0 - ty) + (c01 * (1.0 - tx) + c11 * tx) * ty;
-            // A dense cloud darkens the ground a little.
+
             self.cloud_shadow[i] = 1.0 - smoothstep(0.58, 0.85, cv) * 0.16;
         }
 
-        // ---- The vignette ----
-        //
-        // The edges of the view are a little darker than the middle, which
-        // pulls the eye towards whatever is happening in the centre.
         if self.vig_col.len() != rw as usize {
             self.vig_col.clear();
             self.vig_col.resize(rw as usize, 0.0);
@@ -275,15 +205,11 @@ impl Renderer {
             self.vig_col[i] = nx * nx;
         }
 
-        // The biome tint delta per column, so the pixel loop only adds it.
         if self.biome_delta.len() != rw as usize {
             self.biome_delta.clear();
             self.biome_delta.resize(rw as usize, [0.0; 3]);
         }
-        // The sky gradient is separable: the colour depends on the column
-        // (biome, weather, season, time of day) and the row (the height in
-        // the sky). Working the column part out once turns the per-pixel sky
-        // into a multiply and an add.
+
         if self.sky_base.len() != rw as usize {
             self.sky_base.clear();
             self.sky_base.resize(rw as usize, [0.0; 3]);
@@ -312,7 +238,7 @@ impl Renderer {
             let x = (x0 + i as i32).clamp(0, w as i32 - 1) as usize;
             let bt = world.biome_tint[x];
             self.biome_delta[i] = [bt[0] - 1.0, bt[1] - 1.0, bt[2] - 1.0];
-            // Sky colour at the horizon and the slope over the sky height.
+
             let k = [
                 dim * sr * weather_sky[0] * (1.0 + (bt[0] - 1.0) * 0.55),
                 dim * sg * weather_sky[1] * (1.0 + (bt[1] - 1.0) * 0.55),
@@ -320,9 +246,7 @@ impl Renderer {
             ];
             self.sky_base[i] = [11.0 * k[0], 18.0 * k[1], 32.0 * k[2]];
             self.sky_slope[i] = [30.0 * k[0], 44.0 * k[1], 58.0 * k[2]];
-            // The weather's veil over the sky is the same everywhere, so it
-            // is folded into the column here instead of being applied to
-            // every sky pixel.
+
             let (veil, vr, vg, vb) = match weather {
                 Weather::Snow => (0.35, 235.0, 240.0, 250.0),
                 Weather::Fog => (0.42, 198.0, 203.0, 208.0),
@@ -343,18 +267,11 @@ impl Renderer {
             }
         }
 
-        // ---- Sun shafts ----
-        //
-        // Where the cloud is thin the light comes down in a shaft and lands
-        // on the ground. The shaft is sampled from the same cloud grid as
-        // the shadow, but from the side the sun is on, so the light and the
-        // shade agree with each other.
         if self.sun_shaft.len() != rw as usize {
             self.sun_shaft.clear();
             self.sun_shaft.resize(rw as usize, 0.0);
         }
-        // The sun is only high enough to throw a shaft in the middle of the
-        // day, and a storm hides it completely.
+
         let weather_dim: f32 = match weather {
             Weather::Clear => 0.0,
             Weather::Rain => 0.14,
@@ -370,8 +287,7 @@ impl Renderer {
         const SSY: f32 = 13.0;
         for i in 0..rw as usize {
             let x = (x0 + i as i32).clamp(0, w as i32 - 1);
-            // The shaft comes from the sun's side of the sky, so the cloud
-            // is sampled a little to the left of the column.
+
             let gx = x as f32 / SSX + 0.55;
             let gy = (world.ground[x as usize] as f32 * 0.35) / SSY;
             let gx0 = (gx.floor() as usize).min(cgw - 2);
@@ -383,20 +299,10 @@ impl Renderer {
             let c01 = self.cloud_row[(gy0 + 1) * cgw + gx0];
             let c11 = self.cloud_row[(gy0 + 1) * cgw + gx0 + 1];
             let cv = (c00 * (1.0 - tx) + c10 * tx) * (1.0 - ty) + (c01 * (1.0 - tx) + c11 * tx) * ty;
-            // Thin cloud lets the shaft through; thick cloud stops it.
+
             self.sun_shaft[i] = smoothstep(0.30, 0.56, cv) * shaft_light;
         }
 
-        // The hot loop takes plain slices, so nothing has to be reloaded from
-        // the renderer state for every pixel.
-        // ---- Bloom ----
-        //
-        // The glow of the light sources, blurred and laid over the picture:
-        // fire, lava, crystals and wards bleed into the dark around them.
-        // It is worked out at a quarter of the picture's size, because a
-        // glow does not need any detail. It is softened before the picture
-        // is painted, because the pixel loop lays it over every pixel as
-        // it goes.
         self.bloom.blur();
 
         paint(
@@ -429,8 +335,6 @@ impl Renderer {
     }
 }
 
-/// The pixel loop. Everything it touches is a plain slice, which lets the
-/// compiler keep the pointers in registers.
 #[allow(clippy::too_many_arguments)]
 fn paint(
     world: &World,
@@ -463,29 +367,24 @@ fn paint(
     let h = world.h;
     let empty = Elem::Empty as u8;
 
-    // 0.0 = midnight, 1.0 = noon.
     let day = 0.5 - 0.5 * (day_night * std::f32::consts::TAU).cos();
     let mut light_level = 0.34 + 0.66 * day;
 
-    // Weather dims the world and mutes the sun.
-    // The third figure is the haze: how much of the distance is washed out.
     let (weather_dim, weather_sky, weather_haze) = match weather {
         Weather::Clear => (0.0, [1.0, 1.0, 1.0], 0.0),
         Weather::Rain => (0.14, [0.78, 0.82, 0.90], 0.18),
         Weather::Storm => (0.30, [0.62, 0.66, 0.76], 0.26),
         Weather::Snow => (0.06, [0.92, 0.95, 1.02], 0.35),
         Weather::Meteor => (0.10, [0.88, 0.80, 0.86], 0.12),
-        // A fog is all haze: the world goes soft and grey.
+
         Weather::Fog => (0.18, [0.86, 0.88, 0.90], 0.55),
-        // A heatwave burns the colour out of everything.
+
         Weather::Heatwave => (0.04, [1.10, 1.02, 0.86], 0.16),
-        // A sandstorm is dust in the air: the world goes brown and soft.
+
         Weather::Sandstorm => (0.22, [1.02, 0.92, 0.72], 0.42),
     };
     light_level = (light_level * (1.0 - weather_dim)).clamp(0.08, 1.0);
 
-    // Lightning: a storm flashes, and for a moment the whole world is lit
-    // by something that is not the sun. The flash is short and sharp.
     let flash = if weather == Weather::Storm {
         let p = (time * 0.83).fract();
         if p < 0.035 {
@@ -496,33 +395,27 @@ fn paint(
     } else {
         0.0
     };
-    // A heatwave makes the air itself move, so the ground shimmers.
+
     let shimmer = weather == Weather::Heatwave;
 
-    // Seasonal atmosphere tint (subtle, so materials keep their identity).
     let (sr, sg, sb) = match season {
         0 => (0.94f32, 1.0f32, 0.95f32),
         1 => (1.0, 0.99, 0.92),
         2 => (1.0, 0.93, 0.82),
         _ => (0.85, 0.92, 1.0),
     };
-    // The season tint and the weather mute, folded into one multiplier.
-    let sky_mul = [
+
+    let _sky_mul = [
         sr * weather_sky[0],
         sg * weather_sky[1],
         sb * weather_sky[2],
     ];
 
-    // The terrain shading uses the same factors for every pixel, so they are
-    // worked out once here instead of once per pixel.
     let season_r = 0.96 + 0.04 * sr;
     let season_g = 0.96 + 0.04 * sg;
     let season_b = 0.96 + 0.04 * sb;
     let light_f = 0.62 + 0.38 * light_level;
 
-    // The haze: fog and rain wash the distance out. It is a soft veil over
-    // everything, strongest on the ground and thinning with the height, so
-    // the sky stays clear while the land fades away.
     let haze = weather_haze;
     let haze_col = match weather {
         Weather::Fog => [196.0f32, 202.0, 205.0],
@@ -533,22 +426,18 @@ fn paint(
         _ => [200.0, 200.0, 200.0],
     };
 
-    // The aurora only shows on cold, clear nights, so the check is hoisted
-    // out of the pixel loop.
     let aurora = day < 0.32;
-    // Sun / moon position across the sky (day_night 0 = midnight, 0.5 = noon).
+
     let sun_x = (day_night * w as f32) as i32;
     let sun_height = (1.0 - (day_night - 0.5).abs() * 2.0).max(0.0);
     let sun_y = (h as f32 * (0.62 - 0.55 * sun_height)) as i32;
     let is_day = day > 0.25;
 
-    // Cloud grid dimensions, used for the sky sampling.
     const GSX: f32 = 30.0;
     const GSY: f32 = 13.0;
     let gw = (w as f32 / GSX) as usize + 2;
     let gh = (h as f32 / GSY) as usize + 2;
 
-    // Hoist the world arrays so the inner loop touches them directly.
     let kind = &world.kind;
     let col = &world.col;
     let heat = &world.heat;
@@ -563,30 +452,19 @@ fn paint(
         }
         let mut cv_row = 0.0f32;
         let row_base = y as usize * w;
-        // The vertical part of the vignette: it is the same for every
-        // pixel of the row, so it is worked out once per row.
+
         let ny = (ry as f32 / rh.max(1) as f32 - 0.5) * 2.0;
         let ny2 = ny * ny;
-        // The row of the glow that this row of the region reads. The glow
-        // is one cell for every four pixels, so it is read a quarter as
-        // often as the picture is written.
+
         let glow_row = (ry as usize / bloom::STEP).min(bloom.h.saturating_sub(1));
-        // The world arrays are sliced row by row. The compiler can then see
-        // that the column index is inside the row, so the inner loop runs
-        // without a bounds check on every pixel.
+
         let kind_row = &kind[row_base..row_base + w as usize];
         let col_row = &col[row_base..row_base + w as usize];
         let heat_row = &heat[row_base..row_base + w as usize];
-        // The rock strata of this row. The layers of stone run across the
-        // world, so the band of a row is worked out once for the whole
-        // row and the per-pixel noise breaks it up.
+
         let row_band = ((y as f32 * 0.28).sin() * 0.5 + 0.5)
             * ((y as f32 * 0.11).sin() * 0.5 + 0.5);
-        // The row of the light field that this row of the region reads. It is
-        // hoisted out of the pixel loop so the inner loop only shifts.
-        // The light field is read through a shared reference, so the compiler
-        // knows it cannot alias the pixel buffer. Reading the light field
-        // directly would make every pixel write reload the field's pointer.
+
         let light_row: &[[f32; 3]] = {
             let ly = (y.div_euclid(4) - gy0).max(0) as usize;
             if ly < lh {
@@ -600,8 +478,7 @@ fn paint(
             if x < 0 || x >= w as i32 {
                 continue;
             }
-            // The light column advances every four world cells. Tracking it
-            // incrementally avoids a division per pixel.
+
             let light_col = if light_row.is_empty() {
                 0
             } else {
@@ -617,16 +494,13 @@ fn paint(
             let xr = x as usize;
             let o = (ry as usize * rw as usize + rx as usize) * 4;
             let e = kind_row[xr];
-            // The biome tint is a per-column value; the delta is what is
-            // actually needed, so it is looked up directly.
+
             let bt = biome_delta[rx as usize];
 
             if e == empty {
                 let surf = ground[xr] as f32;
                 if (y as f32) < surf {
-                    // ---- Sky ----
-                    // The gradient was worked out per column, so a pixel only
-                    // needs one multiply and one add per channel.
+
                     let t = (y as f32 * ground_inv[xr]).clamp(0.0, 1.0);
                     let base = sky_base[rx as usize];
                     let slope = sky_slope[rx as usize];
@@ -634,9 +508,6 @@ fn paint(
                     let mut g = base[1] + t * slope[1];
                     let mut b = base[2] + t * slope[2];
 
-                    // A sparse field of stars appears as night falls. Only
-                    // the upper sky is checked: the stars are too faint to
-                    // see near the horizon, and the hash is not cheap.
                     if day < 0.38 && (y as f32) < surf * 0.7 {
                         let sn = noise(x, y);
                         if sn > 0.9968 {
@@ -647,8 +518,6 @@ fn paint(
                         }
                     }
 
-                    // Sun or moon, with a soft halo. Only the cells around it
-                    // need the expensive part.
                     let sdx = x - sun_x;
                     let sdy = y - sun_y;
                     if sdx.abs() < 32 && sdy.abs() < 32 {
@@ -666,7 +535,6 @@ fn paint(
                         b += (cb - b) * amt;
                     }
 
-                    // Aurora over the tundra on cold, clear nights.
                     if aurora && biome[x as usize] == Biome::Tundra {
                         let band = aurora_col[rx as usize] - y as f32;
                         if band.abs() < 30.0 {
@@ -682,9 +550,6 @@ fn paint(
                         }
                     }
 
-                    // Cloud banks, sampled from the warped noise grid. Only the
-                    // upper sky carries clouds, and the sample is reused for
-                    // every third column to keep the cost down.
                     if (y as f32) < surf * 0.6 {
                         if rx % 3 == 0 {
                             let fx = x as f32 / GSX;
@@ -700,7 +565,7 @@ fn paint(
                             cv_row = (c00 * (1.0 - tx) + c10 * tx) * (1.0 - ty)
                                 + (c01 * (1.0 - tx) + c11 * tx) * ty;
                         }
-                        // Stormy skies carry heavier, darker cloud.
+
                         let cover = 0.20 + 0.32 * day + weather_dim * 0.9;
                         let amt = smoothstep(0.56, 0.78, cv_row) * cover;
                         if amt > 0.002 {
@@ -713,12 +578,6 @@ fn paint(
                         }
                     }
 
-                    // The weather's veil over the sky was folded into the
-                    // sky columns when they were worked out, so there is
-                    // nothing to do for it here.
-
-                    // The glow of the light sources below bleeds into the
-                    // sky as well.
                     {
                         let gcol = (rx as usize / bloom::STEP + 1).min(bloom.w - 1);
                         let gl = bloom.at(glow_row, gcol);
@@ -726,13 +585,13 @@ fn paint(
                         g += gl[1] * bloom::STRENGTH;
                         b += gl[2] * bloom::STRENGTH;
                     }
-                    // A lightning flash lights the sky from below.
+
                     if flash > 0.0 {
                         r += flash * 80.0;
                         g += flash * 86.0;
                         b += flash * 104.0;
                     }
-                    // The vignette darkens the edges of the view.
+
                     let vig = 1.0 - 0.30 * (vig_col[rx as usize] * 0.8 + ny2 * 0.5);
                     r *= vig;
                     g *= vig;
@@ -742,7 +601,7 @@ fn paint(
                     buf[o + 1] = clamp_u8(g);
                     buf[o + 2] = clamp_u8(b);
                 } else {
-                    // ---- Cave / underground void ----
+
                     let depth = ((y as f32 - surf) / (h as f32 - surf).max(1.0)).clamp(0.0, 1.0);
                     let base = 9.0 - depth * 4.0;
                     let warmth = noise(x, y) * 1.5;
@@ -762,8 +621,6 @@ fn paint(
             let mut g = c[1] as f32;
             let mut b = c[2] as f32;
 
-            // Depth falloff: rock near the surface reads brighter, deep stone
-            // fades into shadow.
             let depth = (y as f32 - ground[xr] as f32).max(0.0);
             let depth_fade = (1.0 - depth * 0.0032).clamp(0.62, 1.0);
             let shade = depth_fade * light_f * (0.94 + n * 0.12) * cloud_shadow[rx as usize];
@@ -771,9 +628,6 @@ fn paint(
             g *= shade;
             b *= shade;
 
-            // The deep has its own colour. Each zone of it lends the rock
-            // its own tint, so the underground reads as a journey of places
-            // rather than one long grey tunnel.
             if depth > 26.0 {
                 let zt = &DEPTH_TINT[(depth as usize / 8).min(31)];
                 r *= zt[0];
@@ -781,12 +635,10 @@ fn paint(
                 b *= zt[2];
             }
 
-            // Seasonal tint.
             r *= season_r;
             g *= season_g;
             b *= season_b;
 
-            // In winter the first few cells under the sky are covered in snow.
             if season == 3 && depth < 3.0 {
                 let s = (1.0 - depth * (1.0 / 3.0)) * 0.6;
                 r += (232.0 - r) * s;
@@ -794,15 +646,11 @@ fn paint(
                 b += (248.0 - b) * s;
             }
 
-            // Biome tint: deserts glow warm, tundra cold, forests green. It
-            // fades out with depth so only the surface reads as "biome".
             let fade = (1.0 - depth * (1.0 / 60.0)).clamp(0.0, 1.0);
             r += bt[0] * fade;
             g += bt[1] * fade;
             b += bt[2] * fade;
 
-            // The haze of the weather: fog and rain veil the land, and the
-            // veil is thickest low down, where the water lies.
             if haze > 0.0 {
                 let veiling = haze * (1.0 - depth * (1.0 / 90.0)).clamp(0.25, 1.0);
                 r += (haze_col[0] - r) * veiling;
@@ -810,9 +658,6 @@ fn paint(
                 b += (haze_col[2] - b) * veiling;
             }
 
-            // ---- Element-specific life and light ----
-            // The effect is described by a table entry, so the pixel loop
-            // never matches on the element enum.
             let fx = &fx[e as usize];
             match fx.kind {
                 Fx::None => {}
@@ -821,14 +666,12 @@ fn paint(
                     r += wave * fx.color[0];
                     g += wave * fx.color[1];
                     b += wave * fx.color[2];
-                    // Water catches a little of the sky above it.
+
                     let sky = sky_base[rx as usize];
                     r += sky[0] * 0.02;
                     g += sky[1] * 0.02;
                     b += sky[2] * 0.03;
-                    // Caustics: the light that comes through the surface
-                    // breaks into moving bands, and they show on the water
-                    // and on the ground under it.
+
                     let c1 = ((x as f32 * 0.21 + time * 1.7).sin()
                         + (y as f32 * 0.27 - time * 1.1).sin())
                         * 0.5;
@@ -836,9 +679,7 @@ fn paint(
                     r += caustic * 0.7;
                     g += caustic * 0.92;
                     b += caustic;
-                    // Foam where the water meets the land. The shore is
-                    // checked against the four neighbours, which is cheap
-                    // because only the water pixels pay for it.
+
                     if is_shore(kind, w, h, x, y, empty, Elem::Water as u8) {
                         let surf = ((x as f32 * 0.31) + (y as f32 * 0.19) - time * 2.4).sin() * 0.5
                             + 0.5;
@@ -875,7 +716,7 @@ fn paint(
                     b += sparkle * fx.color[2];
                 }
                 Fx::Foliage => {
-                    // Individual plants vary in hue so forests stop looking flat.
+
                     let v = (n - 0.5) * 26.0;
                     r = (r + fx.color[0] * v / 26.0).max(0.0);
                     g = (g + fx.color[1] * v / 26.0).max(0.0);
@@ -883,19 +724,19 @@ fn paint(
                 }
                 Fx::Glint => {
                     b += 10.0;
-                    // Ice and snow catch a cold specular highlight.
+
                     let glint = ((time * 0.9 + n * 6.0).sin() * 0.5 + 0.5) * 8.0;
                     r += glint * fx.color[0];
                     g += glint * fx.color[1];
                     b += glint * fx.color[2];
                 }
                 Fx::Grain => {
-                    // Charcoal is matte black with a faint warm grain.
+
                     r += fx.color[0] * n;
                     g += fx.color[1] * n;
                 }
                 Fx::Sheen => {
-                    // Tar is glossy: a slow-moving highlight on black.
+
                     let sheen =
                         ((time * 0.5 + x as f32 * 0.05 + y as f32 * 0.03).sin() * 0.5 + 0.5) * 10.0;
                     r += sheen * fx.color[0];
@@ -903,20 +744,19 @@ fn paint(
                     b += sheen * fx.color[2];
                 }
                 Fx::Rot => {
-                    // The corruption of the deep pulses like a wound: a
-                    // slow, sick beat that never settles.
-                    let beat = ((time * fx.speed + n * 7.0).sin() * 0.5 + 0.5);
+
+                    let beat = (time * fx.speed + n * 7.0).sin() * 0.5 + 0.5;
                     let rot = 0.35 + beat * 0.65;
                     r += fx.color[0] * rot;
                     g += fx.color[1] * rot;
                     b += fx.color[2] * rot;
-                    // And it darkens what it has eaten.
+
                     r *= 0.86;
                     g *= 0.9;
                     b *= 0.88;
                 }
                 Fx::Foul => {
-                    // The poison of the deep shimmers like oil on water.
+
                     let shimmer = ((time * fx.speed + x as f32 * 0.19 - y as f32 * 0.11).sin()
                         * 0.5
                         + 0.5)
@@ -926,17 +766,14 @@ fn paint(
                     b += fx.color[2] * shimmer;
                 }
                 Fx::Strata => {
-                    // The rock is layered: a band of colour across the
-                    // whole row, roughened by the per-cell noise so the
-                    // layers do not look like painted stripes.
+
                     let amt = row_band * 0.9 + n * 0.4;
                     r += fx.color[0] * amt;
                     g += fx.color[1] * amt;
                     b += fx.color[2] * amt;
                 }
                 Fx::Vein => {
-                    // The ore catches the light. A slow twinkle, so the
-                    // veins of metal read as metal and not as coloured rock.
+
                     let twinkle = ((time * 1.1 + n * 9.0).sin() * 0.5 + 0.5) * 0.7
                         + (n * 0.6);
                     let amt = twinkle * fx.gain;
@@ -946,14 +783,6 @@ fn paint(
                 }
             }
 
-            // ---- Dynamic light ----
-            // Light from nearby emissive cells warms and brightens the rock
-            // around them. This is what makes caves readable.
-            //
-            // The light field is coarser than the render, so nearest
-            // neighbour is enough: the field is already blurred over several
-            // cells. The column is derived from the world coordinate, so the
-            // lighting of a cell does not depend on the camera.
             if !light_row.is_empty() {
                 let lf = light_row[light_col];
                 r += lf[0];
@@ -961,8 +790,6 @@ fn paint(
                 b += lf[2];
             }
 
-            // The sun shafts land on the ground near the surface, where
-            // the cloud above is thin enough to let them through.
             if depth < 26.0 {
                 let shaft = sun_shaft[rx as usize] * (1.0 - depth * (1.0 / 26.0));
                 r += shaft * 30.0;
@@ -970,7 +797,6 @@ fn paint(
                 b += shaft * 17.0;
             }
 
-            // A heatwave makes the air move: the ground shimmers.
             if shimmer && depth < 9.0 {
                 let sh = ((time * 3.2 + x as f32 * 0.21 + y as f32 * 0.13).sin()) * 6.0
                     * (1.0 - depth * (1.0 / 9.0));
@@ -979,14 +805,12 @@ fn paint(
                 b += sh * 0.35;
             }
 
-            // A lightning flash lights the ground as well as the sky.
             if flash > 0.0 {
                 r += flash * 110.0;
                 g += flash * 116.0;
                 b += flash * 132.0;
             }
 
-            // The glow of the light sources bleeds over everything.
             {
                 let gcol = (rx as usize / bloom::STEP + 1).min(bloom.w - 1);
                 let gl = bloom.at(glow_row, gcol);
@@ -995,7 +819,6 @@ fn paint(
                 b += gl[2] * bloom::STRENGTH;
             }
 
-            // The vignette darkens the edges of the view.
             let vig = 1.0 - 0.30 * (vig_col[rx as usize] * 0.8 + ny2 * 0.5);
             r *= vig;
             g *= vig;
@@ -1009,11 +832,6 @@ fn paint(
     }
 }
 
-
-/// Is this water cell touching the shore?
-/// The foam of a breaking wave only shows on the cells that touch the
-/// land, so the four neighbours are looked at. Only the water pixels pay
-/// for the check.
 #[inline]
 fn is_shore(
     kind: &[u8],
@@ -1027,7 +845,7 @@ fn is_shore(
     let xi = x as usize;
     let yi = y as usize;
     let row = yi * w;
-    // The land is anything that is neither empty nor more water.
+
     let land = |k: u8| k != empty && k != water;
     let left = xi > 0 && land(kind[row + xi - 1]);
     let right = xi + 1 < w && land(kind[row + xi + 1]);
@@ -1047,11 +865,10 @@ fn hash2(x: i32, y: i32) -> u32 {
 
 #[inline]
 fn noise(x: i32, y: i32) -> f32 {
-    // Stable 0..1 value for per-cell colour variation.
+
     (hash2(x, y) >> 8) as f32 / 16_777_216.0
 }
 
-/// Smooth 2D value noise (used for the cloud layer).
 #[inline]
 fn vnoise(x: f32, y: f32) -> f32 {
     let xi = x.floor();
@@ -1069,8 +886,6 @@ fn vnoise(x: f32, y: f32) -> f32 {
     (a * (1.0 - u) + b * u) * (1.0 - v) + (c * (1.0 - u) + d * u) * v
 }
 
-/// Cloud density: domain-warped fractal noise. The warping breaks up the
-/// round blobs so the result reads as torn cloud banks instead of ellipses.
 #[inline]
 fn cloud_density(x: f32, y: f32) -> f32 {
     let wx = vnoise(x * 0.8 + 3.1, y * 0.8 + 1.7) - 0.5;
@@ -1092,4 +907,3 @@ fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
 fn clamp_u8(v: f32) -> u8 {
     v.clamp(0.0, 255.0) as u8
 }
-

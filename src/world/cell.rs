@@ -132,8 +132,7 @@ impl World {
 
     pub fn set_at(&mut self, i: usize, e: Elem) {
         self.kind[i] = e as u8;
-        // A new element belongs to nobody. The cells that do belong to
-        // somebody - a corpse - say so afterwards.
+
         self.owner[i] = 0;
         let base = e.color();
         let jitter = (self.rng.range(17) as i32) - 8;
@@ -176,7 +175,6 @@ impl World {
         mover.density() > target.density() && target_movable
     }
 
-    // Moves the cell at `i` by (dx,dy). Returns the new index if it moved.
     pub(crate) fn try_move(&mut self, i: usize, dx: i32, dy: i32) -> Option<usize> {
         if dx == 0 && dy == 0 {
             return None;
@@ -193,9 +191,5 @@ impl World {
             None
         }
     }
-
-    // ------------------------------------------------------------------
-    // World generation
-    // ------------------------------------------------------------------
 
 }

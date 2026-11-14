@@ -1,10 +1,5 @@
 use super::*;
 
-/// How likely a plant is to put out a seedling beside it, per tick.
-///
-/// Slow on purpose: the surface has to recover at about the rate a colony
-/// eats it, not faster, or the world turns into one green carpet and the
-/// crowding rule is the only thing holding it back.
 const PLANT_SPREAD: f32 = 0.003;
 
 impl World {
@@ -39,7 +34,6 @@ impl World {
             return;
         }
 
-        // Lateral spreading
         let mut cur = i;
         let spread = 1 + self.rng.range(3) as i32;
         for _ in 0..spread {
@@ -76,20 +70,11 @@ impl World {
         let x = (i % self.w) as i32;
         let y = (i / self.w) as i32;
 
-        // Fire needs something to burn. At the very top of the world there is
-        // nothing but thin air, so the flame goes out instead of hovering at
-        // row 0 for its whole lifetime.
         if y <= 0 {
             self.set_at(i, Elem::Smoke);
             return;
         }
 
-        // ---- Fire breathes ----
-        //
-        // A flame takes the oxygen out of the air around it and puts
-        // nothing back. A fire in the open air has a steady supply and
-        // burns for a long time; a fire in a sealed cave eats its own air
-        // and goes out. It is the reason the deep is a cold place.
         let mut air = false;
         for (dx, dy) in DIRS8 {
             if self.get(x + dx, y + dy) == Elem::Oxygen {
@@ -100,7 +85,6 @@ impl World {
             }
         }
 
-        // Ignite fuel nearby
         for (dx, dy) in DIRS8 {
             let t = self.get(x + dx, y + dy);
             let fuel = matches!(
@@ -112,9 +96,6 @@ impl World {
             }
         }
 
-        // Fire burns out faster when it has nothing to eat, and much
-        // faster when it has no air to breathe. A fire with air lasts
-        // three times as long as one without it.
         let (limit, chance) = if air { (60, 0.04) } else { (10, 0.25) };
         if self.age[i] > limit && self.rng.chance(chance) {
             self.set_at(i, Elem::Smoke);
@@ -132,7 +113,6 @@ impl World {
         let x = (i % self.w) as i32;
         let y = (i / self.w) as i32;
 
-        // Crowding: dense vegetation slowly dies back so it never fills the sky.
         let mut neighbors = 0;
         for (dx, dy) in DIRS8 {
             if self.get(x + dx, y + dy) == e {
@@ -144,7 +124,6 @@ impl World {
             return;
         }
 
-        // Plants convert nearby water into more plant (needs moisture).
         for (dx, dy) in DIRS4 {
             if self.get(x + dx, y + dy) == Elem::Water && self.rng.chance(0.0015) {
                 self.set_xy(x + dx, y + dy, e);
@@ -152,7 +131,6 @@ impl World {
             }
         }
 
-        // Slow upward growth into air, only when there is water nearby.
         if self.rng.chance(0.004) && self.get(x, y + 1) != Elem::Empty {
             if !self.has_water_near(x, y, 2) {
                 return;
@@ -165,13 +143,6 @@ impl World {
             }
         }
 
-        // ---- A plant spreads onto the bare ground beside it ----
-        //
-        // A seedling only takes root where there is ground under it, and
-        // only beside a plant that already grows there: the ground does
-        // not sprout, the plants do. A plant that already has five
-        // neighbours is on its way out, so a thicket does not spread for
-        // ever.
         if self.rng.chance(PLANT_SPREAD) && self.get(x, y + 1) != Elem::Empty {
             for (dx, dy) in [(1, 0), (-1, 0)] {
                 let nx = x + dx;
@@ -183,12 +154,6 @@ impl World {
             }
         }
 
-        // ---- A plant breathes ----
-        //
-        // In the daylight a plant puts a little oxygen into the air above
-        // it. That is where the fresh air of the surface comes from, and
-        // it is why the deep is a stale, breathless place: nothing down
-        // there ever makes any.
         if matches!(e, Elem::Plant | Elem::Moss | Elem::Crop)
             && self.daylight > 0.3
             && self.rng.chance(0.012 * self.daylight)
@@ -201,33 +166,14 @@ impl World {
         }
     }
 
-    /// A farm tends its plot.
-    ///
-    /// This is the whole farming mechanic. A farm:
-    ///
-    /// 1. **sows** a seedling into a free cell next to it, on solid ground;
-    /// 2. **ripens** the seedlings it grew into crops.
-    ///
-    /// A crop is worth more food than the wild plant it grew from, and a
-    /// farm keeps producing as long as there is water nearby. So a colony
-    /// that builds farms turns the plants around its base into a
-    /// renewable food supply, and it can do so even after the wild
-    /// vegetation has been eaten bare.
-    ///
-    /// A farm with no water within reach is dormant and does nothing.
     pub(crate) fn step_cultivate(&mut self, i: usize) {
         let x = (i % self.w) as i32;
         let y = (i / self.w) as i32;
 
-        // A farm needs water to work. Without it the plot is dead ground.
-        // The radius matches the one used when the plot is chosen, so a
-        // farm that can be built is always a farm that can grow.
         if !self.has_water_near(x, y, FARM_WATER_RADIUS) {
             return;
         }
 
-        // ---- Ripen -------------------------------------------------------
-        // Turn one of the seedlings around the plot into a ripe crop.
         if self.rng.chance(0.08) {
             for (dx, dy) in DIRS8 {
                 if self.get(x + dx, y + dy) == Elem::Plant {
@@ -237,8 +183,6 @@ impl World {
             }
         }
 
-        // ---- Sow ---------------------------------------------------------
-        // Plant a new seedling in a free cell that has ground under it.
         if self.rng.chance(0.08) {
             for (dx, dy) in DIRS8 {
                 let nx = x + dx;
@@ -281,5 +225,4 @@ impl World {
         }
     }
 
-    // Complex elemental reactions.
 }

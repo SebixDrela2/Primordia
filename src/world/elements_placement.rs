@@ -3,17 +3,17 @@ use super::*;
 impl World {
     pub(crate) fn place_element_museum(&mut self, w: i32, h: i32) {
         let start_x = (w as f32 * 0.05) as i32;
-        let start_y = (h as f32 * 0.8) as i32;
+        let _start_y = (h as f32 * 0.8) as i32;
         let mut idx = 0;
         for v in 1..=Elem::Food as u8 {
             let e = Elem::from_u8(v);
             if e == Elem::Empty || e == Elem::Void { continue; }
-            // Place each element in its own column below the surface
+
             let mx = start_x + (idx % 20) * 4;
             let row = idx / 20;
-            // Dig down below surface for this column
+
             let my = self.surface_y(mx.clamp(2, w - 3)) + 2 + row * 3;
-            // Surround each museum cell with stone walls for protection
+
             for dy in -1..=1 {
                 for dx in -1..=1 {
                     let wx = mx + dx;
@@ -31,14 +31,11 @@ impl World {
         }
     }
 
-    // Place a huge variety of additional element types so the world is rich
-    // with many distinct materials for creatures to find, eat, and use.
 }
 
 impl World {
     pub(crate) fn place_diverse_elements(&mut self, w: i32, h: i32) {
-        // === LIQUIDS ===
-        // Mercury pools (rare, deep)
+
         for _ in 0..5 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = h - 5 - self.rng.range(20) as i32;
@@ -55,7 +52,6 @@ impl World {
             }
         }
 
-        // Alcohol ponds (rare)
         for _ in 0..3 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.surface_y(cx) + 20 + self.rng.range(50) as i32;
@@ -72,7 +68,6 @@ impl World {
             }
         }
 
-        // Honey pools (rare)
         for _ in 0..2 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.surface_y(cx) + 20 + self.rng.range(50) as i32;
@@ -89,7 +84,6 @@ impl World {
             }
         }
 
-        // Blood pools (very rare, near surface)
         for _ in 0..2 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
@@ -106,7 +100,6 @@ impl World {
             }
         }
 
-        // Poison pools (rare, dangerous)
         for _ in 0..2 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.surface_y(cx) + 20 + self.rng.range(50) as i32;
@@ -123,8 +116,6 @@ impl World {
             }
         }
 
-        // === GASES ===
-        // Chlorine gas pockets (near acid/poison)
         for _ in 0..4 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.surface_y(cx) + 20 + self.rng.range(50) as i32;
@@ -141,7 +132,6 @@ impl World {
             }
         }
 
-        // Methane gas pockets (swampy areas)
         for _ in 0..5 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
@@ -159,7 +149,6 @@ impl World {
             }
         }
 
-        // Oxygen pockets (caves)
         for _ in 0..4 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.rng.range((h / 2) as u32) as i32 + h / 4;
@@ -176,8 +165,6 @@ impl World {
             }
         }
 
-        // === POWDERS ===
-        // Sulfur deposits (near lava)
         for _ in 0..15 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = h - 10 - self.rng.range(20) as i32;
@@ -186,7 +173,6 @@ impl World {
             }
         }
 
-        // Ash deposits (post-volcanic)
         for _ in 0..20 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = h - 5 - self.rng.range(15) as i32;
@@ -195,7 +181,6 @@ impl World {
             }
         }
 
-        // Dust (dry areas)
         for _ in 0..30 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.surface_y(cx) + 10 + self.rng.range(40) as i32;
@@ -204,7 +189,6 @@ impl World {
             }
         }
 
-        // Gunpowder (rare, man-made)
         for _ in 0..3 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
@@ -214,7 +198,6 @@ impl World {
             }
         }
 
-        // Fertilizer (farm areas)
         for _ in 0..10 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
@@ -224,7 +207,6 @@ impl World {
             }
         }
 
-        // Mud (wet areas)
         for _ in 0..10 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
@@ -234,7 +216,6 @@ impl World {
             }
         }
 
-        // Tar: the heavy residue of ancient oil fields.
         for _ in 0..6 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.surface_y(cx) + 20 + self.rng.range(50) as i32;
@@ -251,8 +232,6 @@ impl World {
             }
         }
 
-        // === SOLIDS / METALS ===
-        // Tin veins
         for _ in 0..20 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = h - 15 - self.rng.range(35) as i32;
@@ -271,7 +250,6 @@ impl World {
             }
         }
 
-        // Bronze deposits (rare, mixed copper+tin)
         for _ in 0..8 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = h - 18 - self.rng.range(30) as i32;
@@ -290,7 +268,6 @@ impl World {
             }
         }
 
-        // Iron veins (deeper)
         for _ in 0..20 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = h - 20 - self.rng.range(30) as i32;
@@ -309,7 +286,6 @@ impl World {
             }
         }
 
-        // Steel (rare, refined)
         for _ in 0..5 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = h - 22 - self.rng.range(25) as i32;
@@ -328,7 +304,6 @@ impl World {
             }
         }
 
-        // Silver veins
         for _ in 0..10 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = h - 18 - self.rng.range(30) as i32;
@@ -347,7 +322,6 @@ impl World {
             }
         }
 
-        // Coal seams
         for _ in 0..30 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.rng.range((h / 2) as u32) as i32 + h / 4;
@@ -360,14 +334,12 @@ impl World {
                 let y = cy + (dy_f * i as f32) as i32;
                 if x > 2 && x < w - 2 && y > 2 && y < h - 5 {
                     if self.get(x, y) == Elem::Stone && self.rng.chance(0.5) {
-                        self.set_xy(x, y, Elem::Ash); // Using Ash as coal proxy
+                        self.set_xy(x, y, Elem::Ash);
                     }
                 }
             }
         }
 
-        // === ORGANIC ===
-        // Fungus (damp areas)
         for _ in 0..20 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
@@ -379,7 +351,6 @@ impl World {
             }
         }
 
-        // Moss (damp, shaded)
         for _ in 0..30 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
@@ -391,7 +362,6 @@ impl World {
             }
         }
 
-        // Roots (underground)
         for _ in 0..15 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.surface_y(cx) + 2 + self.rng.range(10) as i32;
@@ -400,7 +370,6 @@ impl World {
             }
         }
 
-        // Meat/Bone (creature remains)
         for _ in 0..10 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
@@ -414,7 +383,6 @@ impl World {
             }
         }
 
-        // Leather (rare)
         for _ in 0..5 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
@@ -424,8 +392,6 @@ impl World {
             }
         }
 
-        // === ENERGY/EXOTIC ===
-        // Mana crystals
         for _ in 0..20 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.rng.range((h / 2) as u32) as i32 + h / 4;
@@ -434,7 +400,6 @@ impl World {
             }
         }
 
-        // Soul energy (very rare, deep)
         for _ in 0..3 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = h - 8 - self.rng.range(15) as i32;
@@ -443,7 +408,6 @@ impl World {
             }
         }
 
-        // Magma (hotter than lava)
         for _ in 0..3 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = h - 15 - self.rng.range(20) as i32;
@@ -463,7 +427,6 @@ impl World {
             }
         }
 
-        // Void pockets (very rare)
         for _ in 0..2 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.rng.range(h as u32) as i32;
@@ -483,7 +446,6 @@ impl World {
             }
         }
 
-        // Snow: old snow that never melted, lying in the deep caves.
         for _ in 0..40 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.surface_y(cx) + 20 + self.rng.range(50) as i32;
@@ -492,8 +454,7 @@ impl World {
                     if self.rng.chance(0.35) {
                         let x = cx + dx;
                         let y = cy + dy;
-                        // Snow settles on a floor, so it goes in the empty
-                        // cell directly above solid ground.
+
                         if x > 1 && x < w - 1 && y > 1 && y < h - 6
                             && self.get(x, y) == Elem::Empty
                             && self.get(x, y + 1).is_solid()
@@ -505,7 +466,6 @@ impl World {
             }
         }
 
-        // Embers: coals that still glow in the deep rock.
         for _ in 0..10 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.surface_y(cx) + 25 + self.rng.range(50) as i32;
@@ -522,8 +482,6 @@ impl World {
             }
         }
 
-        // === CONSTRUCTED ===
-        // Ancient brick structures
         for _ in 0..8 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = (self.rng.range((h as u32 / 2) as u32) as i32) + h / 4;
@@ -547,7 +505,6 @@ impl World {
             }
         }
 
-        // Wire/Circuit ruins
         for _ in 0..6 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.rng.range((h / 2) as u32) as i32 + h / 4;
@@ -570,7 +527,6 @@ impl World {
             }
         }
 
-        // Tools scattered
         for _ in 0..10 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
@@ -586,7 +542,6 @@ impl World {
             }
         }
 
-        // Door/Chest ruins
         for _ in 0..5 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.rng.range((h / 2) as u32) as i32 + h / 4;
@@ -600,7 +555,6 @@ impl World {
             }
         }
 
-        // Charcoal: the residue of burnt wood, left where fires have been.
         for _ in 0..14 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.surface_y(cx) + 10 + self.rng.range(50) as i32;
@@ -617,8 +571,6 @@ impl World {
             }
         }
 
-        // === MAGICAL ===
-        // Runes
         for _ in 0..5 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.rng.range((h / 2) as u32) as i32 + h / 4;
@@ -627,7 +579,6 @@ impl World {
             }
         }
 
-        // Wards
         for _ in 0..4 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.rng.range((h / 2) as u32) as i32 + h / 4;
@@ -636,7 +587,6 @@ impl World {
             }
         }
 
-        // Portals (very rare)
         for _ in 0..2 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.rng.range((h / 2) as u32) as i32 + h / 4;
@@ -645,8 +595,6 @@ impl World {
             }
         }
 
-        // === BIOLOGICAL ===
-        // Eggs (rare)
         for _ in 0..3 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
@@ -656,7 +604,6 @@ impl World {
             }
         }
 
-        // Corpses
         for _ in 0..5 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
@@ -666,7 +613,6 @@ impl World {
             }
         }
 
-        // Virus patches
         for _ in 0..3 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.rng.range(h as u32) as i32;
@@ -683,7 +629,6 @@ impl World {
             }
         }
 
-        // Bacteria
         for _ in 0..4 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.rng.range(h as u32) as i32;
@@ -700,7 +645,6 @@ impl World {
             }
         }
 
-        // Food items
         for _ in 0..10 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
@@ -710,7 +654,5 @@ impl World {
             }
         }
     }
-
-    // ===== ENHANCED WORLD GENERATION METHODS =====
 
 }

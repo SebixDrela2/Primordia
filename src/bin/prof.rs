@@ -1,12 +1,4 @@
-//! Where the time goes.
-//!
-//! cargo run --release --bin prof
-//!
-//! Prints the per-step cost of the world, the creatures and the renderer.
-//! The renderer is measured on the region that is actually on screen, at
-//! the zoom the game usually runs at, because that is the number that has
-//! to fit inside a frame.
-
+#![allow(dead_code)]
 #[path = "../creature/mod.rs"]
 mod creature;
 #[path = "../elements/mod.rs"]
@@ -46,11 +38,6 @@ fn main() {
     }
     let creature_ms = t.elapsed().as_secs_f64() * 1000.0 / n as f64;
 
-    // ---- The renderer ----
-    //
-    // The renderer only ever paints the part of the world that is on
-    // screen, so that is what is measured: the region of a 480x270 view
-    // at the zoom the game runs at, and the whole world for comparison.
     let mut renderer = render::Renderer::new();
     let mut buf = vec![0u8; 480 * 270 * 4];
     let frames = 400;

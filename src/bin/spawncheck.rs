@@ -1,8 +1,4 @@
-//! Diagnostic: find elements that end up in the sky when they should be
-//! underground, and elements that visibly float with nothing beneath them.
-//!
-//! cargo run --release --bin spawncheck -- [frames]
-
+#![allow(dead_code)]
 #[path = "../creature/mod.rs"]
 mod creature;
 #[path = "../elements/mod.rs"]
@@ -15,7 +11,6 @@ mod world;
 use elements::Elem;
 use world::World;
 
-/// Elements that must never appear above the terrain surface.
 const UNDERGROUND_ONLY: &[Elem] = &[
     Elem::Lava,
     Elem::Magma,
@@ -64,10 +59,9 @@ fn main() {
             continue;
         }
         for x in 0..w.w as i32 {
-            // The analytic terrain height is the reference: everything above
-            // it is open sky.
+
             let surf = w.surface_y(x);
-            // Give a little slack for foliage and tree canopies.
+
             let top = (surf - 8).max(0);
             for y in 0..top {
                 let e = w.get(x, y);

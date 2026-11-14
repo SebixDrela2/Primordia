@@ -1,7 +1,6 @@
 use crate::creature::SimEvent;
 use macroquad::prelude::*;
 
-/// Short-lived visual feedback for everything that happens in the sim.
 pub enum EffectKind {
     Ring { color: [u8; 3], max_r: f32, width: f32 },
     Spark { color: [u8; 3], vx: f32, vy: f32, size: f32 },
@@ -64,7 +63,6 @@ impl Effects {
         });
     }
 
-    /// Radial spray of sparks (used for deaths and impacts).
     pub fn burst(&mut self, x: f32, y: f32, color: [u8; 3], count: usize, speed: f32) {
         for i in 0..count {
             let a = (i as f32 / count.max(1) as f32) * std::f32::consts::TAU;
@@ -105,7 +103,7 @@ impl Effects {
                     max_r,
                     width,
                 } => {
-                    // Ease-out expansion.
+
                     let r = (max_r * scale_x).max(1.0) * (1.0 - (1.0 - p) * (1.0 - p));
                     draw_circle_lines(
                         sx,
@@ -161,9 +159,6 @@ impl Effects {
     }
 }
 
-/// Full-screen state shown when one species has wiped out all others (or the
-
-/// Turn a simulation event into an animation.
 pub fn apply_event(effects: &mut Effects, ev: SimEvent) {
             match ev {
                 SimEvent::Hit {
@@ -207,47 +202,44 @@ pub fn apply_event(effects: &mut Effects, ev: SimEvent) {
                     effects.burst(x, y, color, 14, 7.0);
                     effects.text(x, y, [255, 130, 130], "KO".to_string());
                 }
-                SimEvent::Heal { x, y, color } => {
+                SimEvent::Heal { x, y, color: _ } => {
                     effects.ring(x, y, [120, 255, 160], 12.0, 0.7);
                     effects.text(x, y, [150, 255, 190], "+HP".to_string());
                 }
-                SimEvent::Explosion { x, y, color } => {
+                SimEvent::Explosion { x, y, color: _ } => {
                     effects.ring(x, y, [255, 200, 80], 34.0, 0.8);
                     effects.ring(x, y, [255, 120, 40], 20.0, 0.5);
                     effects.burst(x, y, [255, 190, 90], 20, 11.0);
                     effects.text(x, y, [255, 210, 120], "BOOM".to_string());
                 }
                 SimEvent::Treaty { x, y, color, label } => {
-                    // A treaty is a formal, golden moment: two rings that
-                    // close in on each other.
+
                     effects.ring(x, y, [255, 214, 120], 18.0, 0.9);
                     effects.ring(x, y, color, 11.0, 0.7);
                     effects.text(x, y, [255, 226, 150], label.clone());
                 }
                 SimEvent::War { x, y, color } => {
-                    // War is a red, jagged break, ringed in the colour of
-                    // the species that started it.
+
                     effects.ring(x, y, [255, 70, 70], 30.0, 0.9);
                     effects.ring(x, y, color, 22.0, 0.7);
                     effects.burst(x, y, [255, 90, 70], 18, 10.0);
                     effects.text(x, y, [255, 120, 110], "WAR".to_string());
                 }
                 SimEvent::Speciation { x, y, color } => {
-                    // A new species: two rings opening outward from the
-                    // place it was born.
+
                     effects.ring(x, y, [255, 255, 220], 26.0, 1.1);
                     effects.ring(x, y, color, 14.0, 0.8);
                     effects.burst(x, y, [255, 250, 210], 22, 9.0);
                     effects.text(x, y, [255, 255, 230], "NEW SPECIES".to_string());
                 }
-                SimEvent::Plague { x, y, color } => {
-                    // A plague: a sickly green cloud.
+                SimEvent::Plague { x, y, color: _ } => {
+
                     effects.ring(x, y, [120, 200, 90], 18.0, 0.9);
                     effects.burst(x, y, [140, 220, 110], 14, 6.0);
                     effects.text(x, y, [170, 240, 140], "PLAGUE".to_string());
                 }
-                SimEvent::Discovery { x, y, color } => {
-                    // A discovery: a bright golden spark.
+                SimEvent::Discovery { x, y, color: _ } => {
+
                     effects.ring(x, y, [255, 230, 150], 20.0, 1.0);
                     effects.burst(x, y, [255, 235, 170], 16, 7.0);
                     effects.text(x, y, [255, 240, 190], "DISCOVERY".to_string());

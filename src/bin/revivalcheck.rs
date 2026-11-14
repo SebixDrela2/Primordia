@@ -1,14 +1,4 @@
-//! Headless check for the revival: the lineage that goes on must carry
-//! everything it earned.
-//!
-//! cargo run --release --bin revivalcheck -- [steps]
-//!
-//! A revival is a continuation, not a fresh start with an old body. If a
-//! lineage loses a run and its genes are carried into the next world, it
-//! must carry its **practices** and its **knowledge** with them: a
-//! lineage that starts every revival at the bottom of the tech tree never
-//! gets anywhere, and the evolution never learns anything.
-
+#![allow(dead_code)]
 #[path = "../creature/mod.rs"]
 mod creature;
 #[path = "../elements/mod.rs"]
@@ -45,10 +35,6 @@ fn main() {
         creatures.step(&mut world);
     }
 
-    // ---- The lineage that would be carried on ----
-    //
-    // The species with the most members is the one that would hold the
-    // world up, and it is the one whose genome goes into the next run.
     let mut counts: Vec<(u32, u32)> = Vec::new();
     for c in &creatures.list {
         if c.faction == creature::Faction::Zorg {
@@ -66,8 +52,6 @@ fn main() {
     };
     println!("  the lineage that carries on: species {}", species);
 
-    // Give it something worth carrying: a practice it has learnt and a
-    // piece of knowledge it has worked out.
     let culture = Culture::Mining.bit() | Culture::Craft.bit();
     let discoveries = creature::discovery_bits::COGNITION
         | creature::discovery_bits::HUSBANDRY
@@ -84,7 +68,6 @@ fn main() {
         std::process::exit(1);
     };
 
-    // ---- What the genome carries ----
     println!(
         "  the genome carries: culture {:04x}, temperament {:.2}/{:.2}",
         genome.culture,
@@ -96,7 +79,6 @@ fn main() {
         failures += 1;
     }
 
-    // ---- And what the next world starts with ----
     let mut world2 = World::new(W, H, 0x5EED_1234_ABCD_0002);
     world2.seed();
     let mut next = CreatureSystem::new(0x5EED_1234_ABCD_0002 ^ 0x0F0F_0F0F);
@@ -121,18 +103,12 @@ fn main() {
         println!("FAIL: the next world starts without the practices");
         failures += 1;
     }
-    // The knowledge is *not* carried: the tech tree is what a run is for,
-    // and a revival is a new species that has to work it out again.
+
     if carried_knowledge != 0 {
         println!("FAIL: the next world starts with knowledge it did not earn");
         failures += 1;
     }
 
-    // ---- The generation and the temperament ----
-    //
-    // The revival is a continuation: the animals that come back are a
-    // generation further on than the one that carried the line, and they
-    // carry its temperament.
     let revived_gen = next
         .list
         .iter()

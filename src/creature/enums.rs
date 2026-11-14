@@ -1,8 +1,3 @@
-
-// ---------------------------------------------------------------------------
-// Creature
-// ---------------------------------------------------------------------------
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Role {
     Worker = 0,
@@ -13,15 +8,10 @@ pub enum Role {
     Builder = 5,
     Explorer = 6,
     Shaman = 7,
-    /// A diplomat. Envoys walk to foreign colonies to negotiate treaties.
+
     Envoy = 8,
 }
 
-/// Evolutionary traits. A creature inherits its genes from its parents, and
-/// the genes decide which traits a species evolves. Every trait has a real
-/// effect on the simulation.
-///
-/// The bits are `u32`, so a species can carry up to thirty-two of them.
 pub mod trait_bits {
     pub const FEROCIOUS: u32 = 1 << 0;
     pub const INDUSTRIOUS: u32 = 1 << 1;
@@ -30,37 +20,37 @@ pub mod trait_bits {
     pub const KEEN_SENSES: u32 = 1 << 4;
     pub const SCAVENGER: u32 = 1 << 5;
     pub const PEACEFUL: u32 = 1 << 6;
-    /// Melee attacks poison whatever they hit.
+
     pub const VENOMOUS: u32 = 1 << 7;
-    /// Can swim through water instead of being blocked by it.
+
     pub const AMPHIBIOUS: u32 = 1 << 8;
-    /// Hunts at night and rests badly in the day.
+
     pub const NOCTURNAL: u32 = 1 << 9;
-    /// Works better in the company of its own kind.
+
     pub const GREGARIOUS: u32 = 1 << 10;
-    /// Carries far more than its size suggests.
+
     pub const HOARDER: u32 = 1 << 11;
-    /// Immune to the cold, and drawn to heat.
+
     pub const THERMOPHILIC: u32 = 1 << 12;
-    /// Reads metal in the rock and digs towards it.
+
     pub const METALLOPHILIC: u32 = 1 << 13;
-    /// Light bones: fast, but frail.
+
     pub const HOLLOW_BONED: u32 = 1 << 14;
-    /// The colony shares one mind: the members know what the others know.
+
     pub const HIVEMIND: u32 = 1 << 15;
-    /// A prolific species: many small young, cheap and quick to mature.
+
     pub const PROLIFIC: u32 = 1 << 16;
-    /// A prolonged species: few young, heavily invested in, and long-lived.
+
     pub const PROLONGED: u32 = 1 << 17;
-    /// The colony keeps the peace within itself: no fighting over food.
+
     pub const PACIFIC: u32 = 1 << 18;
-    /// Drawn to the deep: digs deeper than others and finds more.
+
     pub const DEEP_DIGGER: u32 = 1 << 19;
-    /// Builds high: finds and uses the ground above the surface.
+
     pub const CLIMBER: u32 = 1 << 20;
-    /// Keeps a hoard of tools and shares them with the colony.
+
     pub const PROVISIONER: u32 = 1 << 21;
-    /// Sleeps through the day and works at night, whatever the season.
+
     pub const CREPUSCULAR: u32 = 1 << 22;
 }
 
@@ -149,11 +139,6 @@ impl Trait {
     }
 }
 
-/// Decode the trait flags of a gene set.
-///
-/// Every trait has its own gene. A high gene means the trait is expressed,
-/// except for the `Peaceful` trait, which is the mirror image: a *low* gene
-/// means the species has evolved a peaceful nature.
 pub fn decode_traits(genes: &[f32; 32]) -> u32 {
     let mut bits = 0u32;
     if genes[0] > 0.74 {
@@ -228,8 +213,6 @@ pub fn decode_traits(genes: &[f32; 32]) -> u32 {
     bits
 }
 
-/// How many traits a genome expresses. Used to judge how specialised an
-/// animal is.
 pub fn trait_count(bits: u32) -> u32 {
     bits.count_ones()
 }
@@ -325,8 +308,7 @@ pub enum Tool {
     Cart = 12,
     Boat = 13,
     Glider = 14,
-    /// A brand of sanctified fire: it burns the corruption of the deep and
-    /// scours the ZORGs, but it is a poor weapon against ordinary flesh.
+
     Sunfire = 15,
 }
 
@@ -371,10 +353,6 @@ pub enum Mood {
     Zealous = 8,
 }
 
-// ---------------------------------------------------------------------------
-// Spells & magic
-// ---------------------------------------------------------------------------
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub enum Spell {
@@ -390,10 +368,6 @@ pub enum Spell {
     Lightning = 9,
 }
 
-// ---------------------------------------------------------------------------
-// Buildable structures (functional)
-// ---------------------------------------------------------------------------
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Buildable {
     Wall = 0,
@@ -404,49 +378,38 @@ pub enum Buildable {
     Temple = 5,
     Tower = 6,
     Bridge = 7,
-    /// A trading post.
+
     Market = 8,
-    /// A craftsman's hall.
+
     Workshop = 9,
-    /// A food store.
+
     Granary = 10,
-    /// A signal beacon.
+
     Beacon = 11,
-    /// A ward: a pillar of sanctified fire.
+
     Ward = 12,
 }
 
-/// The kinds of structure a colony can raise.
-///
-/// The number is stored in `Structure::kind`.
 pub mod structure_kind {
-    /// A plain building with no special effect.
+
     pub const PLAIN: u8 = 0;
-    /// An armed tower.
+
     pub const TURRET: u8 = 1;
-    /// A temple: it steadies the colony.
+
     pub const TEMPLE: u8 = 2;
-    /// A farm plot.
+
     pub const FARM: u8 = 3;
-    /// A market: trade beside it is more profitable.
+
     pub const MARKET: u8 = 4;
-    /// A workshop: tools are made faster beside it.
+
     pub const WORKSHOP: u8 = 5;
-    /// A granary: the colony does not go hungry beside it.
+
     pub const GRANARY: u8 = 6;
-    /// A beacon: the colony sees further from it.
+
     pub const BEACON: u8 = 7;
-    /// A ward: a pillar of sanctified fire. It burns the ZORGs that come
-    /// near it and scours the corruption out of the ground. Raised inside
-    /// the ZORG cave, it seals the cave: the deep stops breeding.
+
     pub const WARD: u8 = 8;
 }
-
-/// A shot in flight (arrows, mana bolts, tower fire).
-
-// ---------------------------------------------------------------------------
-// Vehicle / mount
-// ---------------------------------------------------------------------------
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MountKind {
@@ -457,7 +420,6 @@ pub enum MountKind {
     Glider = 4,
 }
 
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum VehicleType {
     Cart = 0,
@@ -465,4 +427,3 @@ pub(crate) enum VehicleType {
     Glider = 2,
     Sled = 3,
 }
-

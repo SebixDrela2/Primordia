@@ -57,7 +57,7 @@ impl CreatureSystem {
         let mut tech_crystal = 0;
         let mut disease_count = 0;
         let mut spell_count = 0u32;
-        let mut trade_count = 0u32;
+        let _trade_count = 0u32;
         let mut mount_count = 0u32;
         let mut hunger_sum = 0.0;
         let mut thirst_sum = 0.0;
@@ -187,4 +187,3 @@ impl CreatureSystem {
         };
     }
 }
-
