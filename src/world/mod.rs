@@ -38,6 +38,23 @@ mod zorg_cave;
 
 pub use depth::*;
 pub use landmarks::*;
+
+/// Instrumentation for the diet checks (`src/bin/foodcheck.rs`).
+pub mod counters {
+    use std::sync::atomic::AtomicU32;
+    /// How many times each element has been eaten, indexed by element byte.
+    pub static MEALS: [AtomicU32; 256] = {
+        #[allow(clippy::declare_interior_mutable_const)]
+        const Z: AtomicU32 = AtomicU32::new(0);
+        [Z; 256]
+    };
+    /// How many times a creature stood next to its own kind's dead and
+    /// walked away from it. This must never be zero as a *meal*, but the
+    /// counter says how often the rule actually bit.
+    pub static CORPSE_REFUSED: AtomicU32 = AtomicU32::new(0);
+    /// How many times a creature ate the dead of another species.
+    pub static CORPSE_EATEN: AtomicU32 = AtomicU32::new(0);
+}
 pub use zorg_cave::*;
 
 use crate::elements::{Behavior, Elem};
@@ -309,6 +326,11 @@ pub struct World {
     pub w: usize,
     pub h: usize,
     pub kind: Vec<u8>,
+    /// Who a cell belongs to, for the cells that can belong to somebody:
+    /// the species whose creature fell there. A corpse carries the id of
+    /// the species that died, so that a creature knows whether the body
+    /// on the ground is a meal or a kinsman. Zero means "nobody's".
+    pub owner: Vec<u8>,
     pub col: Vec<[u8; 3]>,
     pub heat: Vec<u8>,
     pub age: Vec<u32>,

@@ -827,6 +827,23 @@ impl CreatureSystem {
 
                 act_move(world, c, speed_mult_extra);
 
+                // ---- How deep this species has been ----
+                //
+                // A colony cannot work out how to go down until it has
+                // been down. The tech tree follows the geology: the tiers
+                // of it ask the species to have actually been somewhere,
+                // and the zones of the deep are the milestones.
+                {
+                    let depth =
+                        (c.y.round() as i32 - world.surface_y(c.x.round() as i32)).max(0) as u32;
+                    if depth > 0 {
+                        match self.deepest.iter_mut().find(|(sp, _)| *sp == c.species) {
+                            Some(e) => e.1 = e.1.max(depth),
+                            None => self.deepest.push((c.species, depth)),
+                        }
+                    }
+                }
+
                 // ---- The filth of the deep ----
                 //
                 // A ZORG does not walk over the world cleanly: it leaves
@@ -847,7 +864,7 @@ impl CreatureSystem {
                 // would shadow them, and the melee attackers, the eat and
                 // build counters and the structure total would never be
                 // picked up after the block.
-                ate_something = act_eat(world, c, &out);
+                ate_something = act_eat(world, c, &out, &self.diplomacy);
                 act_mine(world, c, &out, company);
 
                 // A colony in crisis builds slowly: there is nobody to
@@ -916,7 +933,13 @@ impl CreatureSystem {
                     learned.push((index, Culture::Warfare));
                 }
                 if ate_something {
-                    learned.push((index, Culture::Hunting));
+                    // A colony that has eaten the dead of another species
+                    // knows how to hunt: it goes for the weak and it takes
+                    // what it kills. A colony that only ever eats what the
+                    // ground gives it never learns this.
+                    if c.last_meal == Elem::Corpse {
+                        learned.push((index, Culture::Hunting));
+                    }
                     if c.inventory[10] > 0 {
                         learned.push((index, Culture::Cultivation));
                     }
@@ -1140,11 +1163,22 @@ impl CreatureSystem {
                     // learned the wrong thing, and the wrong thing is
                     // undone here: the direction of the crowd is the
                     // wrong one.
-                    if crowd >= 8 && c.hunger > 40.0 && !ate_something {
-                        push(
-                            outputs::DESIRE + c.desire_dir,
-                            -learn * 1.4,
-                        );
+                    //
+                    // The lesson is given whether the animal ate or not.
+                    // It used to be skipped when there was food in the
+                    // heap, and that was the loophole: a heap with a
+                    // carcass in it is exactly the heap the network
+                    // should learn to leave, and that was the one heap
+                    // where it was never told to go.
+                    if crowd >= 8 {
+                        let penalty = if c.hunger > 40.0 && !ate_something {
+                            learn * 1.4
+                        } else {
+                            // A crowd that fed the animal is still a crowd:
+                            // it burns energy and it breeds sickness.
+                            learn * 0.6
+                        };
+                        push(outputs::DESIRE + c.desire_dir, -penalty);
                     }
                     // Going hungry teaches it to want to eat.
                     if c.hunger > 70.0 {

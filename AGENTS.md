@@ -27,11 +27,26 @@
 - `cargo run --release --bin zorgcheck -- [seed]` checks the ZORG cave:
   that it exists, that it is deep in the world, that it has a floor and a
   larder, and that every founding ZORG is born inside it.
+- `cargo run --release --bin foodcheck -- 3000` prints the **diet**: what
+  the colony actually ate, meal by meal, and how many own-kind corpses
+  were refused. The colony is meant to live off the ground: plants,
+  fungus and crops should be the bulk of it, and a corpse should be a
+  rarity worth a war.
+- `cargo run --release --bin crowdcheck -- 3000 [seed]` prints how
+  crowded the colony is (average neighbours within four cells, and how
+  many creatures are in a heap of eight or more). It is the way to see
+  whether a change has made the herd clump or spread.
 - `cargo run --release --bin braincheck -- 12000` checks the minds: that
   the senses are primitive, that a mind learns to want what it smells,
   that the colony feeds itself, and that the colony does not go extinct.
   It steps the **world** as well as the creatures: a check that only moved
   the animals would measure a world that never changes.
+- `cargo run --release --bin revivalcheck -- 3000` checks that a revival
+  is a continuation and not a fresh start with an old body: the genome
+  must carry the brain, the genes, the generation, the temperament and
+  **the practices**, and the next world must start with all of them.
+  The **knowledge is not carried** - the tech tree is what a run is for,
+  and a revival is a set of new species that has to work it out again.
 - `cargo run --release --bin aircheck -- 3000` checks the air: that the
   undergroves are deep and have air in them, that the open air is fresher
   than the deep, that fire in a sealed cave goes out, and that stale air
@@ -198,11 +213,31 @@
 - **The herd has to be unlearned**. The body block carries **how
   crowded the animal is**, so the network can tell a crowd from company.
   And there is a lesson that undoes the clumping: an animal pressed in
-  among its own kind and still going hungry has its direction of desire
-  penalised. Without it the network learns the opposite - it eats, the
-  direction it was heading gets the credit, and that direction was the
-  direction of the crowd - so the crowd grows and every meal makes it
-  grow again.
+  among its own kind has its direction of desire penalised, and the
+  penalty is stronger when the animal went hungry there. Without it the
+  network learns the opposite - it eats, the direction it was heading
+  gets the credit, and that direction was the direction of the crowd -
+  so the crowd grows and every meal makes it grow again. The lesson is
+  given **whether the animal ate or not**: a heap with a carcass in it
+  is exactly the heap the network should learn to leave, and that used
+  to be the one heap where it was never told to go.
+- **A colony lives off the ground it stands on.** The diet is the
+  plants, the fungus and the farms: the regrowth puts the seedlings
+  back, a farm beside water ripens a crop, and a colony that wants
+  more food builds more farms. **The dead are not food.** A body
+  remembers whose body it was (the world keeps an owner per cell), and
+  a creature will never eat its own dead, nor the dead of a nation it
+  has sworn to. A **rival's** dead are food: that is what a war is
+  worth, and it is why a colony has a reason to pick a fight. The
+  **Hunting** culture is learned from eating a rival's corpse, not
+  from eating grass, and it makes the colony take the weak.
+- **The sky is not a place to live**. Everything above the surface is
+  air, and it is priced: each step costs `MOVE x (1 + height/20)`, and
+  holding still up there costs `0.02 x (1 + height/20) x (1 + air_time/300)`
+  a tick - so the higher an animal goes, and the longer it stays, the
+  more every tick costs. Without this the pull of the open sky walks the
+  whole colony up into the top corners of the map, where it starves in
+  the clear and learns nothing. The ground is where the digging is.
 - **Sickness wears the body down**. Every disease has a *debility*: the
   hunger rate goes up by `0.45 x debility`, the stamina drain goes up by
   `0.7 x debility` and the wind comes back `40%` slower. A sick animal
@@ -211,6 +246,12 @@
   (fourteen cells) and it is a gentle one: a hunter that could smell
   prey from across the valley would bring the whole colony with it, and
   the colony would pile onto one animal in open ground.
+- The **tech tree** (`src/creature/tech.rs`) has **ten tiers** and is
+  **gated on depth as well as practice**: a discovery also asks the
+  species to have actually *been* deep enough, and the tiers walk down
+  through the zones of the deep (0 for the first hands, 70 for the mine
+  in the crystal depths, 210 for the deep in the magma layer). A colony
+  that never digs can never work out the whole tree by luck.
 - The **tech tree** (`src/creature/tech.rs`) has **ten tiers** and holds
   both kinds of thing: the **tools** a creature carries (the pickaxe, the
   bow, the sunfire) and the **discoveries** a species knows (how to work

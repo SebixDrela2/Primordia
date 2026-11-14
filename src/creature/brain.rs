@@ -726,8 +726,28 @@ impl Net {
     /// what any of those channels mean.
     fn apply_skip(&self, input: &[f32], out: &mut [f32]) {
         let dir_ch = crate::creature::senses::DIR_CHANNELS;
-        // The pull of the open sky, added to the direction that is up.
-        let sky = self.skip_up * input[crate::creature::senses::BODY_BASE + crate::creature::senses::BODY_OPEN_SKY];
+        // The pull of the open sky.
+        //
+        // It is a pull *out of the ground*, not a pull up into the sky: an
+        // animal shut in the rock wants to get out — and getting out means
+        // digging, which means a pick, which means the tech — and an animal
+        // that is already in the open has nothing to want.
+        //
+        // How does a creature know whether it is shut in? By the three
+        // things it can feel: it is **dark**, the air is **stale**, and
+        // there is **rock over its head**. An animal in the open has
+        // none of them, so it wants nothing; an animal in a cave has all
+        // three, so it wants out. And an animal in the open at night is
+        // dark but breathes fresh air and has the sky over it, so it does
+        // not go wandering up into the stars either.
+        let light = input[crate::creature::senses::BODY_BASE
+            + crate::creature::senses::BODY_LIGHT];
+        let air = input[crate::creature::senses::BODY_BASE
+            + crate::creature::senses::BODY_AIR];
+        let roof = input[crate::creature::senses::BODY_BASE
+            + crate::creature::senses::BODY_OPEN_SKY];
+        let enclosed = (1.0 - light) * (1.0 - air) * (1.0 - roof);
+        let sky = self.skip_up * enclosed;
         for d in 0..crate::creature::senses::DIRS {
             let base = d * dir_ch;
             let mut v = 0.0f32;

@@ -7,6 +7,7 @@ impl World {
             w,
             h,
             kind: vec![Elem::Empty as u8; n],
+            owner: vec![0u8; n],
             col: vec![[10, 14, 23]; n],
             heat: vec![0; n],
             age: vec![0; n],
@@ -131,6 +132,9 @@ impl World {
 
     pub fn set_at(&mut self, i: usize, e: Elem) {
         self.kind[i] = e as u8;
+        // A new element belongs to nobody. The cells that do belong to
+        // somebody - a corpse - say so afterwards.
+        self.owner[i] = 0;
         let base = e.color();
         let jitter = (self.rng.range(17) as i32) - 8;
         self.col[i] = [
@@ -152,6 +156,7 @@ impl World {
     #[inline]
     pub(crate) fn swap_cells(&mut self, a: usize, b: usize) {
         self.kind.swap(a, b);
+        self.owner.swap(a, b);
         self.col.swap(a, b);
         self.heat.swap(a, b);
         self.age.swap(a, b);

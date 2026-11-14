@@ -43,6 +43,7 @@ impl CreatureSystem {
             migrations_started: 0,
             plagues_started: 0,
             discoveries: Vec::new(),
+            deepest: Vec::new(),
 
             last_discovery: None,
         }
@@ -231,12 +232,78 @@ impl CreatureSystem {
                 genes: c.genes,
                 size: c.size,
                 generation: c.generation,
+                // The heritage goes with it: what the colony had learned
+                // to do. The knowledge does not: the tech tree is the
+                // run's own work and is earned again in the next world.
+                culture: c.culture,
+                personality: c.personality,
             })
+    }
+
+    /// Snapshot the fittest player animal of the whole run.
+    ///
+    /// This is what a run that was **lost** carries into the next one: not
+    /// the biggest colony, but the best lineage — the animal with the
+    /// best genes, the best brain and the most practice behind it. A win
+    /// carries the champion of the winning species; a loss carries the
+    /// champion of the run. Both are the best there was.
+    pub fn champion_overall(&self) -> Option<RevivalGenome> {
+        self.list
+            .iter()
+            .filter(|c| c.faction != Faction::Zorg)
+            .max_by(|a, b| {
+                a.fitness
+                    .partial_cmp(&b.fitness)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .map(|c| RevivalGenome {
+                net: c.net.clone_net(),
+                color: c.color,
+                genes: c.genes,
+                size: c.size,
+                generation: c.generation,
+                culture: c.culture,
+                personality: c.personality,
+            })
+    }
+
+    /// Which genome seeds the next revival.
+    ///
+    /// A win carries the winner's own genome: the species that conquered
+    /// the world is the species that goes on.
+    ///
+    /// A **loss carries the lineage too**. The deep is not a rival
+    /// lineage - the ZORGs are the world's own ecology, and they cannot be
+    /// out-fought, only sealed - so losing to them is a failure of the
+    /// run, not of the evolution. The last player species gets another go
+    /// at the cave with the brains and the genes it had earned.
+    ///
+    /// Only a world with no player left to carry anything starts from a
+    /// fresh random population, and then the lineage really is lost.
+    pub fn pick_revival_genome(
+        won: bool,
+        champion: Option<RevivalGenome>,
+        fallback: Option<RevivalGenome>,
+    ) -> Option<RevivalGenome> {
+        if won {
+            champion
+        } else {
+            // The last player lineage of the run that just ended, and the
+            // winning genome of an earlier revival behind it.
+            fallback.or(champion)
+        }
     }
 
     /// Seed a fresh world with mutated descendants of a previous champion.
     /// Every spawn becomes a new species (and therefore starts as a queen), so
     /// the winning lineage immediately diversifies into competing clades.
+    ///
+    /// The traditions go with them: the revived species start with the
+    /// practices the lineage had learnt, so the young have something to be
+    /// taught. The **knowledge does not**: the tech tree is what a run is
+    /// for, and it is worked out again in the next world — though a lineage
+    /// that comes back with its practices and its generations behind it gets
+    /// there faster each time.
     pub fn populate_revival(&mut self, world: &World, count: usize, genome: &RevivalGenome) {
         for _ in 0..count {
             if self.list.len() >= MAX_POP {
@@ -248,7 +315,12 @@ impl CreatureSystem {
             let (sx, sy) = world
                 .find_empty_passable_near(x, y, 8)
                 .unwrap_or((x, y));
+            let before = self.list.len();
             self.spawn(world, sx as f32, sy as f32, CreatureGenesis::Revival(genome));
+            if self.list.len() > before {
+                let last = self.list.len() - 1;
+                self.list[last].culture = genome.culture;
+            }
         }
         // The ZORGs survive the revival: they are always down there.
         self.spawn_zorgs(world, ZORG_START);
@@ -698,6 +770,12 @@ impl CreatureSystem {
         // already the blend of its parents.
         let personality = match genesis {
             CreatureGenesis::Child(parent) => parent.personality,
+            // A revival continues the lineage, so it continues its
+            // temperament too: the animals that come back are the
+            // descendants of the one that carried the line.
+            CreatureGenesis::Revival(base) => {
+                Personality::inherit(&base.personality, &mut self.rng)
+            }
             _ => Personality::random(&mut self.rng),
         };
         // The affinity is read from the genes, so it is inherited like any
@@ -822,6 +900,7 @@ impl CreatureSystem {
             mount: None,
             vehicle: None,
             mount_kind: MountKind::None,
+            air_time: 0,
             mount_stamina: 100.0,
             genes,
             mutations,
@@ -962,6 +1041,7 @@ impl Creature {
             mount: None,
             vehicle: None,
             mount_kind: MountKind::None,
+            air_time: 0,
             mount_stamina: 100.0,
             genes: child_genes,
             mutations: self.mutations + 1,

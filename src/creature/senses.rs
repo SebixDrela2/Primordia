@@ -122,6 +122,12 @@ pub const BODY_CROWDED: usize = 30;
 /// The body channel that says whether there is open sky above.
 pub const BODY_OPEN_SKY: usize = 28;
 
+/// The body channel that says how much light reaches the animal.
+pub const BODY_LIGHT: usize = 29;
+
+/// The body channel that says how fresh the air is.
+pub const BODY_AIR: usize = 25;
+
 /// Which of the eight directions is up.
 ///
 /// The directions run clockwise from south, so up is the fifth.

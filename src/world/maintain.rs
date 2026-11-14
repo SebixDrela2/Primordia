@@ -279,11 +279,11 @@ impl World {
         if frame % 15 == 0 && self.census.plants < 4000 {
             let scarcity = self.pressure.scarcity;
             let base = if self.census.plants < 1200 {
-                24
+                32
             } else if self.census.plants < 3000 {
-                12
+                18
             } else {
-                6
+                9
             };
             // The season decides how much grows: spring is the green time,
             // winter is the lean one.
@@ -339,11 +339,11 @@ impl World {
 
         // Hard cap: thin out vegetation if it starts smothering the world.
         // NOTE: compare decoded elements, never raw byte ranges.
-        if frame % 20 == 0 && self.census.plants > 2000 {
+        if frame % 20 == 0 && self.census.plants > 3000 {
             // The thicker the mat, the harder it is thinned: a world that is
             // only a little over the line loses a few plants, a world that
             // has run away with the surface loses a lot.
-            let over = (self.census.plants - 2000) as f32 / 1000.0;
+            let over = (self.census.plants - 3000) as f32 / 1000.0;
             let n = (60.0 + over * 240.0) as u32;
             for _ in 0..n {
                 let i = self.rng.range((self.w * self.h) as u32) as usize;

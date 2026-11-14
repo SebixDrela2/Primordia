@@ -456,16 +456,21 @@ if hurt            { targets.push((15, learn * 1.2));      // run!
                      targets.push((2, -learn * 0.8));      // do not bite
                      targets.push((DESIRE + hurt_dir, -learn * 1.5)); }  // do not walk towards it
 if c.hunger > 70   { targets.push((2, learn * 0.5)); }    // going hungry teaches it to want to eat
-if crowded && hungry && !ate { targets.push((DESIRE + desire_dir, -learn * 1.4)); }  // the crowd was the wrong way
+if crowded { targets.push((DESIRE + desire_dir, -learn * (if hungry && !ate { 1.4 } else { 0.6 }))); }  // the crowd was the wrong way
 ```
 
 The last of these is the lesson that breaks the herd, and it is the
 interesting one. Without it the network learns the **opposite**: it eats,
 the direction it was heading gets the credit, and the direction it was
 heading was the direction of the crowd — so the crowd grows, and every
-meal makes it grow again. A creature pressed in among its own kind and
-still going hungry has learned the wrong thing, and this is where the
-wrong thing is undone: the direction of the crowd is the wrong one.
+meal makes it grow again. A creature pressed in among its own kind has
+learned the wrong thing, and this is where the wrong thing is undone:
+the direction of the crowd is the wrong one.
+
+The lesson is given **whether the animal ate or not**, and it is twice
+as strong when it went hungry in the crowd. That used to be the loophole:
+a heap with a carcass in it is exactly the heap the network should
+learn to leave, and it was the one heap where it was never told to go.
 
 It only works because the animal can *feel* the crowd: the body block
 carries how many bodies are pressed around it, so the network can tell
@@ -606,7 +611,7 @@ gene means peacefulness).
 | 2 | Hardy | > 0.74 | +40% health, hungers more slowly |
 | 3 | Fertile | > 0.74 | cheaper, more frequent offspring |
 | 4 | Keen Senses | > 0.74 | sees and senses further |
-| 5 | Scavenger | > 0.74 | finds food and corpses further away |
+| 5 | Scavenger | > 0.74 | knows the land: gets 12% more out of what it finds |
 | 6 | *Peaceful* | **< 0.18** | prefers trade over violence |
 | 7 | Venomous | > 0.76 | melee attacks poison the wounded |
 | 8 | Amphibious | > 0.76 | swims through water and damp |
@@ -671,7 +676,7 @@ and it multiplies how well the colony does it.
 | 4 | Craft | the creature holds a tool | 1.3× |
 | 5 | Ritual | the creature casts a spell | 1.25× |
 | 6 | Architecture | the creature builds | 1.35× |
-| 7 | Hunting | the creature eats | 1.3× |
+| 7 | Hunting | the creature eats the dead of another species | 1.3× |
 
 **Discovery** (as opposed to practice) is a *species-level* piece of
 knowledge: 32 discoveries in ten tiers, gated by practice, generations and
@@ -723,10 +728,42 @@ Every 300 ticks, for every species with at least 3 members:
 1. The tier below must be **complete**.
 2. The required **practices** must be in the culture bitmask.
 3. The species must have lived through enough **generations**.
-4. A **22%** chance (34% if the colony sits beside the drowned temple).
+4. The species must have **been deep enough** — see below.
+5. A **22%** chance (34% if the colony sits beside the drowned temple).
 
 A species gets **one** discovery per check, and the discoveries are
 tried in tree order.
+
+### 10.1a The tech tree follows the geology
+
+The fourth gate is the important one: a discovery also asks the species
+to have **actually been** somewhere. You cannot work out how to go down
+until you have been down, and you cannot work out how to smelt what is
+in the crystal depths until you have seen the crystal depths.
+
+So the tiers of the tree walk down through the zones of the deep, and a
+colony that lives on the surface can never get past the workshop:
+
+| Tier | Depth needed | The zone |
+|------|---------------|-----------|
+| 1–2 | 0 | the surface: the first hands, the craft |
+| 3 | 20 | the workshop |
+| 4 | 40 | the trade |
+| 5 | 55 | the bottom of the shallows |
+| 6 | 70 | the crystal depths |
+| 7 | 105 | the sulphur works |
+| 8 | 150 | the bone galleries |
+| 9 | 175 | the deep |
+| 10 | 210 | the magma layer |
+
+The depth a species has reached is a record, kept for the species: once
+a colony has been down, it knows the way down. And because the deeper
+tiers are also the ones that unlock the tools for going deeper
+(`Deep Mining`, the drill, the scanner), the tree and the digging feed
+each other.
+
+This is what stops a colony that never leaves the surface from working
+out the whole tree by luck.
 
 ### 10.2 Alliances share knowledge
 
@@ -773,6 +810,40 @@ brains too.
 | The ZORG's carried disease | `zorg.rs` | uniform over 5 |
 | Discovery rolls | `technology.rs` | 22% or 34% |
 | Speech/attack variations | `combat.rs` | random spread |
+
+### 11.1a What a revival carries
+
+A run that ends hands its lineage on, and what it hands on is **everything
+the lineage earned** — not just the body:
+
+| Carried | What it is |
+|---------|------------|
+| the brain | the champion's own network, the one that had learned |
+| the genes | the champion's traits, affinity and immunity |
+| the generation | the revival starts a generation on, it does not restart |
+| the temperament | the champion's personality, inherited and drifted |
+| **the practices** | the traditions the colony had learnt |
+
+The **practices** are the ones that were missing, and they were missing
+by accident. The practices are per-creature and the children of a colony
+inherit them, so a lineage that carried its genes into the next revival
+and left its traditions behind started every revival with nothing to
+teach its young. That is not inheritance — it is amnesia.
+
+The **knowledge** is *not* carried, and that is deliberate. The
+discoveries belong to the species, and a revival is a set of **new
+species**: the lineage comes back as a handful of cousins, each one a
+species of its own, and each one has to work the tree out for itself.
+What carries is the *practices* and the *generations* — and those are
+exactly the two things a discovery is gated on — so a lineage that comes
+back for its third attempt gets through the tree faster than it did the
+first time. It is quicker, but it is still the run's own work.
+
+The rule is the same whoever won: **a win carries the champion of the
+winning species, a loss carries the champion of the run** — the best
+lineage there was, not the biggest colony. The two outcomes differ in
+*who* won, and not in what evolution gets to keep. The only thing that
+carries nothing is a world with no player left alive at all.
 
 ### 11.2 Inherited but **not** neural
 
@@ -860,10 +931,47 @@ finding. Now:
 - **Eat**: the creature bites the cell next to it (or the cell it is
   standing on). The mouth knows what food is — that is a mouth, not a
   brain — but the creature has to have walked there first.
+  **The mouth also knows whose body it is biting.** A corpse carries
+  the species that died in it, and a creature refuses its own dead and
+  the dead of its allies. A rival's corpse is a meal: that is what a
+  war is worth.
 - **Drink**: the creature drinks the water next to it.
 - **Dig**: the creature breaks the wall next to it.
 
-### 12.3 Sickness wears the body down
+### 12.3 The sky is not a place to live
+
+Everything above the surface is air, and an animal that drifts up into it
+is spending everything it has on nothing: there is no food up there and
+no water, and the only thing the sky has ever given a creature is a
+shorter trip to nowhere.
+
+So the air is priced:
+
+| | Cost |
+|---|---|
+| **Moving** | each step costs `MOVE × (1 + height/20)` — climbing is dearer the higher you get |
+| **Holding still** | `0.02 × (1 + height/20) × (1 + air_time/300)` a tick |
+
+The second term is the "longer the flight, the more it costs": a
+creature that has been up for a thousand ticks pays three times what it
+paid on the first, so a flight cannot become a way of life.
+
+This is what keeps a colony on the ground — which is where the digging
+is, and where the tech is. Without it, the pull of the open sky (the
+`skip_up` instinct) walks the whole colony up into the top corners of
+the map, where it starves in the clear and learns nothing.
+
+And the sky pull itself is now a pull *out of the rock* rather than a
+pull up into the sky. A creature knows whether it is shut in by the
+three things it can feel: it is **dark**, the air is **stale**, and there
+is **rock over its head**. An animal in the open has none of those
+three, so it wants nothing; an animal in a cave has all of them, so it
+wants out — and getting out means digging, which means a pick, which
+means the tech. An animal in the open at night is dark but breathes
+fresh air and has the sky over it, so it does not go wandering up into
+the stars either.
+
+### 12.4 Sickness wears the body down
 
 A disease is not a label on a creature. Every disease has a **debility**
 — how hard it wears the host down — and the host pays for it in three
@@ -888,7 +996,7 @@ ways at once:
 This is what makes a sick colony a colony that cannot feed itself, and
 it is why a plague that breaks out in a crowd finishes the crowd off.
 
-### 12.4 Survival rules
+### 12.5 Survival rules
 
 | Rule | Numbers |
 |------|---------|
@@ -902,7 +1010,7 @@ it is why a plague that breaks out in a crowd finishes the crowd off.
 | Health regen | towards `max_health()`, which traits and affinity modify |
 | Death | energy ≤ 0, health ≤ 0, or age over the lifespan (+0–1400 per id) |
 
-### 12.5 Action gating
+### 12.6 Action gating
 
 Every network output is gated by hard conditions before it does anything:
 
@@ -917,7 +1025,7 @@ Every network output is gated by hard conditions before it does anything:
 - **Mine** needs a `world.mine_budget` — the world limits how much can be
   dug out per tick, so creatures cannot strip-mine it.
 
-### 12.6 The difficulty ramp
+### 12.7 The difficulty ramp
 
 The world starts forgiving and gets harder. The ramp is the run's own
 progress plus what the world has become, and it is a **smoothstep** over
@@ -938,7 +1046,7 @@ Hunger, thirst, the cold, the cost of breeding and the size of the ZORG
 swarm all read it. A young world in good condition is gentle; a world
 that has been picked clean and battered is not.
 
-### 12.7 The late world is a lean world
+### 12.8 The late world is a lean world
 
 The vegetation slows down as the run wears on:
 
@@ -951,7 +1059,7 @@ colonies have to fight over. This, more than anything else, is what ends
 a run: the field narrows to two, the ground cannot carry both, and one
 of them wins.
 
-### 12.8 Idling is punished
+### 12.9 Idling is punished
 
 A colony that sits in one place does not harvest and does not explore,
 and the world takes it at its word:
@@ -982,7 +1090,7 @@ and the world takes it at its word:
   over: the animals that pile onto the same carcass are the ones that
   bring the sickness home.
 
-### 12.9 The pull of the hunt
+### 12.10 The pull of the hunt
 
 A colony that has learned to hunt stalks the nearest animal of another
 kind — but only as far as a hunt reaches, and gently:
@@ -1000,7 +1108,7 @@ the whole colony would pile onto one animal in the middle of open
 ground. The creature's own wanting is what carries it the rest of the
 way.
 
-### 12.10 The world
+### 12.11 The world
 
 Everything about the world is hard-coded: the cellular automaton, the
 reactions between elements, the weather table, the seasons, the volcano,
@@ -1014,7 +1122,7 @@ already grows there puts out a seedling beside itself. The world is kept
 from turning into one green mat by a hard cap that thins the vegetation
 when it gets too thick.
 
-### 12.11 Diplomatic negotiation
+### 12.12 Diplomatic negotiation
 
 The outcome of a negotiation is computed by hard rules in
 `diplomacy/negotiation.rs` using the network's outputs 20–23 as *inputs*

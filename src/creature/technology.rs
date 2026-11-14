@@ -413,6 +413,40 @@ impl Discovery {
         }
     }
 
+    /// How deep the species has to have been for this to be worked out.
+    ///
+    /// The tech tree follows the geology. A colony that has never been
+    /// below the surface cannot work out how to go down, and a colony
+    /// that has never seen the crystal depths cannot work out how to
+    /// smelt what is in them. So each tier asks the species to have
+    /// actually *been* somewhere, and the tiers walk down through the
+    /// zones of the deep:
+    ///
+    /// | Tier | Depth | Zone |
+    /// |------|-------|------|
+    /// | 1–2 | 0 | the surface: the first hands, the craft |
+    /// | 3 | 20 | the workshop |
+    /// | 4 | 40 | the trade |
+    /// | 5 | 55 | the bottom of the shallows |
+    /// | 6 | 70 | the crystal depths |
+    /// | 7 | 105 | the sulphur works |
+    /// | 8 | 150 | the bone galleries |
+    /// | 9 | 175 | the deep |
+    /// | 10 | 210 | the magma layer |
+    pub fn depth(self) -> u32 {
+        match self.tier() {
+            0 | 1 => 0,
+            2 => 20,
+            3 => 40,
+            4 => 55,
+            5 => 70,
+            6 => 105,
+            7 => 150,
+            8 => 175,
+            _ => 210,
+        }
+    }
+
     /// How many generations the species must have lived through.
     pub fn generations(self) -> u32 {
         match self.tier() {
@@ -462,6 +496,19 @@ impl CreatureSystem {
     /// Has this species worked this out yet?
     pub fn has_discovery(&self, species: u32, d: Discovery) -> bool {
         self.species_discoveries(species) & d.bit() != 0
+    }
+
+    /// How deep a species has been.
+    ///
+    /// The tech tree is gated on this: a species that has never been
+    /// below the surface cannot work out the tiers that are about going
+    /// down.
+    pub fn species_deepest(&self, species: u32) -> u32 {
+        self.deepest
+            .iter()
+            .find(|(sp, _)| *sp == species)
+            .map(|(_, d)| *d)
+            .unwrap_or(0)
     }
 
     /// Record a discovery.
@@ -657,6 +704,13 @@ impl CreatureSystem {
                 // And the species has to have lived long enough to build on
                 // what it knows.
                 if generation < d.generations() {
+                    continue;
+                }
+                // And it has to have been deep enough to have seen what
+                // this is about. The tech tree follows the geology: you
+                // cannot work out how to smelt what is in the crystal
+                // depths until you have been to the crystal depths.
+                if self.species_deepest(sp) < d.depth() {
                     continue;
                 }
                 // And it has to be lucky. A colony beside the drowned

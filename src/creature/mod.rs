@@ -340,6 +340,12 @@ pub struct Creature {
     pub mount: Option<u32>,
     pub vehicle: Option<u32>,
     pub mount_kind: MountKind,
+    /// How many ticks the animal has been off the ground.
+    ///
+    /// A flight is not a place to live: the sky has no food and no water,
+    /// and the longer an animal stays up there the more every tick of it
+    /// costs.
+    pub air_time: u32,
     pub mount_stamina: f32,
     /// Genetics
     pub genes: [f32; 32],
@@ -523,6 +529,11 @@ pub struct CreatureSystem {
     pub plagues_started: u32,
     /// What each species has worked out for itself, by species id.
     pub discoveries: Vec<(u32, u32)>,
+    /// How deep each species has been: (species, the deepest it has gone).
+    ///
+    /// This is the record the tech tree is gated on. A colony that has
+    /// never been below the surface cannot work out how to go down.
+    pub deepest: Vec<(u32, u32)>,
     /// The discovery that was made last, and the species that made it.
     pub last_discovery: Option<(Discovery, u32)>,
 }
@@ -559,6 +570,20 @@ pub struct RevivalGenome {
     pub genes: [f32; 32],
     pub size: f32,
     pub generation: u32,
+    /// The practices the species had learned.
+    ///
+    /// The culture is inherited too, not only the body and the brain. The
+    /// practices are per-creature and the children of a colony inherit
+    /// them, so a lineage that carried its genes into the next revival and
+    /// left its traditions behind started every revival with nothing to
+    /// teach its young. That is not inheritance — it is amnesia.
+    pub culture: u16,
+    /// The temperament of the animal that carried the lineage.
+    ///
+    /// The personality is inherited from the parents, and the parents of a
+    /// revival are the animal that carried the lineage. So the revived
+    /// animals start with the temperament it had, drifted a little.
+    pub personality: Personality,
 }
 
 pub use actions::*;

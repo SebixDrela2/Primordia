@@ -127,7 +127,7 @@ impl Trait {
             Trait::Hardy => "+40% health, hungers more slowly",
             Trait::Fertile => "cheaper, more frequent offspring",
             Trait::KeenSenses => "sees and senses further",
-            Trait::Scavenger => "finds food and corpses further away",
+            Trait::Scavenger => "knows the land: gets more out of what it finds",
             Trait::Peaceful => "prefers trade over violence",
             Trait::Venomous => "melee attacks poison the wounded",
             Trait::Amphibious => "swims through water and damp",

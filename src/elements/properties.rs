@@ -266,7 +266,9 @@ impl Elem {
             Elem::Fungus => 15.0,
             Elem::Moss => 8.0,
             Elem::Roots => 12.0,
-            Elem::Energy => 100.0,
+            // Energy is not food. It glows, it drifts and it is a sign of
+            // what the deep holds, but no mouth in this world eats it.
+            Elem::Energy => 0.0,
             Elem::Gas => 20.0,
             Elem::Stone => 2.0,
             Elem::Metal => 4.0,
@@ -293,7 +295,7 @@ impl Elem {
             Elem::Meat => 50.0,
             Elem::Bone => 10.0,
             Elem::Leather => 15.0,
-            Elem::Blood => 30.0,
+            Elem::Blood => 0.0,
             Elem::Honey => 40.0,
             Elem::Alcohol => 15.0,
             Elem::Mana => 80.0,
@@ -304,7 +306,7 @@ impl Elem {
             Elem::Food => 25.0,
             // A cultivated crop is worth more than a wild plant: farming
             // has to be worth the effort of tending it.
-            Elem::Crop => 45.0,
+            Elem::Crop => 55.0,
             Elem::Charcoal => 5.0,
             Elem::Snow => 1.0,
             // Gases/energy: small nutrition
@@ -402,7 +404,6 @@ impl Elem {
                 | Elem::Egg
                 | Elem::Corpse
                 | Elem::Honey
-                | Elem::Blood
                 | Elem::Alcohol
                 | Elem::Charcoal
         )
@@ -429,6 +430,13 @@ impl Elem {
                 | Elem::Honey
                 | Elem::Blood
                 | Elem::Poison
+                // The remains of a creature are not a wall. A body on the
+                // ground is walked over: a colony that dies a lot must not
+                // wall itself in with its own dead.
+                | Elem::Corpse
+                | Elem::Bone
+                | Elem::Meat
+                | Elem::Leather
         )
     }
 
@@ -495,7 +503,6 @@ impl Elem {
                 | Elem::Ward
                 | Elem::Portal
                 | Elem::Egg
-                | Elem::Corpse
         )
     }
 
@@ -778,7 +785,7 @@ impl Elem {
             Elem::Oil => "Flammable dark liquid. Burns readily and can be gathered for energy.",
             Elem::Acid => "Corrosive green liquid. Dissolves most solids on contact.",
             Elem::Mercury => "Heavy silver liquid metal. Amalgamates with gold and copper.",
-            Elem::Blood => "Organic red liquid. Nutritious but can carry disease.",
+            Elem::Blood => "Organic red liquid. Spilled blood is not food; it is only a sign that something died here.",
             Elem::Poison => "Toxic green liquid. Harms anything that touches or drinks it.",
             Elem::Alcohol => "Clear flammable liquid. Burns with a clean flame.",
             Elem::Honey => "Thick golden sweet liquid. High energy food.",
@@ -815,13 +822,13 @@ impl Elem {
             Elem::Fungus => "Mushroom-like organism. Thrives in damp shaded areas.",
             Elem::Moss => "Low carpet-like plant. Grows on damp stone and wood.",
             Elem::Roots => "Underground plant tendrils. Anchor vegetation.",
-            Elem::Meat => "Animal flesh. Nutritious food for creatures.",
+            Elem::Meat => "Animal flesh. Nutritious, and a prize worth taking off a rival.",
             Elem::Bone => "Hard skeletal remains. Slow to decay.",
             Elem::Leather => "Treated hide. Durable crafting material.",
             Elem::Charcoal => "Burnt carbon. Burns slowly but burns hot.",
             // Energy/Exotic
             Elem::Fire => "Hot flame. Spreads to flammable neighbors and rises.",
-            Elem::Energy => "Pure energy drifts above ground. High nutrition for creatures.",
+            Elem::Energy => "Pure energy drifts above ground. It lights the air, and nothing in this world can eat it.",
             Elem::Ice => "Frozen water. Melts near heat sources.",
             Elem::Lava => "Molten rock. Extremely hot; turns to stone when cooled by water.",
             Elem::Magma => "Superheated lava. Even hotter; forms obsidian with water.",
@@ -853,7 +860,7 @@ impl Elem {
             Elem::Portal => "A gateway to another place. Rare and unstable.",
             // Biological
             Elem::Egg => "Hatches into a new creature after time passes.",
-            Elem::Corpse => "Remains of a dead creature. Decays into bone or dust.",
+            Elem::Corpse => "Remains of a dead creature. It remembers whose body it was: a rival's is a meal, your own is not. Decays into bone or dust.",
             Elem::Virus => "Microscopic disease. Spreads rapidly through organic matter.",
             Elem::Bacteria => "Microbe that decomposes meat and food.",
             Elem::Food => "Prepared nourishment for creatures.",

@@ -409,14 +409,18 @@ async fn main() {
 
         // ---- Species domination / extinction -> victory screen ----
         if victory.is_none() {
-            // Keep a running snapshot of the dominant *player* lineage so a
+            // Keep a running snapshot of the best *player* lineage so a
             // total extinction can still revive the last species to stand.
             // The ZORGs are never a player: they cannot win, and they never
             // carry a genome into the next revival.
+            //
+            // This is the same rule a win uses - the best lineage there
+            // was - so that the two outcomes differ only in *who* won and
+            // not in what evolution gets to keep.
             if let Some(sp) = dominant_player_species(&creatures) {
                 if last_species != Some(sp) || fallback_champion.is_none() {
                     last_species = Some(sp);
-                    fallback_champion = creatures.champion_from(sp);
+                    fallback_champion = creatures.champion_overall();
                 }
             }
 
@@ -452,6 +456,10 @@ async fn main() {
                     traits: Vec::new(),
                     discoveries: Vec::new(),
                     deep_sealed: world.zorg_cave_sealed,
+                    // Total extinction: the lineage survives only if there
+                    // is a genome to carry. The last species to stand is
+                    // the one that carries it.
+                    lineage_carried: fallback_champion.is_some() || champion.is_some(),
                 });
                 paused = true;
             } else if players.is_empty() {
@@ -476,6 +484,9 @@ async fn main() {
                     traits: Vec::new(),
                     discoveries: Vec::new(),
                     deep_sealed: world.zorg_cave_sealed,
+                    // Lost to the deep, but the last player lineage still
+                    // carries its genes into the next revival.
+                    lineage_carried: fallback_champion.is_some() || champion.is_some(),
                 });
                 paused = true;
             } else if players.len() == 1 && (zorgs == 0 || world.zorg_cave_sealed) {
@@ -542,6 +553,8 @@ async fn main() {
                         traits,
                         discoveries,
                         deep_sealed: world.zorg_cave_sealed,
+                        // A win always carries the winner's genome.
+                        lineage_carried: true,
                     });
                     paused = true;
                 }
@@ -552,24 +565,40 @@ async fn main() {
             v.timer -= dt;
             if v.timer <= 0.0 {
                 // A run that was lost to the ZORGs is not a win, but the
-                // next revival still starts: the last player lineage gets
-                // another go at the deep.
+                // lineage is not thrown away with it: the last player
+                // species carries its genes into the next revival and gets
+                // another go at the deep. The deep is not a rival lineage -
+                // it is the world's own ecology, and it cannot be beaten
+                // out of the ground, only sealed. So losing to it is a
+                // failure of the run, not of the evolution.
                 let won = !v.extinction && !v.lost;
+
+                // The genome has to be taken *before* the new world is
+                // seeded. Taking it after cost the lineage a whole
+                // revival: the first loss threw the genes away and a fresh
+                // random population took their place, and only the second
+                // loss brought the lineage back.
+                let carried: Option<RevivalGenome> = if won {
+                    // The winner's own genome.
+                    champion.take()
+                } else {
+                    // The last player lineage of the run that just ended.
+                    fallback_champion.take().or_else(|| champion.take())
+                };
+
                 let next_seed = get_random_seed();
                 world = World::new(W, H, next_seed);
                 world.seed();
                 creatures = CreatureSystem::new(next_seed.wrapping_add(0x1234_5678_9ABC_DEF0));
-                match champion.as_ref() {
+                match carried.as_ref() {
                     Some(genome) => creatures.populate_revival(&world, 36, genome),
                     None => creatures.populate(&world, 64),
                 }
-                if won {
-                    revival += 1;
-                }
-                // An extinct run still passes the torch to the last lineage.
-                if champion.is_none() {
-                    champion = fallback_champion.take();
-                }
+                // Every new world is another revival of the lineage, won or
+                // lost: the number counts the attempts the species has made.
+                revival += 1;
+                // The lineage is still alive, and it goes into the next one.
+                champion = carried;
                 last_species = None;
                 fallback_champion = None;
                 cam_x = 0.0;

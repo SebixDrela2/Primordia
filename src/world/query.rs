@@ -279,19 +279,37 @@ impl World {
         best.map(|b| (b.0, b.1))
     }
 
-    // Leaves remains where a creature died: a corpse/meat for scavengers plus
-    // a little energy, feeding the rest of the food web instead of nothing.
-    pub fn scavenge(&mut self, x: i32, y: i32) {
-        if self.get(x, y) == Elem::Empty {
-            let remains = if self.rng.chance(0.5) { Elem::Corpse } else { Elem::Meat };
-            self.set_xy(x, y, remains);
-        }
-        for _ in 0..4 {
-            let dx = self.rng.range_i(-1, 2);
-            let dy = self.rng.range_i(-1, 2);
-            if self.get(x + dx, y + dy) == Elem::Empty {
-                self.set_xy(x + dx, y + dy, Elem::Energy);
+    // Leaves remains where a creature died: the body, and who it belonged to.
+    //
+    // A death leaves a body, and the body says whose body it is. That
+    // matters, because the rule of this world is that a colony lives off
+    // the ground it stands on: the plants, the fungus and the farms. A
+    // creature may eat the dead of another species - that is what a war
+    // is worth - but it will never eat its own dead. The corpse carries
+    // the species id, and the mouth checks it.
+    //
+    // Nothing edible is dropped with it: no meat, no glowing motes. A
+    // death is a mark on the ground, not a meal.
+    pub fn scavenge(&mut self, x: i32, y: i32, species: u32) {
+        if let Some(i) = self.idx_xy(x, y) {
+            if self.kind[i] == Elem::Empty as u8 {
+                self.set_at(i, Elem::Corpse);
+                // Species zero is the ZORGs and the player species are
+                // numbered from one, so the owner is stored plus one and
+                // zero can mean "nobody's".
+                self.owner[i] = species.saturating_add(1).min(u8::MAX as u32) as u8;
             }
+        }
+    }
+
+    /// Whose body is lying here, if anybody's.
+    pub fn owner_at(&self, x: i32, y: i32) -> Option<u32> {
+        match self.idx_xy(x, y) {
+            Some(i) => match self.owner[i] {
+                0 => None,
+                o => Some(o as u32 - 1),
+            },
+            None => None,
         }
     }
 

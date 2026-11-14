@@ -228,7 +228,7 @@ impl World {
 
         // ---- Ripen -------------------------------------------------------
         // Turn one of the seedlings around the plot into a ripe crop.
-        if self.rng.chance(0.05) {
+        if self.rng.chance(0.08) {
             for (dx, dy) in DIRS8 {
                 if self.get(x + dx, y + dy) == Elem::Plant {
                     self.set_xy(x + dx, y + dy, Elem::Crop);
@@ -239,7 +239,7 @@ impl World {
 
         // ---- Sow ---------------------------------------------------------
         // Plant a new seedling in a free cell that has ground under it.
-        if self.rng.chance(0.05) {
+        if self.rng.chance(0.08) {
             for (dx, dy) in DIRS8 {
                 let nx = x + dx;
                 let ny = y + dy;

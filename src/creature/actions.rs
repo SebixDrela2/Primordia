@@ -329,8 +329,41 @@ pub(crate) fn act_move(world: &mut World, c: &mut Creature, behaviour_speed: f32
                     c.mount_stamina = (c.mount_stamina - 0.3).max(0.0);
                 }
                 // Moving costs energy, but only for the distance covered.
+                //
+                // And the higher up it is, the more each step costs.
+                //
+                // Everything above the surface is air, and staying in the
+                // air is work: the higher an animal goes, the more it
+                // costs to hold itself up there and to climb any further.
+                // The sky is empty — there is no food up there and no
+                // water — so a creature that drifts to the top of the map
+                // is spending everything it has on nothing.
+                //
+                // This is what keeps a colony on the ground, where the
+                // digging is and where the tech is.
+                let ground = world.surface_y(c.x.round() as i32);
+                let height = (ground - c.y.round() as i32).max(0) as f32;
                 let distance = (c.vx.abs() + c.vy.abs()) * speed_mult;
-                c.energy = (c.energy - distance * energy_cost::MOVE).max(0.0);
+                let step_cost = energy_cost::MOVE * (1.0 + height / 20.0);
+                c.energy = (c.energy - distance * step_cost).max(0.0);
+                // And holding still in the air costs too, the higher it is
+                // and the longer it has been up there. A flight is not a
+                // place to live: the sky has no food and no water, and
+                // every tick of it is paid for.
+                if height > 1.0 {
+                    let below = world.get(c.x.round() as i32, c.y.round() as i32 + 1);
+                    if !below.is_solid() {
+                        c.air_time = c.air_time.saturating_add(1);
+                        let hover = 0.02
+                            * (1.0 + height / 20.0)
+                            * (1.0 + c.air_time as f32 / 300.0);
+                        c.energy = (c.energy - hover).max(0.0);
+                    } else {
+                        c.air_time = 0;
+                    }
+                } else {
+                    c.air_time = 0;
+                }
                 let nx = c.x + c.vx * speed_mult;
                 let ny = c.y + c.vy * speed_mult;
 
@@ -433,7 +466,12 @@ pub(crate) fn act_move(world: &mut World, c: &mut Creature, behaviour_speed: f32
 }
 
 /// Eat and drink. Returns true when something was consumed.
-pub(crate) fn act_eat(world: &mut World, c: &mut Creature, out: &[f32]) -> bool {
+pub(crate) fn act_eat(
+    world: &mut World,
+    c: &mut Creature,
+    out: &[f32],
+    dip: &super::diplomacy::Diplomacy,
+) -> bool {
     let mut ate_something = false;
                     let gx = c.x.round() as i32;
                     let gy = c.y.round() as i32;
@@ -463,7 +501,7 @@ pub(crate) fn act_eat(world: &mut World, c: &mut Creature, out: &[f32]) -> bool 
                             // ever bad for it.
                             ate_something = zorg_act_eat(world, c, c.hunger > 55.0);
                         } else {
-                            ate_something = eat_adjacent(world, c, gx, gy);
+                            ate_something = eat_adjacent(world, c, gx, gy, dip);
                         }
                     }
                     // ---- Drink ----
@@ -496,7 +534,7 @@ pub(crate) fn act_eat(world: &mut World, c: &mut Creature, out: &[f32]) -> bool 
 /// This is the whole eating mechanic now: the mouth knows what food is
 /// (that is a mouth, not a brain), but the creature has to have walked
 /// there first. Where it walked to is a decision the network made.
-fn eat_adjacent(world: &mut World, c: &mut Creature, gx: i32, gy: i32) -> bool {
+fn eat_adjacent(world: &mut World, c: &mut Creature, gx: i32, gy: i32, dip: &super::diplomacy::Diplomacy) -> bool {
     // Look at the eight neighbours *and* the cell it is standing on, and
     // take the most nourishing thing it can reach. The cell it is standing
     // on matters: a creature that walks into a patch of plants is
@@ -520,6 +558,25 @@ fn eat_adjacent(world: &mut World, c: &mut Creature, gx: i32, gy: i32) -> bool {
         if e == Elem::Water {
             continue;
         }
+        // The dead of your own kind are not food. A colony lives off the
+        // ground it stands on; a creature will eat the body of a rival -
+        // that is what a war is worth - but it will not eat its own, and
+        // it will not eat the body of a nation it has sworn to.
+        // The body knows whose it is, and the mouth refuses it.
+        if e == Elem::Corpse {
+            if let Some(owner) = world.owner_at(ex, ey) {
+                if owner == c.species {
+                    crate::world::counters::CORPSE_REFUSED
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    continue;
+                }
+                if dip.are_allied(c.species, owner) {
+                    crate::world::counters::CORPSE_REFUSED
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    continue;
+                }
+            }
+        }
         let better = match best {
             None => true,
             Some((_, _, be)) => e.nutrition() > be.nutrition(),
@@ -536,6 +593,11 @@ fn eat_adjacent(world: &mut World, c: &mut Creature, gx: i32, gy: i32) -> bool {
     };
     // What it ate, for the census of meals.
     c.last_meal = eaten_elem;
+    crate::world::counters::MEALS[eaten_elem as usize]
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    if eaten_elem == Elem::Corpse {
+        crate::world::counters::CORPSE_EATEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
 
     // Modest returns: food is a real resource, so a colony has to keep
     // foraging instead of trivially maxing out after a couple of bites.
@@ -543,6 +605,10 @@ fn eat_adjacent(world: &mut World, c: &mut Creature, gx: i32, gy: i32) -> bool {
     // A colony that has hunted for generations gets more out of the same
     // carcass.
     let mut nutrition = nutrition * c.hunting_bonus();
+    // A forager that knows the land gets more out of what it finds.
+    if c.traits & trait_bits::SCAVENGER != 0 {
+        nutrition *= 1.12;
+    }
     // Herbalism: the colony knows which plants are worth eating.
     if c.knows_tech(Discovery::Herbalism) && eaten_elem.is_organic() {
         nutrition *= 1.15;
@@ -597,9 +663,6 @@ fn eat_adjacent(world: &mut World, c: &mut Creature, gx: i32, gy: i32) -> bool {
             // or eaten later.
             c.inventory[10] = (c.inventory[10].saturating_add(3)).min(255);
             c.carried = (c.carried + 15.0).min(c.carry_cap());
-        }
-        Elem::Energy => {
-            c.inventory[7] = (c.inventory[7].saturating_add(10)).min(255);
         }
         Elem::Glass | Elem::Circuit | Elem::Tool | Elem::Machine => {
             c.carried = (c.carried + 30.0).min(c.carry_cap());

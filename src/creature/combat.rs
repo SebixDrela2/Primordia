@@ -496,7 +496,7 @@ impl CreatureSystem {
                 let c = &self.list[i];
                 (c.role == Role::Queen, c.species)
             };
-            world.scavenge(cx, cy);
+            world.scavenge(cx, cy, species);
             // When the queen dies the colony falls into a crisis: it holds
             // no ground, builds nothing and loses heart. The rivals take
             // the chance, and the colony has to find a new queen to pull
@@ -527,6 +527,15 @@ impl CreatureSystem {
             });
             self.list.remove(i);
             self.deaths_total += 1;
+            // If that was the last of a species, its history ends here and
+            // now: the relations it held with the other species are of no
+            // interest to anybody. The slow prune would get round to them
+            // in a minute or two, but a species that dies out and is still
+            // in the diplomatic record for two minutes is a species that
+            // everybody thinks is at war with somebody.
+            if !self.list.iter().any(|c| c.species == species) {
+                self.prune_diplomacy();
+            }
         }
     }
 }

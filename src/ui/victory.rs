@@ -30,6 +30,13 @@ pub struct VictoryScreen {
     /// This is how a run ends against the deep: the ZORGs cannot be
     /// out-fought, but their cave can be closed.
     pub     deep_sealed: bool,
+    /// Does the lineage carry into the next revival?
+    ///
+    /// A win always carries the winner's genome. A loss to the deep
+    /// carries the last player lineage's genome too, unless there was no
+    /// player left to carry it - and then a fresh random population rises
+    /// and the lineage really is lost.
+    pub     lineage_carried: bool,
 }
 
 pub fn draw_victory(v: &VictoryScreen) {
@@ -133,10 +140,17 @@ pub fn draw_victory(v: &VictoryScreen) {
     );
 
     let (l1, l2) = if v.extinction {
-        (
-            format!("Revival {} ends here. The lineage is lost.", v.revival),
-            "A fresh random population will emerge.".to_string(),
-        )
+        if v.lineage_carried {
+            (
+                format!("Revival {} ends here. The lineage survives.", v.revival),
+                "Descendants inherit the last lineage's genome.".to_string(),
+            )
+        } else {
+            (
+                format!("Revival {} ends here. The lineage is lost.", v.revival),
+                "A fresh random population will emerge.".to_string(),
+            )
+        }
     } else {
         (
             format!("Revival {} conquered. Revival {} begins.", v.revival, v.revival + 1),
