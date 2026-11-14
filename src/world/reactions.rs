@@ -1,7 +1,7 @@
 use super::*;
 
 impl World {
-    pub(crate) fn try_reaction(&mut self, i: usize, e: Elem, x: i32, y: i32) -> bool {
+    pub fn try_reaction(&mut self, i: usize, e: Elem, x: i32, y: i32) -> bool {
         match e {
             Elem::Water => {
                 if self.rng.chance(0.5) {
@@ -346,7 +346,7 @@ impl World {
         false
     }
 
-    pub(crate) fn explosion(&mut self, cx: i32, cy: i32, radius: i32) {
+    pub fn explosion(&mut self, cx: i32, cy: i32, radius: i32) {
         for dy in -radius..=radius {
             for dx in -radius..=radius {
                 if dx * dx + dy * dy <= radius * radius {

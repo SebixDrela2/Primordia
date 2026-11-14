@@ -74,7 +74,7 @@ pub const KIN_CHANNELS: usize = 15;
 
 pub const TOTAL_INPUTS: usize = KIN_BASE + KIN_CHANNELS;
 
-pub(crate) struct SpatialGrid {
+pub struct SpatialGrid {
     cell: usize,
     gw: usize,
     gh: usize,
@@ -82,7 +82,7 @@ pub(crate) struct SpatialGrid {
 }
 
 impl SpatialGrid {
-    pub(crate) fn new(w: usize, h: usize, cell: usize) -> Self {
+    pub fn new(w: usize, h: usize, cell: usize) -> Self {
         let gw = w / cell + 2;
         let gh = h / cell + 2;
         SpatialGrid {
@@ -93,13 +93,13 @@ impl SpatialGrid {
         }
     }
 
-    pub(crate) fn clear(&mut self) {
+    pub fn clear(&mut self) {
         for b in self.buckets.iter_mut() {
             b.clear();
         }
     }
 
-    pub(crate) fn insert(&mut self, x: f32, y: f32, idx: u32) {
+    pub fn insert(&mut self, x: f32, y: f32, idx: u32) {
         let gx = (x.max(0.0) as usize) / self.cell + 1;
         let gy = (y.max(0.0) as usize) / self.cell + 1;
         if gx < self.gw && gy < self.gh {
@@ -107,7 +107,7 @@ impl SpatialGrid {
         }
     }
 
-    pub(crate) fn near(&self, x: f32, y: f32, radius: usize, mut f: impl FnMut(u32)) {
+    pub fn near(&self, x: f32, y: f32, radius: usize, mut f: impl FnMut(u32)) {
         let gx = (x.max(0.0) as usize) / self.cell + 1;
         let gy = (y.max(0.0) as usize) / self.cell + 1;
         let r = radius / self.cell + 1;
@@ -126,28 +126,28 @@ impl SpatialGrid {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct Percept {
+pub struct Percept {
 
     pub dir: [[f32; DIR_CHANNELS]; DIRS],
 }
 
 impl Percept {
-    pub(crate) fn empty() -> Self {
+    pub fn empty() -> Self {
         Percept {
             dir: [[0.0; DIR_CHANNELS]; DIRS],
         }
     }
 
-    pub(crate) fn sight_of(&self, d: usize) -> &[f32] {
+    pub fn sight_of(&self, d: usize) -> &[f32] {
         &self.dir[d][..sight::CHANNELS]
     }
 
-    pub(crate) fn smell_of(&self, d: usize) -> &[f32] {
+    pub fn smell_of(&self, d: usize) -> &[f32] {
         &self.dir[d][sight::CHANNELS..sight::CHANNELS + smell::CHANNELS]
     }
 }
 
-pub(crate) struct ElemTables {
+pub struct ElemTables {
 
     pub look: [Look; Elem::TABLE_LEN],
 
@@ -157,7 +157,7 @@ pub(crate) struct ElemTables {
 }
 
 impl ElemTables {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         ElemTables {
             look: crate::elements::look_table(),
             scent: scent_table(),
@@ -245,7 +245,7 @@ thread_local! {
     static TABLES: ElemTables = ElemTables::new();
 }
 
-pub(crate) fn direction_of(dx: f32, dy: f32) -> usize {
+pub fn direction_of(dx: f32, dy: f32) -> usize {
     let mut best = 0usize;
     let mut best_dot = f32::MIN;
     for (i, (bx, by)) in DIRS8.iter().enumerate() {
@@ -259,7 +259,7 @@ pub(crate) fn direction_of(dx: f32, dy: f32) -> usize {
     best
 }
 
-pub(crate) fn scan_percept(
+pub fn scan_percept(
     world: &World,
     cx: i32,
     cy: i32,
@@ -282,7 +282,7 @@ const KIN_FALLOFF: f32 = 40.0;
 
 const SMELL_STEP: i32 = 2;
 
-pub(crate) fn scan_percept_with(
+pub fn scan_percept_with(
     world: &World,
     cx: i32,
     cy: i32,
@@ -412,7 +412,7 @@ pub(crate) fn scan_percept_with(
     p
 }
 
-pub(crate) fn strongest_direction<F>(p: &Percept, f: F) -> (usize, f32)
+pub fn strongest_direction<F>(p: &Percept, f: F) -> (usize, f32)
 where
     F: Fn(&[f32], &[f32]) -> f32,
 {
@@ -440,7 +440,7 @@ where
     }
 }
 
-pub(crate) fn write_body(
+pub fn write_body(
     c: &Creature,
     world: &World,
     day_night: f32,
@@ -502,7 +502,7 @@ pub(crate) fn write_body(
     input[b + 29] = (sky_light * (1.0 - depth.min(1.0))).clamp(0.0, 1.0);
 }
 
-pub(crate) fn write_kin(
+pub fn write_kin(
     c: &Creature,
     agents: &[(u32, f32, f32, u32, u8, f32)],
     grid: &SpatialGrid,
@@ -585,7 +585,7 @@ pub(crate) fn write_kin(
     input[k + 14] = other_dir[1];
 }
 
-pub(crate) fn write_percept(p: &Percept, input: &mut [f32]) {
+pub fn write_percept(p: &Percept, input: &mut [f32]) {
     for (d, dir) in p.dir.iter().enumerate() {
         let b = PERCEPT_BASE + d * DIR_CHANNELS;
         for c in 0..DIR_CHANNELS {

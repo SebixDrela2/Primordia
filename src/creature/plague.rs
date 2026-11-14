@@ -218,7 +218,7 @@ impl From<Disease> for Plague {
 
 impl CreatureSystem {
 
-    pub(crate) fn maybe_outbreak(&mut self, world: &World) {
+    pub fn maybe_outbreak(&mut self, world: &World) {
         if self.tick % 400 != 0 || self.list.len() <= 20 {
             return;
         }
@@ -279,7 +279,7 @@ impl CreatureSystem {
         });
     }
 
-    pub(crate) fn spread_diseases(&mut self, grid: &SpatialGrid) {
+    pub fn spread_diseases(&mut self, grid: &SpatialGrid) {
         if self.tick % 3 != 0 {
             return;
         }
@@ -343,7 +343,7 @@ impl CreatureSystem {
         }
     }
 
-    pub(crate) fn spread_zorg_plague(&mut self, grid: &SpatialGrid) {
+    pub fn spread_zorg_plague(&mut self, grid: &SpatialGrid) {
         if self.tick % 10 != 0 {
             return;
         }

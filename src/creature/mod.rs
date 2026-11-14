@@ -54,7 +54,6 @@ const REPRO_SOFT_CAP: usize = 320;
 
 const MAX_AGE: u32 = 3200;
 const BASE_RADIUS: i32 = 40;
-const BUILD_COST: f32 = 80.0;
 const CARRY_CAP: f32 = 400.0;
 const MANA_REGEN: f32 = 0.15;
 const STAMINA_REGEN: f32 = 0.2;
@@ -183,19 +182,19 @@ pub struct Creature {
 
     pub brain_ready: bool,
 
-    pub(crate) percept_cache: Percept,
+    pub percept_cache: Percept,
 
-    pub(crate) desire_dir: usize,
+    pub desire_dir: usize,
 
-    pub(crate) hurt_dir: i8,
+    pub hurt_dir: i8,
 
-    pub(crate) kill_dir: i8,
+    pub kill_dir: i8,
 
-    pub(crate) health_seen: f32,
+    pub health_seen: f32,
 
-    pub(crate) kills_seen: u32,
+    pub kills_seen: u32,
 
-    pub(crate) last_meal: Elem,
+    pub last_meal: Elem,
     pub size: f32,
     pub last_x: f32,
     pub last_y: f32,
@@ -372,8 +371,6 @@ pub struct CreatureSystem {
 
     pub two_parent_births: u32,
     next_squad: u16,
-    vehicles: Vec<Vehicle>,
-    next_vehicle: u32,
     pub day_night: f32,
     pub temperature: f32,
     pub season: u8,
@@ -416,18 +413,6 @@ pub struct CreatureSystem {
     pub last_discovery: Option<(Discovery, u32)>,
 }
 
-struct Vehicle {
-    id: u32,
-    x: f32,
-    y: f32,
-    vtype: VehicleType,
-    owner: u32,
-    capacity: u8,
-    passengers: Vec<u32>,
-    health: f32,
-    fuel: f32,
-}
-
 pub enum CreatureGenesis<'a> {
     Random,
     Child(&'a Creature),
@@ -460,7 +445,7 @@ pub use names::*;
 pub use personality::*;
 pub use plague::*;
 pub use predation::*;
-pub(crate) use spells::*;
+pub use spells::*;
 pub use tech::*;
 pub use senses::*;
 pub use speciation::*;

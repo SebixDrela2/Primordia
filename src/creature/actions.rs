@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn act_steer(
+pub fn act_steer(
     c: &Creature,
     out: &[f32],
     agents: &[(u32, f32, f32, u32, u8, f32)],
@@ -121,7 +121,7 @@ pub(crate) fn act_steer(
     (steer_x, steer_y, speed_mult_extra)
 }
 
-pub(crate) fn act_move(world: &mut World, c: &mut Creature, behaviour_speed: f32) {
+pub fn act_move(world: &mut World, c: &mut Creature, behaviour_speed: f32) {
 
                 let mut speed_mult = behaviour_speed;
                 if c.mount_kind != MountKind::None && c.mount_stamina > 0.0 {
@@ -233,7 +233,7 @@ pub(crate) fn act_move(world: &mut World, c: &mut Creature, behaviour_speed: f32
                 }
 }
 
-pub(crate) fn act_eat(
+pub fn act_eat(
     world: &mut World,
     c: &mut Creature,
     out: &[f32],
@@ -428,7 +428,7 @@ fn desired_neighbour(world: &World, gx: i32, gy: i32, out: &[f32]) -> Option<(i3
     Some((mx, my))
 }
 
-pub(crate) fn act_mine(world: &mut World, c: &mut Creature, out: &[f32], company: f32) {
+pub fn act_mine(world: &mut World, c: &mut Creature, out: &[f32], company: f32) {
 
                 if c.faction == Faction::Zorg {
                     return;
@@ -509,7 +509,7 @@ pub(crate) fn act_mine(world: &mut World, c: &mut Creature, out: &[f32], company
                 }
 }
 
-pub(crate) fn act_craft(
+pub fn act_craft(
     c: &mut Creature,
     out: &[f32],
     events: &mut Vec<SimEvent>,
@@ -736,7 +736,7 @@ pub(crate) fn act_craft(
     crafted
 }
 
-pub(crate) fn act_combat(
+pub fn act_combat(
     c: &mut Creature,
     out: &[f32],
     grid: &SpatialGrid,

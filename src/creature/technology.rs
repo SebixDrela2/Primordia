@@ -548,7 +548,7 @@ impl CreatureSystem {
         self.last_discovery
     }
 
-    pub(crate) fn share_discoveries(&mut self) {
+    pub fn share_discoveries(&mut self) {
         if self.tick % 240 != 0 {
             return;
         }
@@ -596,7 +596,7 @@ impl CreatureSystem {
         }
     }
 
-    pub(crate) fn check_discoveries(&mut self, world: &World) {
+    pub fn check_discoveries(&mut self, world: &World) {
         if self.tick % 300 != 0 {
             return;
         }
@@ -703,7 +703,7 @@ impl CreatureSystem {
             .all(|d| known & d.bit() != 0)
     }
 
-    pub(crate) fn refresh_tech(&mut self) {
+    pub fn refresh_tech(&mut self) {
 
         let mut known: Vec<u32> = vec![0; self.next_species as usize + 8];
         for (sp, d) in self.discoveries.iter() {

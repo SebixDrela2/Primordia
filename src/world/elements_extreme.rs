@@ -1,7 +1,7 @@
 use super::*;
 
 impl World {
-    pub(crate) fn place_extreme_diversity(&mut self, w: i32, h: i32) {
+    pub fn place_extreme_diversity(&mut self, w: i32, h: i32) {
 
         for _ in 0..12 {
             let cx = self.rng.range(w as u32) as i32;

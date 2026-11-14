@@ -1,7 +1,7 @@
 use super::*;
 
 impl CreatureSystem {
-    pub(crate) fn resolve_turrets(&mut self, world: &mut World, shots: &mut Vec<Projectile>) {
+    pub fn resolve_turrets(&mut self, world: &mut World, shots: &mut Vec<Projectile>) {
 
         if self.tick % 60 == 0 {
             let alive: Vec<u32> = self.list.iter().map(|c| c.species).collect();
@@ -79,7 +79,7 @@ impl CreatureSystem {
 }
 
 impl CreatureSystem {
-    pub(crate) fn resolve_bombs(&mut self, world: &mut World) {
+    pub fn resolve_bombs(&mut self, world: &mut World) {
 
         if !self.bombs.is_empty() {
             let current = std::mem::take(&mut self.bombs);
@@ -141,7 +141,7 @@ impl CreatureSystem {
 }
 
 impl CreatureSystem {
-    pub(crate) fn resolve_projectiles(&mut self, world: &mut World, shots: Vec<Projectile>) {
+    pub fn resolve_projectiles(&mut self, world: &mut World, shots: Vec<Projectile>) {
 
         let current: Vec<Projectile> = std::mem::take(&mut self.projectiles);
         let mut survivors: Vec<Projectile> = Vec::new();
@@ -200,7 +200,7 @@ impl CreatureSystem {
 }
 
 impl CreatureSystem {
-    pub(crate) fn resolve_attacks(&mut self, grid: &SpatialGrid, attackers: &[usize]) {
+    pub fn resolve_attacks(&mut self, grid: &SpatialGrid, attackers: &[usize]) {
 
         let mut squad_targets: Vec<(u16, usize)> = Vec::new();
         for &a in attackers {
@@ -416,7 +416,7 @@ impl CreatureSystem {
 }
 
 impl CreatureSystem {
-    pub(crate) fn resolve_deaths(&mut self, world: &mut World, dead: &[usize]) {
+    pub fn resolve_deaths(&mut self, world: &mut World, dead: &[usize]) {
 
         for &i in dead.iter().rev() {
             let (cx, cy, color, size, dx, dy, bond) = {
@@ -471,7 +471,7 @@ impl CreatureSystem {
 }
 
 impl CreatureSystem {
-    pub(crate) fn resolve_births(&mut self, world: &mut World, births: Vec<(f32, f32, Creature)>) {
+    pub fn resolve_births(&mut self, world: &mut World, births: Vec<(f32, f32, Creature)>) {
 
         for (x, y, child) in births {
             if self.list.len() >= MAX_POP { break; }
@@ -496,7 +496,7 @@ impl CreatureSystem {
 }
 
 impl CreatureSystem {
-    pub(crate) fn apply_status(&mut self, spell_targets: Vec<(usize, usize, f32)>, disease_targets: Vec<usize>, heal_targets: Vec<(u32, f32, f32)>) {
+    pub fn apply_status(&mut self, spell_targets: Vec<(usize, usize, f32)>, disease_targets: Vec<usize>, heal_targets: Vec<(u32, f32, f32)>) {
 
         for (caster_idx, target_idx, damage) in spell_targets {
             if let Some(target) = self.list.get_mut(target_idx) {

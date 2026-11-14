@@ -18,16 +18,14 @@ mod vaults;
 mod zorg_cave;
 
 pub use depth::*;
-#[allow(unused_imports)]
-pub(crate) use zorg_cave::*;
+pub use zorg_cave::*;
 pub use landmarks::*;
 
 pub mod counters {
     use std::sync::atomic::AtomicU32;
 
     pub static MEALS: [AtomicU32; 256] = {
-        #[allow(clippy::declare_interior_mutable_const)]
-        const Z: AtomicU32 = AtomicU32::new(0);
+            const Z: AtomicU32 = AtomicU32::new(0);
         [Z; 256]
     };
 

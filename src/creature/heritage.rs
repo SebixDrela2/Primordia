@@ -303,7 +303,7 @@ pub fn gene_distance(a: &[f32; 32], b: &[f32; 32]) -> f32 {
 
 impl CreatureSystem {
 
-    pub(crate) fn learn_culture(&mut self, index: usize, culture: Culture) {
+    pub fn learn_culture(&mut self, index: usize, culture: Culture) {
         if index >= self.list.len() {
             return;
         }

@@ -14,7 +14,7 @@ pub fn compatibility(a: &Creature, b: &Creature) -> f32 {
 
 impl CreatureSystem {
 
-    pub(crate) fn resolve_mating(
+    pub fn resolve_mating(
         &mut self,
         willing: &[bool],
         grid: &SpatialGrid,

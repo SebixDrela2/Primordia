@@ -21,7 +21,7 @@ fn is_zorg_poison(e: Elem) -> bool {
 
 impl World {
 
-    pub(crate) fn carve_zorg_cave(&mut self, w: i32, h: i32) {
+    pub fn carve_zorg_cave(&mut self, w: i32, h: i32) {
 
         let floor_limit = h - ROCK_BELOW;
 
@@ -214,7 +214,7 @@ impl World {
         self.zorg_cave
     }
 
-    pub(crate) fn regrow_zorg_larder(&mut self) {
+    pub fn regrow_zorg_larder(&mut self) {
         let Some((cx, cy)) = self.zorg_cave else {
             return;
         };

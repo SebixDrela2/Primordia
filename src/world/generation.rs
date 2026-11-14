@@ -386,7 +386,7 @@ impl World {
         self.rebuild_active();
     }
 
-    pub(crate) fn carve_caves(&mut self, w: i32, h: i32) {
+    pub fn carve_caves(&mut self, w: i32, h: i32) {
         const DEPTH: i32 = 14;
         const CELL: usize = 24;
         let cw = w as usize;
@@ -502,7 +502,7 @@ impl World {
         }
     }
 
-    pub(crate) fn bury_floating_resources(&mut self, w: i32, h: i32) {
+    pub fn bury_floating_resources(&mut self, w: i32, h: i32) {
         let mut floating: Vec<Elem> = Vec::new();
         for x in 2..(w - 2) {
             let surf = self.surface_y(x);
@@ -556,7 +556,7 @@ impl World {
         }
     }
 
-    pub(crate) fn guarantee_water(&mut self, w: i32, h: i32) {
+    pub fn guarantee_water(&mut self, w: i32, h: i32) {
 
         let lx = (w as f32 * 0.2) as i32;
         let ly = (h as f32 * 0.75) as i32;
@@ -577,7 +577,7 @@ impl World {
 }
 
 impl World {
-    pub(crate) fn generate_surface_water(&mut self, w: i32, h: i32) {
+    pub fn generate_surface_water(&mut self, w: i32, h: i32) {
 
         let lake_start = (w as f32 * 0.55) as i32;
         let lake_end = (w as f32 * 0.75) as i32;
@@ -639,7 +639,7 @@ impl World {
 }
 
 impl World {
-    pub(crate) fn generate_ore_veins(&mut self, w: i32, h: i32) {
+    pub fn generate_ore_veins(&mut self, w: i32, h: i32) {
 
         for _ in 0..25 {
             let cx = self.rng.range(w as u32) as i32;
@@ -822,7 +822,7 @@ impl World {
 }
 
 impl World {
-    pub(crate) fn generate_crystal_caves(&mut self, w: i32, h: i32) {
+    pub fn generate_crystal_caves(&mut self, w: i32, h: i32) {
         for _ in 0..12 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.rng.range((h / 2) as u32) as i32 + h / 4;

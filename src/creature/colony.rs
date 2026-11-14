@@ -22,8 +22,6 @@ impl CreatureSystem {
             matings_total: 0,
             two_parent_births: 0,
             next_squad: 1,
-            vehicles: Vec::new(),
-            next_vehicle: 1,
             day_night: 0.25,
             temperature: 20.0,
             season: 0,
@@ -147,7 +145,7 @@ impl CreatureSystem {
         }
     }
 
-    pub(crate) fn spawn_energy_burst(&mut self, world: &mut World, x: i32, y: i32, count: u32, color: [u8; 3]) {
+    pub fn spawn_energy_burst(&mut self, world: &mut World, x: i32, y: i32, count: u32, color: [u8; 3]) {
         let _ = color;
         for _ in 0..count {
             let ang = self.rng.f32() * std::f32::consts::TAU;
@@ -162,7 +160,7 @@ impl CreatureSystem {
         }
     }
 
-    pub(crate) fn spawn_impact_puff(&mut self, world: &mut World, x: i32, y: i32, count: u32) {
+    pub fn spawn_impact_puff(&mut self, world: &mut World, x: i32, y: i32, count: u32) {
         for _ in 0..count {
             let px = x + self.rng.range_i(-1, 2);
             let py = y + self.rng.range_i(-1, 2);
@@ -326,7 +324,7 @@ impl CreatureSystem {
         }
     }
 
-    pub(crate) fn reseed_the_deep(&mut self, world: &World) {
+    pub fn reseed_the_deep(&mut self, world: &World) {
         if self.tick % 120 != 0 {
             return;
         }
@@ -357,7 +355,7 @@ impl CreatureSystem {
         self.spawn(world, x, y, CreatureGenesis::Zorg);
     }
 
-    pub(crate) fn spawn(&mut self, world: &World, x: f32, y: f32, genesis: CreatureGenesis<'_>) -> bool {
+    pub fn spawn(&mut self, world: &World, x: f32, y: f32, genesis: CreatureGenesis<'_>) -> bool {
         if self.list.len() >= MAX_POP {
             return false;
         }
@@ -771,7 +769,7 @@ impl CreatureSystem {
 
 }
 impl Creature {
-    pub(crate) fn child_blueprint(&self) -> Creature {
+    pub fn child_blueprint(&self) -> Creature {
 
         let mut child_genes = self.genes;
         for i in 0..32 {
@@ -941,7 +939,7 @@ impl Creature {
         culture
     }
 
-    pub(crate) fn child_blueprint_with(&self, mate: &Creature) -> Creature {
+    pub fn child_blueprint_with(&self, mate: &Creature) -> Creature {
         let mut child = self.child_blueprint();
         let mut rng = Rng::new(
             self.id.wrapping_mul(0x9E37_79B9) as u64

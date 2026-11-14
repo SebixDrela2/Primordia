@@ -1,7 +1,7 @@
 use super::*;
 
 impl World {
-    pub(crate) fn generate_underground_structures(&mut self, w: i32, h: i32) {
+    pub fn generate_underground_structures(&mut self, w: i32, h: i32) {
 
         for _ in 0..5 {
             let cx = self.rng.range((w / 2) as u32) as i32 + w / 4;
@@ -109,7 +109,7 @@ impl World {
         }
     }
 
-    pub(crate) fn generate_surface_structures(&mut self, w: i32, h: i32) {
+    pub fn generate_surface_structures(&mut self, w: i32, h: i32) {
 
         for _ in 0..3 {
             let cx = self.rng.range((w / 2) as u32) as i32 + w / 4;

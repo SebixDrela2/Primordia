@@ -14,7 +14,7 @@ impl World {
     }
 
     #[inline]
-    pub(crate) fn mark_active(&mut self, i: usize) {
+    pub fn mark_active(&mut self, i: usize) {
         let k = self.kind[i];
         if k != Elem::Empty as u8 && !self.inert[k as usize] && !self.listed[i] {
             self.listed[i] = true;

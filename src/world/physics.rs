@@ -35,7 +35,7 @@ impl World {
         }
     }
 
-    pub(crate) fn update_cell(&mut self, i: usize, e: Elem) {
+    pub fn update_cell(&mut self, i: usize, e: Elem) {
         let x = (i % self.w) as i32;
         let y = (i / self.w) as i32;
 

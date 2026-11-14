@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn act_build(
+pub fn act_build(
     world: &mut World,
     c: &mut Creature,
     out: &[f32],

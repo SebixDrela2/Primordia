@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn cast_spell_effects(
+pub fn cast_spell_effects(
     rng: &mut Rng,
     index: usize,
     c: &mut Creature,
@@ -90,7 +90,7 @@ pub(crate) fn cast_spell_effects(
     }
 }
 
-pub(crate) fn switch_spell(c: &mut Creature) {
+pub fn switch_spell(c: &mut Creature) {
     let next = (c.active_spell as u8 + 1) % 10;
     c.active_spell = match next {
         1 => Spell::Fireball,

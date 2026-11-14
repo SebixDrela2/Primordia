@@ -1,7 +1,7 @@
 use super::*;
 
 impl World {
-    pub(crate) fn maintain(&mut self) {
+    pub fn maintain(&mut self) {
         let frame = self.frame;
         let w = self.w as i32;
 
@@ -446,7 +446,7 @@ impl World {
         }
     }
 
-    pub(crate) fn update_pressure(&mut self) {
+    pub fn update_pressure(&mut self) {
         let frame = self.frame;
         let p = &mut self.pressure;
 
@@ -505,7 +505,7 @@ impl World {
         self.difficulty
     }
 
-    pub(crate) fn compact(&mut self) {
+    pub fn compact(&mut self) {
         for _ in 0..(self.w * self.h / 20) {
             let x = self.rng.range(self.w as u32) as i32;
             let y = self.rng.range(self.h as u32) as i32;

@@ -2,14 +2,6 @@ use super::*;
 
 pub const BOND_RANGE: f32 = 12.0;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Bond {
-
-    pub partner: u32,
-
-    pub age: u32,
-}
-
 impl Creature {
 
     pub fn bondable(&self) -> bool {
@@ -30,7 +22,7 @@ impl Creature {
 
 impl CreatureSystem {
 
-    pub(crate) fn form_bonds(&mut self, grid: &SpatialGrid) {
+    pub fn form_bonds(&mut self, grid: &SpatialGrid) {
 
         if self.tick % 24 != 0 {
             return;

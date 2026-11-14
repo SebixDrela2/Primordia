@@ -1,7 +1,7 @@
 use super::*;
 
 impl World {
-    pub(crate) fn place_element_museum(&mut self, w: i32, h: i32) {
+    pub fn place_element_museum(&mut self, w: i32, h: i32) {
         let start_x = (w as f32 * 0.05) as i32;
         let _start_y = (h as f32 * 0.8) as i32;
         let mut idx = 0;
@@ -34,7 +34,7 @@ impl World {
 }
 
 impl World {
-    pub(crate) fn place_diverse_elements(&mut self, w: i32, h: i32) {
+    pub fn place_diverse_elements(&mut self, w: i32, h: i32) {
 
         for _ in 0..5 {
             let cx = self.rng.range(w as u32) as i32;

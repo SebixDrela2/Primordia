@@ -2,7 +2,7 @@ use super::*;
 
 impl World {
 
-    pub(crate) fn tremor(&mut self, cx: i32, cy: i32, radius: i32) {
+    pub fn tremor(&mut self, cx: i32, cy: i32, radius: i32) {
         let w = self.w as i32;
         let h = self.h as i32;
         let r2 = radius * radius;

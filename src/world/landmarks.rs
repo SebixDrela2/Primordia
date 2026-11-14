@@ -124,7 +124,7 @@ impl LandmarkSite {
 
 impl World {
 
-    pub(crate) fn generate_landmarks(&mut self, w: i32, _h: i32) {
+    pub fn generate_landmarks(&mut self, w: i32, _h: i32) {
         let kinds = Landmark::all();
 
         let count = 8 + self.rng.range(5);
@@ -169,7 +169,7 @@ impl World {
         self.generate_undergroves(w);
     }
 
-    pub(crate) fn generate_undergroves(&mut self, w: i32) {
+    pub fn generate_undergroves(&mut self, w: i32) {
         let count = 2 + self.rng.range(3);
         for _ in 0..count {
 

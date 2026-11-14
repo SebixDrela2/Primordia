@@ -78,7 +78,6 @@ impl Renderer {
         );
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn render_region(
         &mut self,
         world: &World,
@@ -335,7 +334,6 @@ impl Renderer {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn paint(
     world: &World,
     buf: &mut [u8],

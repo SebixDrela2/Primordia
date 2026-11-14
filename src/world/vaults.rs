@@ -1,7 +1,7 @@
 use super::*;
 
 impl World {
-    pub(crate) fn place_rare_vaults(&mut self, w: i32, h: i32) {
+    pub fn place_rare_vaults(&mut self, w: i32, h: i32) {
         let step = (w as f32 / 34.0) as i32;
         let vaults: &[(Elem, i32, i32, i32, i32)] = &[
 

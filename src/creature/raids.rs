@@ -3,7 +3,7 @@ use crate::creature::diplomacy::RelationState;
 
 impl CreatureSystem {
 
-    pub(crate) fn raid_structures(&mut self, world: &mut World) {
+    pub fn raid_structures(&mut self, world: &mut World) {
         if self.tick % 40 != 0 || self.structures.is_empty() {
             return;
         }

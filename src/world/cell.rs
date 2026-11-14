@@ -153,7 +153,7 @@ impl World {
     }
 
     #[inline]
-    pub(crate) fn swap_cells(&mut self, a: usize, b: usize) {
+    pub fn swap_cells(&mut self, a: usize, b: usize) {
         self.kind.swap(a, b);
         self.owner.swap(a, b);
         self.col.swap(a, b);
@@ -164,7 +164,7 @@ impl World {
     }
 
     #[inline]
-    pub(crate) fn can_move_into(&self, mover: Elem, target: Elem) -> bool {
+    pub fn can_move_into(&self, mover: Elem, target: Elem) -> bool {
         if target == Elem::Empty {
             return true;
         }
@@ -175,7 +175,7 @@ impl World {
         mover.density() > target.density() && target_movable
     }
 
-    pub(crate) fn try_move(&mut self, i: usize, dx: i32, dy: i32) -> Option<usize> {
+    pub fn try_move(&mut self, i: usize, dx: i32, dy: i32) -> Option<usize> {
         if dx == 0 && dy == 0 {
             return None;
         }

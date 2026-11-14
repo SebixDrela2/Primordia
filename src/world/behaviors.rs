@@ -3,7 +3,7 @@ use super::*;
 const PLANT_SPREAD: f32 = 0.003;
 
 impl World {
-    pub(crate) fn decay(&mut self, i: usize, e: Elem) {
+    pub fn decay(&mut self, i: usize, e: Elem) {
         match e {
             Elem::Fire => self.set_at(i, Elem::Smoke),
             Elem::Steam => self.set_at(i, Elem::Water),
@@ -11,7 +11,7 @@ impl World {
         }
     }
 
-    pub(crate) fn step_fall(&mut self, i: usize) {
+    pub fn step_fall(&mut self, i: usize) {
         if self.try_move(i, 0, 1).is_some() {
             return;
         }
@@ -22,7 +22,7 @@ impl World {
         let _ = self.try_move(i, -d, 1);
     }
 
-    pub(crate) fn step_flow(&mut self, i: usize) {
+    pub fn step_flow(&mut self, i: usize) {
         if self.try_move(i, 0, 1).is_some() {
             return;
         }
@@ -44,7 +44,7 @@ impl World {
         }
     }
 
-    pub(crate) fn step_rise(&mut self, i: usize) {
+    pub fn step_rise(&mut self, i: usize) {
         if self.try_move(i, 0, -1).is_some() {
             return;
         }
@@ -60,13 +60,13 @@ impl World {
         }
     }
 
-    pub(crate) fn step_diffuse(&mut self, i: usize) {
+    pub fn step_diffuse(&mut self, i: usize) {
         let dx = self.rng.range_i(-1, 2);
         let dy = self.rng.range_i(-1, 2);
         let _ = self.try_move(i, dx, dy);
     }
 
-    pub(crate) fn step_burn(&mut self, i: usize) {
+    pub fn step_burn(&mut self, i: usize) {
         let x = (i % self.w) as i32;
         let y = (i / self.w) as i32;
 
@@ -109,7 +109,7 @@ impl World {
         let _ = self.try_move(i, d, -1);
     }
 
-    pub(crate) fn step_grow(&mut self, i: usize, e: Elem) {
+    pub fn step_grow(&mut self, i: usize, e: Elem) {
         let x = (i % self.w) as i32;
         let y = (i / self.w) as i32;
 
@@ -166,7 +166,7 @@ impl World {
         }
     }
 
-    pub(crate) fn step_cultivate(&mut self, i: usize) {
+    pub fn step_cultivate(&mut self, i: usize) {
         let x = (i % self.w) as i32;
         let y = (i / self.w) as i32;
 
@@ -195,7 +195,7 @@ impl World {
         }
     }
 
-    pub(crate) fn has_water_near(&self, x: i32, y: i32, radius: i32) -> bool {
+    pub fn has_water_near(&self, x: i32, y: i32, radius: i32) -> bool {
         for dy in -radius..=radius {
             for dx in -radius..=radius {
                 if dx == 0 && dy == 0 {
@@ -209,7 +209,7 @@ impl World {
         false
     }
 
-    pub(crate) fn step_energy(&mut self, i: usize) {
+    pub fn step_energy(&mut self, i: usize) {
         let dx = self.rng.range_i(-1, 2);
         let dy = self.rng.range_i(-1, 2);
         if self.try_move(i, dx, dy).is_none() {
@@ -217,7 +217,7 @@ impl World {
         }
     }
 
-    pub(crate) fn rng_sign(&mut self) -> i32 {
+    pub fn rng_sign(&mut self) -> i32 {
         if self.rng.next_u32() & 1 == 0 {
             -1
         } else {

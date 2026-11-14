@@ -12,7 +12,7 @@ pub enum Volcano {
 
 impl World {
 
-    pub(crate) fn generate_volcano(&mut self, w: i32, h: i32) {
+    pub fn generate_volcano(&mut self, w: i32, h: i32) {
 
         let vx = (w as f32 * 0.22) as i32;
         let vy = self.surface_y(vx);
@@ -86,7 +86,7 @@ impl World {
         self.volcano
     }
 
-    pub(crate) fn erupt(&mut self) {
+    pub fn erupt(&mut self) {
         let Some((vx, vy)) = self.volcano else {
             return;
         };
@@ -142,7 +142,7 @@ impl World {
         }
     }
 
-    pub(crate) fn tick_volcano(&mut self) {
+    pub fn tick_volcano(&mut self) {
         match self.volcano_state {
             Volcano::Erupting => {
                 if self.volcano_timer > 0 {

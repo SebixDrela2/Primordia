@@ -38,7 +38,7 @@ impl Migration {
 
 impl CreatureSystem {
 
-    pub(crate) fn maybe_speciate(&mut self, pressure: f32) {
+    pub fn maybe_speciate(&mut self, pressure: f32) {
         if self.tick % 120 != 0 {
             return;
         }
@@ -56,7 +56,7 @@ impl CreatureSystem {
         self.update_migrations(120);
     }
 
-    pub(crate) fn begin_migration(&mut self, species: u32, pressure: f32) -> Option<Migration> {
+    pub fn begin_migration(&mut self, species: u32, pressure: f32) -> Option<Migration> {
 
         if species == ZORG_SPECIES {
             return None;
@@ -131,7 +131,7 @@ impl CreatureSystem {
         Some(migration)
     }
 
-    pub(crate) fn update_migrations(&mut self, elapsed_ticks: u32) {
+    pub fn update_migrations(&mut self, elapsed_ticks: u32) {
         let mut finished: Vec<usize> = Vec::new();
         let count = self.migrations.len();
         for mi in 0..count {

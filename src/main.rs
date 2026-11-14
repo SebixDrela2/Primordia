@@ -1,18 +1,13 @@
-#![allow(dead_code)]
-mod creature;
-mod elements;
-mod render;
-mod rng;
-mod world;
+use primordia::checks;
+use primordia::creature::{CreatureSystem, RevivalGenome, SimEvent};
+use primordia::elements::Elem;
+use primordia::render;
+use primordia::world::World;
+use primordia::{H, W};
 
-use creature::{CreatureSystem, RevivalGenome, SimEvent};
-use elements::Elem;
 use macroquad::prelude::*;
 use std::time::{SystemTime, UNIX_EPOCH};
-use world::World;
 
-const W: usize = 1280;
-const H: usize = 720;
 const VIEW_W: usize = 480;
 const VIEW_H: usize = 270;
 
@@ -40,8 +35,7 @@ fn get_random_seed() -> u64 {
     seed
 }
 
-mod ui;
-use ui::*;
+use primordia::ui::*;
 
 fn now_snapshot() -> std::time::Instant {
     std::time::Instant::now()
@@ -86,7 +80,6 @@ fn save_screenshot(path: &str) {
     eprintln!("screenshot written to {}", path);
 }
 
-mod checks;
 
 fn run_check(name: &str, args: &[String]) -> Option<i32> {
     match name {
@@ -397,7 +390,7 @@ async fn main() {
             let mut players: Vec<u32> = creatures
                 .list
                 .iter()
-                .filter(|c| c.faction == crate::creature::Faction::Player)
+                .filter(|c| c.faction == primordia::creature::Faction::Player)
                 .map(|c| c.species)
                 .collect();
             players.sort_unstable();
@@ -431,7 +424,7 @@ async fn main() {
 
                 victory = Some(VictoryScreen {
                     winner: "LOST".to_string(),
-                    color: crate::creature::ZORG_COLOR,
+                    color: primordia::creature::ZORG_COLOR,
                     survivors: 0,
                     generation: creatures.stats.max_generation,
                     revival,
@@ -471,22 +464,22 @@ async fn main() {
                     let mut treaties = 0u32;
                     for r in creatures.diplomacy.relations.iter() {
                         if r.a == winner || r.b == winner {
-                            if r.state == crate::creature::RelationState::Allied {
+                            if r.state == primordia::creature::RelationState::Allied {
                                 alliances += 1;
                             }
-                            if r.state == crate::creature::RelationState::War {
+                            if r.state == primordia::creature::RelationState::War {
                                 wars += 1;
                             }
                             treaties += r.treaties.len() as u32;
                         }
                     }
 
-                    let traits: Vec<&'static str> = crate::creature::trait_list(rep.traits)
+                    let traits: Vec<&'static str> = primordia::creature::trait_list(rep.traits)
                         .iter()
                         .map(|t| t.name())
                         .collect();
                     let discoveries: Vec<&'static str> =
-                        crate::creature::discovery_list(creatures.species_discoveries(winner))
+                        primordia::creature::discovery_list(creatures.species_discoveries(winner))
                             .iter()
                             .map(|d| d.name())
                             .collect();

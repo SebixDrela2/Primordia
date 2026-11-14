@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn generate_name(rng: &mut Rng, role: Role, species: u32) -> [u8; 10] {
+pub fn generate_name(rng: &mut Rng, role: Role, species: u32) -> [u8; 10] {
     const PREFIXES: &[&str] = &[
         "A", "Ba", "Ca", "Da", "Ea", "Fa", "Ga", "Ha", "Ia", "Ja",
         "Ka", "La", "Ma", "Na", "Oa", "Pa", "Qa", "Ra", "Sa", "Ta",
@@ -62,7 +62,7 @@ pub const FOUNDER_COLORS: [[u8; 3]; 16] = [
     [140, 150, 158],
 ];
 
-pub(crate) fn species_team_color(_rng: &mut Rng, species: u32) -> [u8; 3] {
+pub fn species_team_color(_rng: &mut Rng, species: u32) -> [u8; 3] {
     if species == ZORG_SPECIES {
         return ZORG_COLOR;
     }
@@ -80,29 +80,9 @@ pub(crate) fn species_team_color(_rng: &mut Rng, species: u32) -> [u8; 3] {
     ]
 }
 
-pub(crate) fn species_color(species: u32) -> [u8; 3] {
+pub fn species_color(species: u32) -> [u8; 3] {
     let mut rng = Rng::new(species.wrapping_mul(0x9E3779B9) as u64 | 1);
     species_team_color(&mut rng, species)
-}
-
-fn hue_to_rgb(h: f32, s: f32, v: f32) -> [u8; 3] {
-    let c = v * s;
-    let hp = (h / 60.0).fract();
-    let x = c * (1.0 - ((hp * 2.0 - 1.0).abs()));
-    let m = v - c;
-    let (r, g, b) = match hp as u32 {
-        0 => (c, x, 0.0),
-        1 => (x, c, 0.0),
-        2 => (0.0, c, x),
-        3 => (0.0, x, c),
-        4 => (x, 0.0, c),
-        _ => (c, 0.0, x),
-    };
-    [
-        ((r + m) * 255.0).clamp(0.0, 255.0) as u8,
-        ((g + m) * 255.0).clamp(0.0, 255.0) as u8,
-        ((b + m) * 255.0).clamp(0.0, 255.0) as u8,
-    ]
 }
 
 pub fn species_name_for(species: u32) -> String {

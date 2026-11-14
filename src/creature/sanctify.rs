@@ -36,7 +36,7 @@ pub fn is_corruption(e: Elem) -> bool {
 
 impl CreatureSystem {
 
-    pub(crate) fn run_wards(&mut self, world: &mut World, grid: &SpatialGrid) {
+    pub fn run_wards(&mut self, world: &mut World, grid: &SpatialGrid) {
         if self.tick % 5 != 0 {
             return;
         }

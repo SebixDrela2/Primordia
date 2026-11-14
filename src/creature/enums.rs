@@ -421,7 +421,7 @@ pub enum MountKind {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum VehicleType {
+pub enum VehicleType {
     Cart = 0,
     Boat = 1,
     Glider = 2,

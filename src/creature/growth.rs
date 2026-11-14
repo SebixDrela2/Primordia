@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn grow_and_learn(
+pub fn grow_and_learn(
     c: &mut Creature,
     grid: &SpatialGrid,
     agents: &[(u32, f32, f32, u32, u8, f32)],

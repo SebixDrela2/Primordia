@@ -2,7 +2,7 @@ use super::*;
 
 impl CreatureSystem {
 
-    pub(crate) fn prune_diplomacy(&mut self) {
+    pub fn prune_diplomacy(&mut self) {
         let alive: Vec<u32> = self.list.iter().map(|c| c.species).collect();
         self.diplomacy
             .relations
@@ -38,7 +38,7 @@ impl CreatureSystem {
         power
     }
 
-    pub(crate) fn declare_war(&mut self, a: u32, b: u32, reason: &str, tick: u64) {
+    pub fn declare_war(&mut self, a: u32, b: u32, reason: &str, tick: u64) {
         let color_a = self.species_color(a);
         let broke_treaty;
         {
@@ -72,7 +72,7 @@ impl CreatureSystem {
         }
     }
 
-    pub(crate) fn sign_treaty(&mut self, a: u32, b: u32, treaty: Treaty, tick: u64) -> bool {
+    pub fn sign_treaty(&mut self, a: u32, b: u32, treaty: Treaty, tick: u64) -> bool {
 
         if a == ZORG_SPECIES || b == ZORG_SPECIES {
             return false;
@@ -128,7 +128,7 @@ impl CreatureSystem {
         fresh
     }
 
-    pub(crate) fn break_treaty(&mut self, a: u32, b: u32, treaty: Treaty, tick: u64) {
+    pub fn break_treaty(&mut self, a: u32, b: u32, treaty: Treaty, tick: u64) {
         let mut broke = false;
         {
             let rel = self.diplomacy.get_mut(a, b);
@@ -179,7 +179,7 @@ impl CreatureSystem {
     }
 }
 
-pub(crate) fn find_diplomatic_partner(
+pub fn find_diplomatic_partner(
     c: &Creature,
     grid: &SpatialGrid,
     agents: &[(u32, f32, f32, u32, u8, f32)],
@@ -252,7 +252,7 @@ pub fn desired_action(
 
 impl CreatureSystem {
 
-    pub(crate) fn conclude_negotiations(
+    pub fn conclude_negotiations(
         &mut self,
         proposals: &[(usize, usize, DiplomaticAction)],
         willing: &[f32],
@@ -289,7 +289,7 @@ impl CreatureSystem {
         }
     }
 
-    pub(crate) fn advance_negotiation(
+    pub fn advance_negotiation(
         &mut self,
         index: usize,
         partner_index: usize,
@@ -342,7 +342,7 @@ impl CreatureSystem {
         Some(self.resolve_negotiation(index, partner_index, action))
     }
 
-    pub(crate) fn resolve_negotiation(
+    pub fn resolve_negotiation(
         &mut self,
         actor: usize,
         partner: usize,
@@ -485,12 +485,12 @@ impl CreatureSystem {
         (action, accepted)
     }
 
-    pub(crate) fn adjust_trust(&mut self, a: u32, b: u32, delta: f32) {
+    pub fn adjust_trust(&mut self, a: u32, b: u32, delta: f32) {
         let rel = self.diplomacy.get_mut(a, b);
         rel.trust = (rel.trust + delta).clamp(-100.0, 100.0);
     }
 
-    pub(crate) fn tick_diplomacy(&mut self) {
+    pub fn tick_diplomacy(&mut self) {
 
         if self.tick % 120 == 0 {
             self.prune_diplomacy();
