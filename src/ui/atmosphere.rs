@@ -1,6 +1,9 @@
 use crate::elements::Elem;
+use crate::render::sprites::{self, Effect};
 use crate::world::World;
 use macroquad::prelude::*;
+
+use super::pictures::draw_sprite;
 
 fn hash(n: u32) -> f32 {
     let mut x = n.wrapping_mul(0x9E37_79B9);
@@ -105,6 +108,23 @@ pub fn draw_atmosphere(
         if a <= 0.01 {
             continue;
         }
-        draw_circle(sx, sy, size, Color::new(r, g, b, a));
+        // The mote is a picture, not a dot: a soft glow with a bright
+        // heart in it.
+        draw_sprite(
+            sprites::effect_tile(Effect::Glow),
+            sx,
+            sy,
+            size * 6.0,
+            0.0,
+            Color::new(r, g, b, a * 0.35),
+        );
+        draw_sprite(
+            sprites::effect_tile(Effect::Ember),
+            sx,
+            sy,
+            size * 3.4,
+            0.0,
+            Color::new(r, g, b, a),
+        );
     }
 }

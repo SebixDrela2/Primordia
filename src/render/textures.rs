@@ -65,7 +65,7 @@ enum Pattern {
 }
 
 /// The hash of a point of the lattice, the same one the noise uses.
-fn hash01(seed: u32, x: i32, y: i32) -> f32 {
+pub(crate) fn hash01(seed: u32, x: i32, y: i32) -> f32 {
     let mut h = seed
         ^ (x as u32).wrapping_mul(0x9E37_79B1)
         ^ (y as u32).wrapping_mul(0x85EB_CA77);
@@ -77,7 +77,7 @@ fn hash01(seed: u32, x: i32, y: i32) -> f32 {
 
 /// The noise between the points of the lattice. It repeats every
 /// `period` points, so a tile has no seam in it.
-fn noise(seed: u32, x: f32, y: f32, period: i32) -> f32 {
+pub(crate) fn noise(seed: u32, x: f32, y: f32, period: i32) -> f32 {
     let x0 = x.floor();
     let y0 = y.floor();
     let fx = x - x0;
@@ -97,7 +97,7 @@ fn noise(seed: u32, x: f32, y: f32, period: i32) -> f32 {
 }
 
 /// The noise of several octaves, each one finer than the last.
-fn fbm(seed: u32, x: f32, y: f32, period: i32, octaves: u32) -> f32 {
+pub(crate) fn fbm(seed: u32, x: f32, y: f32, period: i32, octaves: u32) -> f32 {
     let mut sum = 0.0;
     let mut amp = 1.0;
     let mut norm = 0.0;

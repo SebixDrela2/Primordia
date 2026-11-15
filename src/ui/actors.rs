@@ -1,8 +1,10 @@
-use crate::creature::{Creature, CreatureSystem, Role, Stage};
+use crate::creature::{Creature, CreatureSystem, Faction, Role, Stage};
+use crate::render::sprites::{self, Effect};
 use crate::world::World;
 use macroquad::prelude::*;
 use super::knowledge::HoverTarget;
 use super::minimap::draw_weather;
+use super::pictures::draw_sprite;
 
 /// The window of the world the actors are drawn in: where it starts,
 /// how big it is and how far it is zoomed in. These belong together, so
@@ -117,33 +119,51 @@ fn draw_campfire_glow(creatures: &CreatureSystem, frame: &ActorFrame, now: f32) 
         let sx = frame.sx(fx);
         let sy = frame.sy(fy);
         let flicker = 0.75 + 0.25 * ((now * 6.0 + fx) * 1.7).sin();
+        let fire = Color::new(
+            col[0] as f32 / 255.0,
+            col[1] as f32 / 255.0,
+            col[2] as f32 / 255.0,
+            1.0,
+        );
 
-        for (radius, alpha) in [(120.0f32, 0.018f32), (70.0, 0.026)] {
-            draw_circle(
+        // The wide glow of the fire, and the narrower one inside it.
+        for (radius, alpha) in [(120.0f32, 0.030f32), (70.0, 0.040)] {
+            draw_sprite(
+                sprites::effect_tile(Effect::Glow),
                 sx,
                 sy,
-                radius * frame.scale_x.min(1.0),
-                Color::new(
-                    col[0] as f32 / 255.0,
-                    col[1] as f32 / 255.0,
-                    col[2] as f32 / 255.0,
-                    alpha,
-                ),
+                radius * 2.0 * frame.scale_x.min(1.0),
+                0.0,
+                Color::new(fire.r, fire.g, fire.b, alpha),
             );
         }
-        for (radius, alpha) in [(26.0f32, 0.05f32), (15.0, 0.08), (7.0, 0.12)] {
-            draw_circle(
+        for (radius, alpha) in [(26.0f32, 0.07f32), (15.0, 0.10)] {
+            draw_sprite(
+                sprites::effect_tile(Effect::Glow),
                 sx,
                 sy,
-                radius * frame.scale_x.min(1.2) * flicker,
+                radius * 2.0 * frame.scale_x.min(1.2) * flicker,
+                0.0,
                 Color::new(1.0, 0.65 + col[0] as f32 / 900.0, 0.25, alpha * flicker),
             );
         }
-        draw_circle(
+
+        // The flame itself, which dances.
+        let frame_index = ((now * 9.0).floor() as usize) % 4;
+        let flame = match frame_index {
+            0 => Effect::Flame0,
+            1 => Effect::Flame1,
+            2 => Effect::Flame2,
+            _ => Effect::Flame3,
+        };
+        let flame_size = 13.0 * frame.scale_x.min(1.6) * (0.9 + 0.2 * flicker);
+        draw_sprite(
+            sprites::effect_tile(flame),
             sx,
-            sy,
-            3.0 * frame.scale_x.min(1.5),
-            Color::new(1.0, 0.85, 0.45, 0.9),
+            sy - flame_size * 0.18,
+            flame_size,
+            0.0,
+            Color::new(1.0, 0.72 + col[0] as f32 / 1400.0, 0.32, 0.95),
         );
     }
 }
@@ -169,8 +189,22 @@ fn draw_night_fireflies(creatures: &CreatureSystem, frame: &ActorFrame, now: f32
         }
         let sx = frame.sx(px);
         let sy = frame.sy(py);
-        draw_circle(sx, sy, 1.6, Color::new(0.95, 1.0, 0.6, 0.5 * blink));
-        draw_circle(sx, sy, 4.0, Color::new(0.9, 1.0, 0.5, 0.07 * blink));
+        draw_sprite(
+            sprites::effect_tile(Effect::Ember),
+            sx,
+            sy,
+            6.0,
+            0.0,
+            Color::new(0.95, 1.0, 0.6, 0.55 * blink),
+        );
+        draw_sprite(
+            sprites::effect_tile(Effect::Glow),
+            sx,
+            sy,
+            9.0,
+            0.0,
+            Color::new(0.9, 1.0, 0.5, 0.10 * blink),
+        );
     }
 }
 
@@ -349,53 +383,50 @@ fn draw_creature_body(
         draw_circle(sx, sy, r * 2.1, Color::new(base.r, base.g, base.b, 0.10));
     }
 
-    match c.role {
-        Role::Soldier => {
-            let angle = c.vy.atan2(c.vx) - std::f32::consts::FRAC_PI_2;
-            draw_poly(sx, sy, 3, r * 1.3, angle, base);
-            draw_circle(sx, sy, (r * 0.32).max(1.0), core);
-        }
-        Role::Queen => {
-            draw_circle(sx, sy, r * 1.15, base);
-            draw_circle_lines(sx, sy, r * 1.65, 1.6, base);
-            draw_circle(sx, sy, (r * 0.4).max(1.2), Color::new(1.0, 0.93, 0.55, 0.95));
-        }
-        Role::Priest | Role::Shaman => {
-            draw_poly(sx, sy, 4, r * 1.25, std::f32::consts::FRAC_PI_4, base);
-            draw_circle(sx, sy, (r * 0.3).max(1.0), core);
-        }
-        Role::Builder | Role::Merchant => {
-            draw_poly(sx, sy, 6, r * 1.18, 0.0, base);
-            draw_circle(sx, sy, (r * 0.28).max(1.0), core);
-        }
-        Role::Explorer => {
-            draw_poly(sx, sy, 3, r * 1.2, std::f32::consts::PI, base);
-            draw_circle(sx, sy, (r * 0.28).max(1.0), core);
-        }
-        Role::Envoy => {
-            draw_poly(sx, sy, 4, r * 1.3, 0.0, base);
-            draw_circle(sx, sy, (r * 0.26).max(1.0), core);
-            draw_line(
-                sx + r * 0.9,
-                sy - r * 0.9,
-                sx + r * 0.9,
-                sy - r * 2.4,
-                1.4,
-                base,
+    // The picture of the creature: the body with its fur on it and the
+    // gear of its role. Every species takes a look of its own.
+    let variant = (c.species as usize + c.id as usize) % sprites::VARIANTS;
+    let tile = sprites::tile_of(c.role, c.faction, variant);
+    let heading = creature_heading(c);
+    let size = r * 3.4;
+    draw_sprite(tile, sx, sy, size, heading, base);
+
+    // The eyes, in front of the head, where the creature is looking.
+    let speed = (c.vx * c.vx + c.vy * c.vy).sqrt();
+    if speed > 0.01 {
+        let fx = c.vx / speed;
+        let fy = c.vy / speed;
+        let px = -fy;
+        let py = fx;
+        let eye = (r * 0.20).max(0.8);
+        let shine = if c.faction == Faction::Zorg {
+            Color::new(0.55, 1.0, 0.45, 0.95)
+        } else {
+            Color::new(1.0, 0.97, 0.82, 0.85)
+        };
+        for side in [-1.0f32, 1.0] {
+            draw_circle(
+                sx + fx * r * 0.55 + px * side * r * 0.30,
+                sy + fy * r * 0.55 + py * side * r * 0.30,
+                eye,
+                shine,
             );
-            draw_rectangle(
-                sx + r * 0.9,
-                sy - r * 2.4,
-                r * 1.1,
-                r * 0.7,
-                Color::new(1.0, 0.86, 0.35, 0.85),
-            );
-        }
-        Role::Worker => {
-            draw_circle(sx, sy, r, base);
-            draw_circle(sx, sy, (r * 0.3).max(1.0), core);
         }
     }
+
+    // The old core dot, for the creatures that are so small that the
+    // picture of them is only a speck.
+    if r < 2.6 {
+        draw_circle(sx, sy, (r * 0.3).max(1.0), core);
+    }
+}
+
+/// The way the creature is looking: the head turns to where it walks.
+fn creature_heading(c: &Creature) -> f32 {
+    if c.vx * c.vx + c.vy * c.vy < 0.0001 {
+        return 0.0;
+    }
+    c.vx.atan2(-c.vy)
 }
 
 /// The ring that says how old the creature is.
@@ -523,13 +554,24 @@ fn draw_projectiles(creatures: &CreatureSystem, frame: &ActorFrame) {
             2.0,
             Color::new(c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, 0.4),
         );
-        draw_circle(
+        // The spark of the shot: a soft halo and the bright heart of
+        // it.
+        draw_sprite(
+            sprites::effect_tile(Effect::Spark),
             sx,
             sy,
-            5.0,
-            Color::new(c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, 0.22),
+            16.0,
+            0.0,
+            Color::new(glow.r, glow.g, glow.b, 0.28),
         );
-        draw_circle(sx, sy, 2.2, glow);
+        draw_sprite(
+            sprites::effect_tile(Effect::Spark),
+            sx,
+            sy,
+            7.0,
+            0.0,
+            Color::new(glow.r, glow.g, glow.b, 0.95),
+        );
     }
 }
 
@@ -561,9 +603,22 @@ fn draw_bombs(creatures: &CreatureSystem, frame: &ActorFrame) {
     for b in &creatures.bombs {
         let sx = frame.sx(b.x);
         let sy = frame.sy(b.y);
-        draw_circle(sx, sy, 4.0, Color::new(0.12, 0.12, 0.15, 0.95));
-        draw_circle(sx, sy, 2.0, Color::new(0.9, 0.55, 0.15, 0.95));
-        draw_circle(sx, sy, 7.0, Color::new(1.0, 0.6, 0.2, 0.18));
+        draw_sprite(
+            sprites::effect_tile(Effect::Glow),
+            sx,
+            sy,
+            14.0,
+            0.0,
+            Color::new(1.0, 0.6, 0.2, 0.18),
+        );
+        draw_sprite(
+            sprites::effect_tile(Effect::Bomb),
+            sx,
+            sy,
+            11.0,
+            0.0,
+            Color::new(1.0, 1.0, 1.0, 0.95),
+        );
     }
 }
 
@@ -587,10 +642,12 @@ fn draw_weather_particles(
         let py = (seed * 91.0 + now * (4.0 + (i % 3) as f32 * 1.7)) % scr_h;
         let sway = ((now * 1.3 + seed) * 2.0).sin() * 7.0;
         let alpha = 0.05 + 0.07 * ((now * 0.8 + seed).sin() * 0.5 + 0.5);
-        draw_circle(
+        draw_sprite(
+            sprites::effect_tile(Effect::Ember),
             px + sway,
             py,
-            1.0 + (i % 2) as f32 * 0.6,
+            4.0 + (i % 2) as f32 * 2.0,
+            0.0,
             Color::new(1.0, 0.96, 0.85, alpha),
         );
     }
@@ -630,13 +687,14 @@ fn draw_weather_particles(
             let px = (seed * 211.0 + now * (10.0 + (i % 4) as f32 * 6.0)) % scr_w;
             let py = (seed * 83.0 + now * (7.0 + (i % 3) as f32 * 4.0)) % scr_h;
             let pulse = ((now * 2.6 + seed).sin() * 0.5 + 0.5).powi(3);
-            draw_circle(
+            draw_sprite(
+                sprites::effect_tile(Effect::Ember),
                 px,
                 py,
-                1.6,
-                Color::new(0.75, 1.0, 0.45, pulse * 0.55),
+                7.0,
+                0.0,
+                Color::new(0.75, 1.0, 0.45, pulse * 0.6),
             );
-            draw_circle(px, py, 4.5, Color::new(0.7, 1.0, 0.4, pulse * 0.10));
         }
     }
 }

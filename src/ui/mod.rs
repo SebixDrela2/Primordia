@@ -6,6 +6,7 @@ pub mod hud;
 pub mod knowledge;
 pub mod minds;
 pub mod minimap;
+pub mod pictures;
 pub mod tech;
 pub mod victory;
 
