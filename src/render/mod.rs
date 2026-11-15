@@ -1,6 +1,7 @@
 pub mod bloom;
 pub mod fx;
 pub mod light;
+pub mod textures;
 mod cpu;
 mod gpu;
 

@@ -21,7 +21,7 @@ uniform sampler2D t_rows;      // the band of colour of each row
 uniform sampler2D t_fx;        // the effect of every element
 uniform sampler2D t_depth;     // the tint of every depth
 uniform sampler2D t_sin;       // the sines the effects need, cell by cell
-uniform sampler2D t_shim;      // the sine of the heatwave's shimmer
+uniform sampler2D t_tex;       // the tile of every element, side by side
 
 uniform vec4 u_region;   // x, y, w, h of the region, in cells
 uniform vec4 u_world;    // w, h of the world, in cells
@@ -56,6 +56,13 @@ const int FX_ROT = 12;
 const int FX_FOUL = 13;
 const int FX_STRATA = 14;
 const int FX_VEIN = 15;
+
+// The atlas of the tiles: how big one tile is, how many tiles are in a
+// row of it and how many rows it has. These must agree with the ones
+// in render::textures.
+const int TEX_TILE = 16;
+const int TEX_COLS = 12;
+const int TEX_ROWS = 8;
 
 // One float out of a texture. The float was put in as its raw bits,
 // so it comes back out as the very same number.
@@ -208,7 +215,7 @@ precise vec3 applyFx(int wx, int wy, int rx, int ry, int kind, float heat,
                            ffetch(t_fx, ivec2(kind, 2)),
                            ffetch(t_fx, ivec2(kind, 3)));
     precise float gain = ffetch(t_fx, ivec2(kind, 5));
-    precise float s1 = ffetch(t_sin, ivec2(rx * 2, ry));
+    precise float s1 = ffetch(t_sin, ivec2(rx * 3, ry));
 
     if (fk == FX_WAVE) {
         precise float wave = s1 * 0.5 + 0.5;
@@ -224,7 +231,7 @@ precise vec3 applyFx(int wx, int wy, int rx, int ry, int kind, float heat,
         rgb = rgb + caustic * vec3(0.7, 0.92, 1.0);
 
         if (isShore(rx + 1, ry + 1)) {
-            precise float surf = ffetch(t_sin, ivec2(rx * 2 + 1, ry)) * 0.5 + 0.5;
+            precise float surf = ffetch(t_sin, ivec2(rx * 3 + 1, ry)) * 0.5 + 0.5;
             precise float foam = (0.35 + 0.65 * surf) * 46.0;
             rgb = rgb + foam * vec3(0.9, 0.95, 1.0);
         }
@@ -290,13 +297,47 @@ precise vec3 applyFx(int wx, int wy, int rx, int ry, int kind, float heat,
 vec3 paintCell(int wx, int wy, int rx, int ry, int kind, float heat,
                vec3 cell_col, float ground, float ground_inv, vec3 biome_delta,
                float cloud_shadow, float sun_shaft, float vig_col,
-               vec3 sky_base) {
+               vec3 sky_base, float su, float sv, float ppc) {
     precise float noise_value = noiseAt(wx, wy);
     precise float below = float(wy) - ground;
     precise float depth = max(below, 0.0);
 
     // The colour of the cell, before the element's own effect.
     precise vec3 rgb = cell_col;
+
+    // The texture of the element: what the thing looks like close up.
+    // Every cell takes a different bite out of the tile of its element,
+    // so a field of stone is not a wall of one colour.
+    if (kind >= 0 && kind < TEX_COLS * TEX_ROWS) {
+        uint th = hash2(wx, wy);
+        int ox = int(th & uint(TEX_TILE - 1));
+        int oy = int((th >> 4u) & uint(TEX_TILE - 1));
+
+        // When the cell is small on the screen the tile is finer than
+        // the picture can show, so it is stepped over a little at a
+        // time instead of being read one texel at a time. A cell that
+        // is one pixel big is read at the middle of the tile, which is
+        // what the processor reads as well.
+        int mip = 1;
+        precise float tu = 0.5;
+        precise float tv = 0.5;
+        if (ppc >= 2.0) {
+            mip = int(clamp(float(TEX_TILE) / max(ppc, 1.0), 1.0, float(TEX_TILE)));
+            tu = su;
+            tv = sv;
+        }
+        int lx = (int(tu * float(TEX_TILE)) / mip) * mip;
+        int ly = (int(tv * float(TEX_TILE)) / mip) * mip;
+        lx = (lx + ox) % TEX_TILE;
+        ly = (ly + oy) % TEX_TILE;
+
+        int ax = (kind % TEX_COLS) * TEX_TILE + lx;
+        int ay = (kind / TEX_COLS) * TEX_TILE + ly;
+        precise vec3 t = texelFetch(t_tex, ivec2(ax, ay), 0).rgb;
+        precise float m = 0.45 + t.r * 1.3;
+        precise float hl = t.g;
+        rgb = rgb * m + vec3(hl * 40.0);
+    }
 
     precise float d1 = depth * 0.0032;
     precise float depth_fade = clamp(1.0 - d1, 0.62, 1.0);
@@ -352,7 +393,7 @@ vec3 paintCell(int wx, int wy, int rx, int ry, int kind, float heat,
     }
 
     if (u_sun.w > 0.5 && depth < 9.0) {
-        precise float s = ffetch(t_shim, ivec2(rx, ry));
+        precise float s = ffetch(t_sin, ivec2(rx * 3 + 2, ry));
         precise float d5 = depth * (1.0 / 9.0);
         precise float sh = s * 6.0 * (1.0 - d5);
         rgb = rgb + vec3(sh, sh * 0.8, sh * 0.35);
@@ -384,8 +425,18 @@ void main() {
     // texture of the processor renderer is drawn with.
     precise float fx = (gl_FragCoord.x - u_place.x) / u_place.z;
     precise float fy = (u_counts.w - u_place.y - gl_FragCoord.y) / u_place.w;
-    int rx = clamp(int(floor(fx * u_region.z)), 0, int(u_region.z) - 1);
-    int ry = clamp(int(floor(fy * u_region.w)), 0, int(u_region.w) - 1);
+    precise float cell_fx = fx * u_region.z;
+    precise float cell_fy = fy * u_region.w;
+    int rx = clamp(int(floor(cell_fx)), 0, int(u_region.z) - 1);
+    int ry = clamp(int(floor(cell_fy)), 0, int(u_region.w) - 1);
+
+    // How far into the cell this fragment lies, and how many pixels of
+    // the screen one cell takes.
+    precise float su = cell_fx - float(rx);
+    precise float sv = cell_fy - float(ry);
+    precise float ppc_x = u_place.z / max(u_region.z, 1.0);
+    precise float ppc_y = u_place.w / max(u_region.w, 1.0);
+    precise float ppc = min(ppc_x, ppc_y);
 
     int wx = int(u_region.x) + rx;
     int wy = int(u_region.y) + ry;
@@ -429,7 +480,8 @@ void main() {
     precise vec3 rgb;
     if (kind != EMPTY) {
         rgb = paintCell(wx, wy, rx, ry, kind, heat, cell_col, ground, ground_inv,
-                        biome_delta, cloud_shadow, sun_shaft, vig_col, sky_base);
+                        biome_delta, cloud_shadow, sun_shaft, vig_col, sky_base,
+                        su, sv, ppc);
     } else if (float(wy) >= ground) {
         rgb = paintGround(wx, wy, ground);
     } else {

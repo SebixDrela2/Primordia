@@ -15,6 +15,7 @@ use macroquad::window::miniquad::{ShaderSource, UniformDesc, UniformType};
 use super::{noise, sample_cloud, sky_state, smoothstep, Clock, Region, SkyState, Tables, GSX, GSY};
 use crate::creature::CreatureSystem;
 use crate::render::fx::{self, Fx};
+use crate::render::textures;
 use crate::world::{World, DEPTH_TINT};
 
 const VERTEX: &str = r"#version 400 core
@@ -53,8 +54,8 @@ pub struct GpuRenderer {
     depth: Tex,
     /// The sines that the element's effects need, cell by cell.
     sins: Tex,
-    /// The sine of the heatwave's shimmer, cell by cell.
-    shim: Tex,
+    /// The tile of every element, side by side in one atlas.
+    tex: Tex,
     /// The amount of cloud at every anchor of every row.
     cloud_amt: Vec<f32>,
     /// The cells whose sine was written last time, so that it can be
@@ -107,6 +108,14 @@ impl Tex {
             Some(texture) => texture.update(&self.image),
         }
     }
+
+    /// Put the bytes on the card, but only the first time. The atlas of
+    /// the elements never changes.
+    fn upload_once(&mut self) {
+        if self.texture.is_none() {
+            self.upload();
+        }
+    }
 }
 
 /// Put a float into four bytes, as its raw bits.
@@ -153,7 +162,7 @@ impl GpuRenderer {
                     "t_fx".to_owned(),
                     "t_depth".to_owned(),
                     "t_sin".to_owned(),
-                    "t_shim".to_owned(),
+                    "t_tex".to_owned(),
                 ],
                 ..Default::default()
             },
@@ -172,7 +181,14 @@ impl GpuRenderer {
             fx: Tex::new(),
             depth: Tex::new(),
             sins: Tex::new(),
-            shim: Tex::new(),
+            tex: Tex {
+                image: Image {
+                    bytes: textures::atlas().to_vec(),
+                    width: textures::ATLAS_W as u16,
+                    height: textures::ATLAS_H as u16,
+                },
+                texture: None,
+            },
             cloud_amt: Vec::new(),
             dirty: Vec::new(),
         }
@@ -210,7 +226,7 @@ impl GpuRenderer {
         self.fx.upload();
         self.depth.upload();
         self.sins.upload();
-        self.shim.upload();
+        self.tex.upload_once();
 
         self.draw(world, region, lw, lh, gx0, gy0, &sky, &clock, place);
     }
@@ -436,10 +452,14 @@ impl GpuRenderer {
     /// processor works these out and hands them over. Only the cells
     /// whose effect needs a sine get one, and only those are cleared
     /// again the next time round.
+    ///
+    /// Every cell has three numbers in it: the sine of its effect, the
+    /// foam of the water and the shimmer of the heatwave. They all sit
+    /// in the same texture, because the card only has room for ten.
     fn put_sins(&mut self, world: &World, region: Region, clock: &Clock, sky: &SkyState) {
         let rw = region.w as usize;
         let rh = region.h as usize;
-        if self.sins.fit(rw * 2, rh) {
+        if self.sins.fit(rw * 3, rh) {
             self.dirty.clear();
         }
 
@@ -448,7 +468,7 @@ impl GpuRenderer {
         {
             let bytes = &mut self.sins.image.bytes;
             for at in &dirty {
-                bytes[*at..*at + 8].fill(0);
+                bytes[*at..*at + 12].fill(0);
             }
         }
 
@@ -470,7 +490,8 @@ impl GpuRenderer {
                     continue;
                 }
                 let index = row + wx as usize;
-                let entry = table[world.kind[index] as usize];                let noise_value = noise(wx, wy);
+                let entry = table[world.kind[index] as usize];
+                let noise_value = noise(wx, wy);
                 let sin = match entry.kind {
                     Fx::Wave => Some(fx::wave_sin(wx, wy, time)),
                     Fx::Flicker => Some(fx::flicker_sin(time, noise_value)),
@@ -491,43 +512,24 @@ impl GpuRenderer {
                 } else {
                     None
                 };
-                if sin.is_none() && foam.is_none() {
+
+                // The heatwave shimmers on the ground near the surface.
+                let depth = (wy as f32 - world.ground[wx as usize] as f32).max(0.0);
+                let shimmer = if sky.shimmer && depth < 9.0 {
+                    Some(fx::shimmer_sin(time, wx, wy))
+                } else {
+                    None
+                };
+
+                if sin.is_none() && foam.is_none() && shimmer.is_none() {
                     continue;
                 }
-                let at = (ry * rw * 2 + rx * 2) * 4;
+                let at = (ry * rw * 3 + rx * 3) * 4;
                 put_float(bytes, at, sin.unwrap_or(0.0));
                 put_float(bytes, at + 4, foam.unwrap_or(0.0));
+                put_float(bytes, at + 8, shimmer.unwrap_or(0.0));
                 dirty.push(at);
             }
-        }
-
-        // The heatwave shimmers on the ground near the surface. The
-        // card does not need the texture at all when there is no
-        // heatwave, so a tiny one stands in for it.
-        if sky.shimmer {
-            self.shim.fit(rw, rh);
-            self.shim.image.bytes.fill(0);
-            let bytes = &mut self.shim.image.bytes;
-            for ry in 0..rh {
-                let wy = region.y + ry as i32;
-                if wy < 0 || wy >= h as i32 {
-                    continue;
-                }
-                for rx in 0..rw {
-                    let wx = region.x + rx as i32;
-                    if wx < 0 || wx >= w as i32 {
-                        continue;
-                    }
-                    let depth = (wy as f32 - world.ground[wx as usize] as f32).max(0.0);
-                    if depth >= 9.0 {
-                        continue;
-                    }
-                    let at = (ry * rw + rx) * 4;
-                    put_float(bytes, at, fx::shimmer_sin(time, wx, wy));
-                }
-            }
-        } else {
-            self.shim.fit(1, 1);
         }
     }
 
@@ -554,7 +556,7 @@ impl GpuRenderer {
         self.material.set_texture("t_fx", self.fx.texture.clone().unwrap());
         self.material.set_texture("t_depth", self.depth.texture.clone().unwrap());
         self.material.set_texture("t_sin", self.sins.texture.clone().unwrap());
-        self.material.set_texture("t_shim", self.shim.texture.clone().unwrap());
+        self.material.set_texture("t_tex", self.tex.texture.clone().unwrap());
 
         self.material.set_uniform(
             "u_region",

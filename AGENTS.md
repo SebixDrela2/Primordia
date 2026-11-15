@@ -107,7 +107,8 @@
                    atmosphere, diplomacy, tech
   - `src/render/`  mod.rs (the renderer and the tables it builds),
                    paint.rs (the pixel loop), fx.rs (element effects),
-                   light.rs (dynamic light field)
+                   light.rs (dynamic light field),
+                   textures.rs (the tile of every element)
 - `src/main.rs` is the game itself: the window, the camera and the
   loop. The loop lives in a `Game` struct, one method to a phase
   (the keys, the simulation, the victory, the picture), so that no
@@ -144,6 +145,19 @@
   scanned for its light sources, blurred at a quarter of the picture's
   size and laid over the picture in the pixel loop itself. A separate
   pass over the whole picture would cost twice as much.
+- Every **element has a texture of its own**: a small tile in one atlas
+  (`src/render/textures.rs`) that says how much darker or brighter the
+  cell is and how much light glints off it. Every cell takes a
+  different bite out of the tile of its element, so a field of stone
+  is not a wall of one colour. The card reads the tile of the element
+  with `texelFetch`, and steps over it a texel at a time when the cell
+  is smaller on the screen than the tile is. The processor, which
+  paints one pixel to a cell, reads the middle of the bite, which is
+  what the card reads as well when the cell is one pixel big: the two
+  pictures stay the same.
+- The card has room for **ten textures** in a material, so the sine of
+  the heatwave's shimmer rides in the third column of the texture of
+  the sines. A new texture has to take the room of an old one.
 - The world step keeps a byte per cell to say whether the cell is
   already on the next active list. A `bool` would be a bitfield, and
   the flag is read once per active cell per tick.

@@ -1,5 +1,6 @@
 use super::bloom;
 use super::fx::{self, Fx, FxEntry};
+use crate::render::textures;
 use super::{
     clamp_u8, is_shore, noise, sample_cloud, sky_state, smoothstep, Clock, PaintGeometry,
     PaintTables, SkyState, GSX, GSY,
@@ -222,12 +223,17 @@ fn paint_ground(p: &PixelCtx<'_>) -> Rgb {
 
 /// The colour of a cell that holds something, before the element's own
 /// effect is put on it.
-fn shade_cell(p: &PixelCtx<'_>, cell_color: [u8; 3], depth: f32, noise_value: f32) -> Rgb {
+fn shade_cell(p: &PixelCtx<'_>, kind: u8, cell_color: [u8; 3], depth: f32, noise_value: f32) -> Rgb {
     let sky = p.sky;
+    // The texture of the element. The processor paints one pixel to a
+    // cell, so it takes the middle of the bite of the tile, which is
+    // what the card takes as well when the cell is one pixel big.
+    let (shade, highlight) = textures::sample(kind, p.x, p.y);
+    let glow = highlight * textures::HIGHLIGHT;
     let mut rgb = Rgb {
-        r: cell_color[0] as f32,
-        g: cell_color[1] as f32,
-        b: cell_color[2] as f32,
+        r: cell_color[0] as f32 * shade + glow,
+        g: cell_color[1] as f32 * shade + glow,
+        b: cell_color[2] as f32 * shade + glow,
     };
 
     let depth_fade = (1.0 - depth * 0.0032).clamp(0.62, 1.0);
@@ -480,7 +486,7 @@ fn paint_cell(p: &PixelCtx<'_>) -> Rgb {
     let heat_v = p.row.heat_row[p.xr] as f32;
     let depth = (p.y as f32 - p.world.ground[p.xr] as f32).max(0.0);
 
-    let mut rgb = shade_cell(p, cell_color, depth, noise_value);
+    let mut rgb = shade_cell(p, p.row.kind_row[p.xr], cell_color, depth, noise_value);
     let entry = &p.tables.fx[p.row.kind_row[p.xr] as usize];
     apply_fx(p, entry, &mut rgb, noise_value, heat_v);
     finish_cell(p, &mut rgb, depth);
