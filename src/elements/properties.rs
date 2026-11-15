@@ -129,7 +129,6 @@ impl Elem {
             Elem::Beacon => [1.00, 0.62, 0.22],
             Elem::Hearth => [1.00, 0.45, 0.12],
             Elem::Totem => [0.50, 0.26, 0.72],
-            Elem::Void => [0.0, 0.0, 0.0],
 
             Elem::Poison => [0.11, 0.19, 0.07],
             Elem::Acid => [0.15, 0.21, 0.05],
@@ -238,44 +237,29 @@ impl Elem {
     #[must_use]
     pub fn nutrition(self) -> f32 {
         match self {
-            Elem::Water => 2.0,
-            Elem::Wood => 20.0,
-            Elem::Oil => 40.0,
+            Elem::Water | Elem::Stone | Elem::Glass | Elem::Concrete | Elem::Oxygen => 2.0,
+            Elem::Wood | Elem::Gas | Elem::Gem => 20.0,
+            Elem::Oil | Elem::Machine | Elem::Honey | Elem::Corpse => 40.0,
             Elem::Plant => 30.0,
             Elem::Spore | Elem::Bronze | Elem::Silver | Elem::Bone => 10.0,
             Elem::Fungus | Elem::Steel | Elem::Circuit | Elem::Leather | Elem::Alcohol => 15.0,
             Elem::Moss | Elem::Copper | Elem::Obsidian => 8.0,
             Elem::Roots | Elem::Iron | Elem::Gold => 12.0,
 
-            Elem::Energy => 0.0,
-            Elem::Gas => 20.0,
-            Elem::Stone => 2.0,
             Elem::Metal => 4.0,
             Elem::Tin | Elem::Crystal => 6.0,
-            Elem::Glass => 2.0,
-            Elem::Gem => 20.0,
             Elem::Diamond | Elem::Meat => 50.0,
             Elem::Granite | Elem::Snow | Elem::Chlorine | Elem::Steam | Elem::Ember => 1.0,
             Elem::Rust | Elem::Brick => 3.0,
-            Elem::Concrete => 2.0,
             Elem::Wire | Elem::Mud | Elem::Charcoal | Elem::Methane => 5.0,
             Elem::Tool | Elem::Food => 25.0,
-            Elem::Machine => 40.0,
-            Elem::Blood => 0.0,
-            Elem::Honey => 40.0,
             Elem::Mana => 80.0,
             Elem::Soul => 200.0,
             Elem::Egg => 60.0,
-            Elem::Corpse => 40.0,
 
             Elem::Crop => 55.0,
-            Elem::Oxygen => 2.0,
             Elem::Smoke | Elem::Fire | Elem::Virus | Elem::Bacteria => 0.5,
 
-            Elem::Chest | Elem::Farm => 0.0,
-            Elem::Temple | Elem::Tower => 0.0,
-            Elem::Bridge | Elem::Road => 0.0,
-            Elem::Wall | Elem::Door => 0.0,
                                                 _ => 0.0,
         }
     }

@@ -332,12 +332,6 @@ impl World {
                     }
                 }
             }
-            Elem::Rune => {
-
-            }
-            Elem::Ward => {
-
-            }
             _ => {}
         }
         false

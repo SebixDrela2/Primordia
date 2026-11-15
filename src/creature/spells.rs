@@ -51,7 +51,7 @@ pub fn cast_spell_effects(
         Spell::Light => {
             c.fitness += 1.0;
         }
-        Spell::Summon => {
+        Spell::Summon | Spell::None => {
 
         }
         Spell::Curse => {
@@ -86,7 +86,6 @@ pub fn cast_spell_effects(
                 }
             });
         }
-        Spell::None => {}
     }
 }
 

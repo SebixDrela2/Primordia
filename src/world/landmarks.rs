@@ -350,7 +350,6 @@ impl World {
                         let py = y + dy;
                         if self.get(px, py) == Elem::Empty && self.rng.chance(0.4) {
                             let e = match self.rng.range(4) {
-                                0 => Elem::Fungus,
                                 1 => Elem::Spore,
                                 2 => Elem::Moss,
                                 _ => Elem::Fungus,

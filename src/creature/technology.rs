@@ -347,13 +347,12 @@ impl Discovery {
     #[must_use]
     pub fn requires(self) -> &'static [Culture] {
         match self {
-            Discovery::Smithing => &[Culture::Craft, Culture::Mining],
+            Discovery::Smithing | Discovery::Metallurgy | Discovery::Smelting | Discovery::GrandCognition => &[Culture::Craft, Culture::Mining],
             Discovery::Husbandry => &[Culture::Cultivation],
             Discovery::Pottery | Discovery::Cognition => &[Culture::Craft],
             Discovery::Ranged | Discovery::Cartography | Discovery::Siegecraft => &[Culture::Craft, Culture::Warfare],
             Discovery::Architecture => &[Culture::Architecture],
             Discovery::Masonry => &[Culture::Craft, Culture::Architecture],
-            Discovery::Metallurgy => &[Culture::Craft, Culture::Mining],
             Discovery::Commerce => &[Culture::Commerce, Culture::Ritual],
             Discovery::Medicine | Discovery::Antitoxins | Discovery::Sanctification | Discovery::Sunfirecraft | Discovery::Alchemy | Discovery::Deepdiving => &[Culture::Craft, Culture::Ritual],
             Discovery::Herbalism => &[Culture::Cultivation, Culture::Ritual],
@@ -361,12 +360,10 @@ impl Discovery {
             Discovery::Astronomy | Discovery::Sanctuary => &[Culture::Ritual],
             Discovery::Navigation => &[Culture::Warfare, Culture::Craft],
             Discovery::DeepMining => &[Culture::Mining, Culture::Craft],
-            Discovery::Smelting => &[Culture::Craft, Culture::Mining],
             Discovery::Wardcraft => &[Culture::Architecture, Culture::Ritual],
             Discovery::Tactics => &[Culture::Warfare, Culture::Ritual],
             Discovery::Ironwill => &[Culture::Warfare, Culture::Cultivation],
             Discovery::Dominion => &[Culture::Architecture, Culture::Craft],
-            Discovery::GrandCognition => &[Culture::Craft, Culture::Mining],
         }
     }
 
@@ -441,7 +438,6 @@ pub mod activity {
     pub fn for_tier(tier: u8) -> u32 {
         match tier {
             0..=2 => CRAFT,
-            3 => BUILD,
             4 => TRADE,
             5 => EAT,
             6 => MINE,
