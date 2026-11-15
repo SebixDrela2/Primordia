@@ -8,6 +8,11 @@ impl CreatureSystem {
             rng: Rng::new(seed ^ 0xA5A5_1234_9E37_79B9),
             next_id: 1,
 
+            // The minds learn by default. The run turns it off, so
+            // that what is seen is the doing of the weights that were
+            // given and not of a mind that is still learning.
+            learn: true,
+
             next_species: 0,
 
             fire_lit: vec![false; 64],

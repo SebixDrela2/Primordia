@@ -21,6 +21,8 @@ pub(super) struct StepCtx<'a> {
     pub day_night: f32,
     pub temperature: f32,
     pub tick: u64,
+    /// Whether the minds are allowed to learn.
+    pub learn: bool,
 }
 
 /// What the colony looks like from the outside.
@@ -196,7 +198,9 @@ pub(super) fn wake(c: &mut Creature, ctx: &StepCtx<'_>, out: &mut StepOut<'_>, t
     }
 
     turn.lifespan = c.lifespan();
-    grow_and_learn(c, ctx.grid, ctx.agents, ctx.lives);
+    if ctx.learn {
+        grow_and_learn(c, ctx.grid, ctx.agents, ctx.lives);
+    }
 
     turn.ds = diplomatic_sense(&*ctx.diplomacy, c, ctx.centroids, ctx.species_counts);
 

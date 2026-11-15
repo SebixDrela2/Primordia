@@ -445,6 +445,52 @@ impl Net {
         }
     }
 
+    /// The size of every layer of the net.
+    #[must_use]
+    pub fn sizes(&self) -> &[usize] {
+        &self.sizes
+    }
+
+    /// The weights and the biases of the net: the numbers that are
+    /// saved to a file and read back.
+    #[must_use]
+    pub fn parts(&self) -> (&[Vec<f32>], &[Vec<f32>]) {
+        (&self.w, &self.b)
+    }
+
+    /// A net with the weights and the biases that are given. This is
+    /// how a mind that was saved is brought back.
+    #[must_use]
+    pub fn from_parts(
+        sizes: &[usize],
+        w: Vec<Vec<f32>>,
+        b: Vec<Vec<f32>>,
+        activation: u8,
+        arch: u8,
+        skip: Vec<f32>,
+        skip_up: f32,
+    ) -> Self {
+        let layers = sizes.len().saturating_sub(1);
+        Net {
+            sizes: sizes.to_vec(),
+            w,
+            b,
+            memory: vec![0.0; MEMORY],
+            arch,
+            activation,
+            learn_in: vec![Vec::new(); layers],
+            learn_out: vec![Vec::new(); layers],
+            learn_pre: Vec::new(),
+            traces: Vec::new(),
+            trace_next: 0,
+            delta_buf: Vec::new(),
+            in_delta_buf: Vec::new(),
+            skip,
+            skip_up,
+            last_input: Vec::new(),
+        }
+    }
+
     #[must_use]
     pub fn forward(&mut self, input: &[f32]) -> Vec<f32> {
         let mut act = Vec::with_capacity(input.len() + MEMORY);

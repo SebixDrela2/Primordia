@@ -11,6 +11,7 @@ mod enums;
 mod growth;
 mod heritage;
 mod mating;
+pub mod model;
 mod names;
 mod personality;
 mod plague;
@@ -358,12 +359,14 @@ pub struct CreatureStats {
 pub struct CreatureSystem {
     pub list: Vec<Creature>,
     pub rng: Rng,
+    /// Whether the minds are allowed to learn inside their lives.
+    pub learn: bool,
     next_id: u32,
     next_species: u32,
     pub tick: u64,
     pub stats: CreatureStats,
-    births_total: u32,
-    deaths_total: u32,
+    pub births_total: u32,
+    pub deaths_total: u32,
     pub eats_total: u64,
 
     pub eats_by_elem: [u32; 128],
@@ -446,6 +449,7 @@ pub use diplomacy::*;
 pub use enums::*;
 use growth::grow_and_learn;
 pub use heritage::*;
+pub use model::*;
 pub use names::*;
 pub use personality::*;
 pub use plague::*;

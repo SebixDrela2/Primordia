@@ -79,6 +79,23 @@
   world on the card in several places and in several weathers, reads
   the picture back, writes it to `gpu.png` and says how long the card
   took. It is the check that the picture is not black and not flat.
+- `primordia --learn [--file model.bin] [--generations 8] [--ticks 2400]
+  [--pop 48] [--seed 20240501]` is the **learner**: it is a console and
+  nothing else. No window is made and the card is never touched, so
+  all the time goes into the work of the network. It makes a world,
+  puts a colony in it, lets the minds learn and the colony breed, keeps
+  the best mind of the generation, and writes the weights and the
+  biases to the file. It prints the generation, how many of the colony
+  there were and how well the best of them fitted.
+- `primordia --run [--file model.bin]` is the **run**: the game itself,
+  with the colony given the mind that was learned. The minds do not
+  learn anything new, so what is seen is the doing of the weights that
+  were saved, and the picture is quicker for it. A panel down the left
+  of the screen shows the story of the run: the colony, the best of
+  them, and what was eaten.
+- The model file is a small file of numbers with a head that says what
+  version it is (`src/creature/model.rs`). A file of the wrong version
+  is refused rather than read as nonsense.
 
 ## Code size rules
 - **No file may exceed ~1000 lines.** A file may run slightly over that

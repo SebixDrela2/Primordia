@@ -49,6 +49,7 @@
 pub mod checks;
 pub mod creature;
 pub mod elements;
+pub mod learn;
 pub mod render;
 pub mod rng;
 pub mod ui;

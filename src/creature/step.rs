@@ -173,6 +173,7 @@ impl CreatureSystem {
             day_night: self.day_night,
             temperature: self.temperature,
             tick: self.tick,
+            learn: self.learn,
         };
 
         for index in 0..self.list.len() {
@@ -192,7 +193,9 @@ impl CreatureSystem {
                 forage(c, &mut ctx, &mut out, &mut turn, index, &decisions);
                 fight(c, &ctx, &mut out, &mut turn, index, &decisions);
                 mount_and_trade(c, &mut ctx, &mut out, &mut turn, index, &decisions);
-                learn(c, &ctx, &turn);
+                if self.learn {
+                    learn(c, &ctx, &turn);
+                }
                 dig(c, &mut ctx, &decisions);
                 breed(c, &mut out, &mut turn, index, pop_now, &mut zorg_pop, &decisions);
                 weapons(c, &ctx, &mut out);

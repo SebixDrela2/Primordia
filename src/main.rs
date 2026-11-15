@@ -9,7 +9,7 @@
 //! PRIMORDIA - the game itself: the window, the camera and the loop.
 
 use primordia::checks;
-use primordia::creature::{CreatureSystem, RevivalGenome, SimEvent};
+use primordia::creature::{CreatureSystem, Model, RevivalGenome, SimEvent};
 use primordia::elements::Elem;
 use primordia::render;
 use primordia::ui::{
@@ -81,6 +81,61 @@ fn save_screenshot(path: &str) {
         eprintln!("screenshot: cannot write pixels: {e}");
     }
     eprintln!("screenshot written to {path}");
+}
+
+/// The model of a run, when the game is run on one that was learned.
+fn model_from_env() -> Option<Model> {
+    if !std::env::args().any(|a| a == "--run") {
+        return None;
+    }
+    let path = model_path();
+    match Model::load(&path) {
+        Ok(model) => {
+            eprintln!(
+                "running the model in {path} ({} weights, fitness {:.3})",
+                model.weight_count(),
+                model.fitness
+            );
+            Some(model)
+        }
+        Err(err) => {
+            eprintln!("cannot read {path}: {err}");
+            eprintln!("learn one first: primordia --learn {path}");
+            std::process::exit(1);
+        }
+    }
+}
+
+/// The file the model is read from and written to.
+fn model_path() -> String {
+    let mut path = "model.bin".to_owned();
+    let args: Vec<String> = std::env::args().collect();
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--file" {
+            if let Some(next) = args.get(i + 1) {
+                path.clone_from(next);
+            }
+        }
+        i += 1;
+    }
+    path
+}
+
+/// Give the colony the mind of the model, and stop the minds from
+/// learning.
+fn apply_model(creatures: &mut CreatureSystem, model: &Model) {
+    creatures.learn = false;
+    for c in &mut creatures.list {
+        if c.faction == primordia::creature::Faction::Zorg {
+            continue;
+        }
+        c.net = model.to_net();
+        c.genes = model.genes;
+        c.traits = model.traits;
+        c.culture = model.culture;
+        c.size = model.size;
+    }
 }
 
 fn window_conf() -> Conf {
@@ -157,6 +212,11 @@ struct Game {
     seed: u64,
     world: World,
     creatures: CreatureSystem,
+    /// The model the colony is running on, when the game is run on one
+    /// that was learned.
+    model: Option<Model>,
+    /// The story of the run, for the panel.
+    story: primordia::ui::report::Story,
     /// The renderer on the graphics card. It paints the picture.
     gpu: render::GpuRenderer,
     /// The window of the world that is on the screen.
@@ -203,6 +263,14 @@ impl Game {
 
         let mut creatures = CreatureSystem::new(seed.wrapping_add(0x1234_5678_9ABC_DEF0));
         creatures.populate(&world, 64);
+
+        // The model of a run: the colony is given the mind that was
+        // learned, and the minds do not learn anything new, so that
+        // what is seen is the doing of the weights that were saved.
+        let model = model_from_env();
+        if let Some(model) = &model {
+            apply_model(&mut creatures, model);
+        }
 
         let cam_env = std::env::var("PRIMORDIA_CAM").ok();
         let (mut cam_x, mut cam_y) = camera_from_env(cam_env.as_deref());
@@ -259,6 +327,8 @@ impl Game {
             seed,
             world,
             creatures,
+            model,
+            story: primordia::ui::report::Story::new(),
             gpu: render::GpuRenderer::new(),
             region: render::Region {
                 x: 0,
@@ -309,6 +379,7 @@ impl Game {
         self.observe(now, dt);
         self.check_victory();
         self.advance_victory(dt);
+        self.story.note(&self.creatures);
 
         let view_w = VIEW_W as f32 / self.zoom;
         let view_h = VIEW_H as f32 / self.zoom;
@@ -810,6 +881,16 @@ self.paused = true;
         );
         self.effects.draw(self.view_x, self.view_y, screen_width() / view_w, screen_height() / view_h);
 
+        // The panel of the run, when the game is run on a model.
+        if let Some(model) = &self.model {
+            primordia::ui::report::draw_panel(
+                &self.story,
+                model,
+                screen_width(),
+                screen_height(),
+            );
+        }
+
         draw_minimap(
             &self.creatures,
             &self.world,
@@ -875,9 +956,27 @@ self.paused = true;
     }
 }
 
-#[macroquad::main(window_conf)]
-async fn main() {
+/// The window of the game, and the two ways of working without it.
+///
+/// The game itself is `amain`, which the window runs. The learner is
+/// the other half: it does the work of the network with no window and
+/// no card at all, so it is started before the window is made.
+fn main() {
     let argv: Vec<String> = std::env::args().collect();
+
+    // The learner: no window, no card, only the work of the network.
+    if argv.iter().any(|a| a == "--learn") {
+        std::process::exit(primordia::learn::run(&argv));
+    }
+
+    // The run of a saved model, and the game itself, both want the
+    // window.
+    macroquad::Window::from_config(window_conf(), amain());
+}
+
+async fn amain() {
+    let argv: Vec<String> = std::env::args().collect();
+
     if argv.len() > 1 {
         let name = argv[1].clone();
         if name == "rendertest" {
