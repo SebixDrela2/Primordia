@@ -1,39 +1,16 @@
 pub mod bloom;
 pub mod fx;
 pub mod light;
-mod paint;
+mod cpu;
+mod gpu;
 
-use crate::creature::CreatureSystem;
+pub use cpu::CpuRenderer;
+pub use gpu::{GpuRenderer, Place};
+
 use crate::world::{World, Weather};
 use bloom::Bloom;
 use fx::{fx_table, FxEntry};
 use light::LightField;
-
-pub struct Renderer {
-
-    light: LightField,
-
-    cloud_row: Vec<f32>,
-
-    light_rows: Vec<[f32; 3]>,
-
-    fx: [FxEntry; fx::FX_TABLE_LEN],
-
-    aurora_col: Vec<f32>,
-
-    biome_delta: Vec<[f32; 3]>,
-
-    sky_base: Vec<[f32; 3]>,
-    sky_slope: Vec<[f32; 3]>,
-
-    cloud_shadow: Vec<f32>,
-
-    sun_shaft: Vec<f32>,
-
-    vig_col: Vec<f32>,
-
-    bloom: Bloom,
-}
 
 /// What the world looks like at this moment: where the clock has got
 /// to, how far round the day it is, what the season is and what the
@@ -56,40 +33,176 @@ pub struct Region {
     pub h: i32,
 }
 
+/// Everything the renderer works out before it paints a single pixel:
+/// the light, the bloom, the sky and the weather's veils.
+///
+/// The renderer on the processor and the renderer on the graphics card
+/// both read these, and they are worked out in one place, so the two
+/// renderers cannot drift apart.
+pub struct Tables {
+    pub light: LightField,
+
+    pub cloud_row: Vec<f32>,
+
+    pub light_rows: Vec<[f32; 3]>,
+
+    pub fx: [FxEntry; fx::FX_TABLE_LEN],
+
+    pub aurora_col: Vec<f32>,
+
+    pub biome_delta: Vec<[f32; 3]>,
+
+    pub sky_base: Vec<[f32; 3]>,
+
+    pub sky_slope: Vec<[f32; 3]>,
+
+    pub cloud_shadow: Vec<f32>,
+
+    pub sun_shaft: Vec<f32>,
+
+    pub vig_col: Vec<f32>,
+
+    pub bloom: Bloom,
+}
+
+/// The state of the sky while a picture is painted: how much light
+/// there is, what the season and the weather do to it, where the sun
+/// is and whether the storm is flashing.
+pub(crate) struct SkyState {
+    pub day: f32,
+    pub light_f: f32,
+    pub season: u8,
+    pub season_r: f32,
+    pub season_g: f32,
+    pub season_b: f32,
+    pub haze: f32,
+    pub haze_col: [f32; 3],
+    pub flash: f32,
+    pub shimmer: bool,
+    pub aurora: bool,
+    pub sun_x: i32,
+    pub sun_y: i32,
+    pub is_day: bool,
+    pub gw: usize,
+    pub gh: usize,
+    /// How much cloud there is, and the colour of it. These are the same
+    /// for every pixel of the picture, so they are worked out once.
+    pub cloud_cover: f32,
+    pub cloud_cr: f32,
+    pub cloud_cg: f32,
+    pub cloud_cb: f32,
+}
+
+/// Work out the state of the sky for this picture.
+pub(crate) fn sky_state(world_w: usize, world_h: usize, clock: &Clock) -> SkyState {
+    let time = clock.time;
+    let day_night = clock.day_night;
+    let weather = clock.weather;
+
+    let day = 0.5 - 0.5 * (day_night * std::f32::consts::TAU).cos();
+    let mut light_level = 0.34 + 0.66 * day;
+
+    let (weather_dim, weather_haze) = match weather {
+        Weather::Clear => (0.0f32, 0.0f32),
+        Weather::Rain => (0.14, 0.18),
+        Weather::Storm => (0.30, 0.26),
+        Weather::Snow => (0.06, 0.35),
+        Weather::Meteor => (0.10, 0.12),
+        Weather::Fog => (0.18, 0.55),
+        Weather::Heatwave => (0.04, 0.16),
+        Weather::Sandstorm => (0.22, 0.42),
+    };
+    light_level = (light_level * (1.0 - weather_dim)).clamp(0.08, 1.0);
+
+    let flash = if weather == Weather::Storm {
+        let flash_phase = (time * 0.83).fract();
+        if flash_phase < 0.035 {
+            1.0 - flash_phase / 0.035
+        } else {
+            0.0
+        }
+    } else {
+        0.0
+    };
+
+    let shimmer = weather == Weather::Heatwave;
+
+    let (sr, sg, sb) = match clock.season {
+        0 => (0.94f32, 1.0f32, 0.95f32),
+        1 => (1.0, 0.99, 0.92),
+        2 => (1.0, 0.93, 0.82),
+        _ => (0.85, 0.92, 1.0),
+    };
+
+    let haze_col = match weather {
+        Weather::Fog => [196.0f32, 202.0, 205.0],
+        Weather::Snow => [235.0, 240.0, 250.0],
+        Weather::Storm => [150.0, 158.0, 172.0],
+        Weather::Rain => [168.0, 176.0, 190.0],
+        Weather::Sandstorm => [214.0, 186.0, 132.0],
+        _ => [200.0, 200.0, 200.0],
+    };
+
+    let sun_height = (1.0 - (day_night - 0.5).abs() * 2.0).max(0.0);
+
+    SkyState {
+        day,
+        light_f: 0.62 + 0.38 * light_level,
+        season: clock.season,
+        season_r: 0.96 + 0.04 * sr,
+        season_g: 0.96 + 0.04 * sg,
+        season_b: 0.96 + 0.04 * sb,
+        haze: weather_haze,
+        haze_col,
+        flash,
+        shimmer,
+        aurora: day < 0.32,
+        sun_x: (day_night * world_w as f32) as i32,
+        sun_y: (world_h as f32 * (0.62 - 0.55 * sun_height)) as i32,
+        is_day: day > 0.25,
+        gw: (world_w as f32 / GSX) as usize + 2,
+        gh: (world_h as f32 / GSY) as usize + 2,
+        cloud_cover: 0.20 + 0.32 * day + weather_dim * 0.9,
+        cloud_cr: 206.0 - weather_dim * 90.0,
+        cloud_cg: 214.0 - weather_dim * 90.0,
+        cloud_cb: 232.0 - weather_dim * 60.0,
+    }
+}
+
 /// The tables the pixel loop reads while it paints: the per-element
 /// effects, the light field, the sky and the weather's veils. They are
 /// the renderer's own tables, so they travel together.
-struct PaintTables<'a> {
-    cloud_row: &'a [f32],
-    fx: &'a [FxEntry; fx::FX_TABLE_LEN],
-    light_rows: &'a [[f32; 3]],
-    aurora_col: &'a [f32],
-    biome_delta: &'a [[f32; 3]],
-    cloud_shadow: &'a [f32],
-    sun_shaft: &'a [f32],
-    vig_col: &'a [f32],
-    bloom: &'a Bloom,
-    sky_base: &'a [[f32; 3]],
-    sky_slope: &'a [[f32; 3]],
+pub(crate) struct PaintTables<'a> {
+    pub cloud_row: &'a [f32],
+    pub fx: &'a [FxEntry; fx::FX_TABLE_LEN],
+    pub light_rows: &'a [[f32; 3]],
+    pub aurora_col: &'a [f32],
+    pub biome_delta: &'a [[f32; 3]],
+    pub cloud_shadow: &'a [f32],
+    pub sun_shaft: &'a [f32],
+    pub vig_col: &'a [f32],
+    pub bloom: &'a Bloom,
+    pub sky_base: &'a [[f32; 3]],
+    pub sky_slope: &'a [[f32; 3]],
 }
 
 /// The geometry of the picture: the window of the world, the size of the
 /// light grid and where that grid starts in the world.
-struct PaintGeometry {
-    region: Region,
-    light_w: usize,
-    light_h: usize,
-    light_x: i32,
-    light_y: i32,
+pub(crate) struct PaintGeometry {
+    pub region: Region,
+    pub light_w: usize,
+    pub light_h: usize,
+    pub light_x: i32,
+    pub light_y: i32,
 }
 
 /// The window of the light grid: where it starts in the world and how
 /// far it reaches.
-struct LightGrid {
-    gx0: i32,
-    gy0: i32,
-    gx1: i32,
-    gy1: i32,
+pub(crate) struct LightGrid {
+    pub gx0: i32,
+    pub gy0: i32,
+    pub gx1: i32,
+    pub gy1: i32,
 }
 
 /// The size of the grid the cloud is sampled on.
@@ -99,7 +212,14 @@ fn cloud_grid(w: usize, h: usize) -> (usize, usize) {
 
 /// Read the cloud cover at a point, with the corners of the cell it
 /// falls in.
-fn sample_cloud(cloud_row: &[f32], gw: usize, gx0: usize, gy0: usize, tx: f32, ty: f32) -> f32 {
+pub(crate) fn sample_cloud(
+    cloud_row: &[f32],
+    gw: usize,
+    gx0: usize,
+    gy0: usize,
+    tx: f32,
+    ty: f32,
+) -> f32 {
     let base = gy0 * gw + gx0;
     let c00 = cloud_row[base];
     let c10 = cloud_row[base + 1];
@@ -108,10 +228,10 @@ fn sample_cloud(cloud_row: &[f32], gw: usize, gx0: usize, gy0: usize, tx: f32, t
     (c00 * (1.0 - tx) + c10 * tx) * (1.0 - ty) + (c01 * (1.0 - tx) + c11 * tx) * ty
 }
 
-impl Renderer {
+impl Tables {
     #[must_use]
     pub fn new() -> Self {
-        Renderer {
+        Tables {
             light: LightField::new(),
             cloud_row: Vec::new(),
             light_rows: Vec::new(),
@@ -127,35 +247,9 @@ impl Renderer {
         }
     }
 
-    pub fn render_world(
-        &mut self,
-        world: &World,
-        creatures: &CreatureSystem,
-        buf: &mut [u8],
-        clock: Clock,
-    ) {
-        self.render_region(
-            world,
-            creatures,
-            buf,
-            Region {
-                x: 0,
-                y: 0,
-                w: world.w as i32,
-                h: world.h as i32,
-            },
-            clock,
-        );
-    }
-
-    pub fn render_region(
-        &mut self,
-        world: &World,
-        _creatures: &CreatureSystem,
-        buf: &mut [u8],
-        region: Region,
-        clock: Clock,
-    ) {
+    /// Work out everything the picture needs, and return the size of the
+    /// light grid and where it starts.
+    pub fn build(&mut self, world: &World, region: Region, clock: &Clock) -> (usize, usize, i32, i32) {
         let x0 = region.x;
         let y0 = region.y;
         let rw = region.w;
@@ -183,33 +277,12 @@ impl Renderer {
         self.build_aurora(x0, rw, clock.time);
         self.build_cloud_shadows(world, x0, rw, w, h);
         self.build_vignette(rw);
-        self.build_sky(world, x0, rw, w, &clock);
-        self.build_sun_shafts(world, x0, rw, w, h, &clock);
+        self.build_sky(world, x0, rw, w, clock);
+        self.build_sun_shafts(world, x0, rw, w, h, clock);
 
         self.bloom.blur();
 
-        let tables = PaintTables {
-            cloud_row: &self.cloud_row,
-            fx: &self.fx,
-            light_rows: &self.light_rows,
-            aurora_col: &self.aurora_col,
-            biome_delta: &self.biome_delta,
-            cloud_shadow: &self.cloud_shadow,
-            sun_shaft: &self.sun_shaft,
-            vig_col: &self.vig_col,
-            bloom: &self.bloom,
-            sky_base: &self.sky_base,
-            sky_slope: &self.sky_slope,
-        };
-        let geometry = PaintGeometry {
-            region,
-            light_w: lw,
-            light_h: lh,
-            light_x: gx0,
-            light_y: gy0,
-        };
-
-        paint::paint(world, buf, &tables, &geometry, &clock);
+        (lw, lh, gx0, gy0)
     }
 
     /// Walk the window of the world and put the light and the bloom of
@@ -417,14 +490,14 @@ impl Renderer {
     }
 }
 
-impl Default for Renderer {
+impl Default for Tables {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[inline]
-fn is_shore(
+pub(crate) fn is_shore(
     kind: &[u8],
     w: usize,
     h: usize,
@@ -446,7 +519,7 @@ fn is_shore(
 }
 
 #[inline]
-fn hash2(x: i32, y: i32) -> u32 {
+pub(crate) fn hash2(x: i32, y: i32) -> u32 {
     let mut h = (x as u32).wrapping_mul(0x9E37_79B1) ^ (y as u32).wrapping_mul(0x85EB_CA77);
     h ^= h >> 15;
     h = h.wrapping_mul(0x2C1B_3C6D);
@@ -455,13 +528,12 @@ fn hash2(x: i32, y: i32) -> u32 {
 }
 
 #[inline]
-fn noise(x: i32, y: i32) -> f32 {
-
+pub(crate) fn noise(x: i32, y: i32) -> f32 {
     (hash2(x, y) >> 8) as f32 / 16_777_216.0
 }
 
 #[inline]
-fn vnoise(x: f32, y: f32) -> f32 {
+pub(crate) fn vnoise(x: f32, y: f32) -> f32 {
     let xi = x.floor();
     let yi = y.floor();
     let xf = x - xi;
@@ -489,24 +561,24 @@ fn cloud_density(x: f32, y: f32) -> f32 {
 }
 
 #[inline]
-fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
+pub(crate) fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
     let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
 }
 
 #[inline]
-fn clamp_u8(v: f32) -> u8 {
+pub(crate) fn clamp_u8(v: f32) -> u8 {
     // A float to u8 cast in Rust saturates, so it already clamps to
     // 0..=255. The explicit clamp was a second pair of comparisons on
     // every channel of every pixel.
     v as u8
 }
 
-const SCALE: i32 = light::LIGHT_SCALE as i32;
-const MARGIN: i32 = 3;
-const GSX: f32 = 30.0;
-const GSY: f32 = 13.0;
-const CSX: f32 = 30.0;
-const CSY: f32 = 13.0;
-const SSX: f32 = 30.0;
-const SSY: f32 = 13.0;
+pub(crate) const SCALE: i32 = light::LIGHT_SCALE as i32;
+pub(crate) const MARGIN: i32 = 3;
+pub(crate) const GSX: f32 = 30.0;
+pub(crate) const GSY: f32 = 13.0;
+pub(crate) const CSX: f32 = 30.0;
+pub(crate) const CSY: f32 = 13.0;
+pub(crate) const SSX: f32 = 30.0;
+pub(crate) const SSY: f32 = 13.0;

@@ -303,7 +303,7 @@ fn report_elements_present(element_counts: &[u32; ELEM_SLOTS]) {
 
 fn write_png(world: &World, creatures: &CreatureSystem, out: &str) -> i32 {
     let mut buf = vec![0u8; W * H * 4];
-    let mut renderer = crate::render::Renderer::new();
+    let mut renderer = crate::render::CpuRenderer::new();
     renderer.render_world(
         world,
         creatures,

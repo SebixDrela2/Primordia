@@ -1,39 +1,11 @@
 use super::bloom;
-use super::fx::{Fx, FxEntry};
+use super::fx::{self, Fx, FxEntry};
 use super::{
-    clamp_u8, is_shore, noise, sample_cloud, smoothstep, Clock, PaintGeometry, PaintTables, GSX,
-    GSY,
+    clamp_u8, is_shore, noise, sample_cloud, sky_state, smoothstep, Clock, PaintGeometry,
+    PaintTables, SkyState, GSX, GSY,
 };
 use crate::elements::Elem;
-use crate::world::{Biome, World, Weather, DEPTH_TINT};
-
-/// The state of the sky while a picture is painted: how much light
-/// there is, what the season and the weather do to it, where the sun
-/// is and whether the storm is flashing.
-struct SkyState {
-    day: f32,
-    light_f: f32,
-    season: u8,
-    season_r: f32,
-    season_g: f32,
-    season_b: f32,
-    haze: f32,
-    haze_col: [f32; 3],
-    flash: f32,
-    shimmer: bool,
-    aurora: bool,
-    sun_x: i32,
-    sun_y: i32,
-    is_day: bool,
-    gw: usize,
-    gh: usize,
-    /// How much cloud there is, and the colour of it. These are the same
-    /// for every pixel of the picture, so they are worked out once.
-    cloud_cover: f32,
-    cloud_cr: f32,
-    cloud_cg: f32,
-    cloud_cb: f32,
-}
+use crate::world::{Biome, World, DEPTH_TINT};
 
 /// The cloud of one row. The cloud is only worked out every third column
 /// and then carried along the row, so the amount of cloud is worked out
@@ -82,82 +54,6 @@ struct PixelCtx<'a> {
     y: i32,
     time: f32,
     light_col: usize,
-}
-
-/// Work out the state of the sky for this picture.
-fn sky_state(world_w: usize, world_h: usize, clock: &Clock) -> SkyState {
-    let time = clock.time;
-    let day_night = clock.day_night;
-    let weather = clock.weather;
-
-    let day = 0.5 - 0.5 * (day_night * std::f32::consts::TAU).cos();
-    let mut light_level = 0.34 + 0.66 * day;
-
-    let (weather_dim, weather_haze) = match weather {
-        Weather::Clear => (0.0f32, 0.0f32),
-        Weather::Rain => (0.14, 0.18),
-        Weather::Storm => (0.30, 0.26),
-        Weather::Snow => (0.06, 0.35),
-        Weather::Meteor => (0.10, 0.12),
-        Weather::Fog => (0.18, 0.55),
-        Weather::Heatwave => (0.04, 0.16),
-        Weather::Sandstorm => (0.22, 0.42),
-    };
-    light_level = (light_level * (1.0 - weather_dim)).clamp(0.08, 1.0);
-
-    let flash = if weather == Weather::Storm {
-        let flash_phase = (time * 0.83).fract();
-        if flash_phase < 0.035 {
-            1.0 - flash_phase / 0.035
-        } else {
-            0.0
-        }
-    } else {
-        0.0
-    };
-
-    let shimmer = weather == Weather::Heatwave;
-
-    let (sr, sg, sb) = match clock.season {
-        0 => (0.94f32, 1.0f32, 0.95f32),
-        1 => (1.0, 0.99, 0.92),
-        2 => (1.0, 0.93, 0.82),
-        _ => (0.85, 0.92, 1.0),
-    };
-
-    let haze_col = match weather {
-        Weather::Fog => [196.0f32, 202.0, 205.0],
-        Weather::Snow => [235.0, 240.0, 250.0],
-        Weather::Storm => [150.0, 158.0, 172.0],
-        Weather::Rain => [168.0, 176.0, 190.0],
-        Weather::Sandstorm => [214.0, 186.0, 132.0],
-        _ => [200.0, 200.0, 200.0],
-    };
-
-    let sun_height = (1.0 - (day_night - 0.5).abs() * 2.0).max(0.0);
-
-    SkyState {
-        day,
-        light_f: 0.62 + 0.38 * light_level,
-        season: clock.season,
-        season_r: 0.96 + 0.04 * sr,
-        season_g: 0.96 + 0.04 * sg,
-        season_b: 0.96 + 0.04 * sb,
-        haze: weather_haze,
-        haze_col,
-        flash,
-        shimmer,
-        aurora: day < 0.32,
-        sun_x: (day_night * world_w as f32) as i32,
-        sun_y: (world_h as f32 * (0.62 - 0.55 * sun_height)) as i32,
-        is_day: day > 0.25,
-        gw: (world_w as f32 / GSX) as usize + 2,
-        gh: (world_h as f32 / GSY) as usize + 2,
-        cloud_cover: 0.20 + 0.32 * day + weather_dim * 0.9,
-        cloud_cr: 206.0 - weather_dim * 90.0,
-        cloud_cg: 214.0 - weather_dim * 90.0,
-        cloud_cb: 232.0 - weather_dim * 60.0,
-    }
 }
 
 /// The row of the world that the picture is painting, and the light row
@@ -379,8 +275,7 @@ fn shade_cell(p: &PixelCtx<'_>, cell_color: [u8; 3], depth: f32, noise_value: f3
 /// shore.
 fn fx_wave(p: &PixelCtx<'_>, entry: &FxEntry, rgb: &mut Rgb) {
     let time = p.time;
-    let wave =
-        ((p.x as f32 * 0.17) + (p.y as f32 * 0.09) + time * 1.6).sin() * 0.5 + 0.5;
+    let wave = fx::wave_sin(p.x, p.y, time) * 0.5 + 0.5;
     rgb.r += wave * entry.color[0];
     rgb.g += wave * entry.color[1];
     rgb.b += wave * entry.color[2];
@@ -390,9 +285,7 @@ fn fx_wave(p: &PixelCtx<'_>, entry: &FxEntry, rgb: &mut Rgb) {
     rgb.g += sky[1] * 0.02;
     rgb.b += sky[2] * 0.03;
 
-    let c1 = ((p.x as f32 * 0.21 + time * 1.7).sin()
-        + (p.y as f32 * 0.27 - time * 1.1).sin())
-        * 0.5;
+    let c1 = (fx::caustic_col_sin(p.x, time) + fx::caustic_row_sin(p.y, time)) * 0.5;
     let caustic = (c1 * c1 * 2.0).max(0.0) * 24.0;
     rgb.r += caustic * 0.7;
     rgb.g += caustic * 0.92;
@@ -407,7 +300,7 @@ fn fx_wave(p: &PixelCtx<'_>, entry: &FxEntry, rgb: &mut Rgb) {
         Elem::Empty as u8,
         Elem::Water as u8,
     ) {
-        let surf = ((p.x as f32 * 0.31) + (p.y as f32 * 0.19) - time * 2.4).sin() * 0.5 + 0.5;
+        let surf = fx::foam_sin(p.x, p.y, time) * 0.5 + 0.5;
         let foam = (0.35 + 0.65 * surf) * 46.0;
         rgb.r += foam * 0.9;
         rgb.g += foam * 0.95;
@@ -418,8 +311,7 @@ fn fx_wave(p: &PixelCtx<'_>, entry: &FxEntry, rgb: &mut Rgb) {
 /// The fire that flickers.
 fn fx_flicker(p: &PixelCtx<'_>, entry: &FxEntry, rgb: &mut Rgb, noise_value: f32) {
     let time = p.time;
-    let flicker =
-        0.7 + 0.3 * ((time * 11.0 + noise_value * std::f32::consts::TAU).sin() * 0.5 + 0.5);
+    let flicker = 0.7 + 0.3 * (fx::flicker_sin(time, noise_value) * 0.5 + 0.5);
     rgb.r = rgb.r * 0.9 + entry.color[0] * flicker;
     rgb.g = rgb.g * 0.9 + entry.color[1] * flicker;
     rgb.b = rgb.b * 0.9 + entry.color[2] * flicker;
@@ -427,7 +319,7 @@ fn fx_flicker(p: &PixelCtx<'_>, entry: &FxEntry, rgb: &mut Rgb, noise_value: f32
 
 /// The heat that pulses.
 fn fx_heat(p: &PixelCtx<'_>, entry: &FxEntry, rgb: &mut Rgb, noise_value: f32, heat_v: f32) {
-    let pulse = 0.5 + 0.5 * ((p.time * 2.1 + noise_value * std::f32::consts::TAU).sin());
+    let pulse = 0.5 + 0.5 * fx::heat_sin(p.time, noise_value);
     let hot = 40.0 + heat_v * 0.35 + pulse * 38.0;
     rgb.r += hot * entry.color[0];
     rgb.g += hot * entry.color[1];
@@ -436,8 +328,7 @@ fn fx_heat(p: &PixelCtx<'_>, entry: &FxEntry, rgb: &mut Rgb, noise_value: f32, h
 
 /// The pulse of the magic and the ember.
 fn fx_pulse(p: &PixelCtx<'_>, entry: &FxEntry, rgb: &mut Rgb, noise_value: f32) {
-    let pulse =
-        0.5 + 0.5 * ((p.time * entry.speed + noise_value * std::f32::consts::TAU).sin());
+    let pulse = 0.5 + 0.5 * fx::pulse_sin(p.time, entry.speed, noise_value);
     rgb.r += entry.color[0] * pulse;
     rgb.g += entry.color[1] * pulse;
     rgb.b += entry.color[2] * pulse;
@@ -445,9 +336,7 @@ fn fx_pulse(p: &PixelCtx<'_>, entry: &FxEntry, rgb: &mut Rgb, noise_value: f32) 
 
 /// The glitter of the crystal.
 fn fx_sparkle(p: &PixelCtx<'_>, entry: &FxEntry, rgb: &mut Rgb, noise_value: f32) {
-    let sparkle = ((p.time * 3.0 + noise_value * std::f32::consts::TAU).sin() * 0.5 + 0.5)
-        * 26.0
-        * noise_value;
+    let sparkle = (fx::sparkle_sin(p.time, noise_value) * 0.5 + 0.5) * 26.0 * noise_value;
     rgb.r += sparkle * entry.color[0];
     rgb.g += sparkle * entry.color[1];
     rgb.b += sparkle * entry.color[2];
@@ -466,7 +355,7 @@ fn fx_surface(p: &PixelCtx<'_>, entry: &FxEntry, rgb: &mut Rgb, noise_value: f32
         Fx::Glint => {
             rgb.b += 10.0;
 
-            let glint = ((time * 0.9 + noise_value * 6.0).sin() * 0.5 + 0.5) * 8.0;
+            let glint = (fx::glint_sin(time, noise_value) * 0.5 + 0.5) * 8.0;
             rgb.r += glint * entry.color[0];
             rgb.g += glint * entry.color[1];
             rgb.b += glint * entry.color[2];
@@ -476,8 +365,7 @@ fn fx_surface(p: &PixelCtx<'_>, entry: &FxEntry, rgb: &mut Rgb, noise_value: f32
             rgb.g += entry.color[1] * noise_value;
         }
         _ => {
-            let sheen = ((time * 0.5 + p.x as f32 * 0.05 + p.y as f32 * 0.03).sin() * 0.5 + 0.5)
-                * 10.0;
+            let sheen = (fx::sheen_sin(time, p.x, p.y) * 0.5 + 0.5) * 10.0;
             rgb.r += sheen * entry.color[0];
             rgb.g += sheen * entry.color[1];
             rgb.b += sheen * entry.color[2];
@@ -490,7 +378,7 @@ fn fx_motion(p: &PixelCtx<'_>, entry: &FxEntry, rgb: &mut Rgb, noise_value: f32)
     let time = p.time;
     match entry.kind {
         Fx::Rot => {
-            let beat = (time * entry.speed + noise_value * 7.0).sin() * 0.5 + 0.5;
+            let beat = fx::rot_sin(time, entry.speed, noise_value) * 0.5 + 0.5;
             let rot = 0.35 + beat * 0.65;
             rgb.r += entry.color[0] * rot;
             rgb.g += entry.color[1] * rot;
@@ -501,10 +389,7 @@ fn fx_motion(p: &PixelCtx<'_>, entry: &FxEntry, rgb: &mut Rgb, noise_value: f32)
             rgb.b *= 0.88;
         }
         Fx::Foul => {
-            let shimmer = ((time * entry.speed + p.x as f32 * 0.19 - p.y as f32 * 0.11).sin()
-                * 0.5
-                + 0.5)
-                * entry.gain;
+            let shimmer = (fx::foul_sin(time, entry.speed, p.x, p.y) * 0.5 + 0.5) * entry.gain;
             rgb.r += entry.color[0] * shimmer;
             rgb.g += entry.color[1] * shimmer;
             rgb.b += entry.color[2] * shimmer;
@@ -516,8 +401,7 @@ fn fx_motion(p: &PixelCtx<'_>, entry: &FxEntry, rgb: &mut Rgb, noise_value: f32)
             rgb.b += entry.color[2] * amt;
         }
         _ => {
-            let twinkle = ((time * 1.1 + noise_value * 9.0).sin() * 0.5 + 0.5) * 0.7
-                + (noise_value * 0.6);
+            let twinkle = (fx::vein_sin(time, noise_value) * 0.5 + 0.5) * 0.7 + (noise_value * 0.6);
             let amt = twinkle * entry.gain;
             rgb.r += entry.color[0] * amt;
             rgb.g += entry.color[1] * amt;
@@ -563,8 +447,7 @@ fn finish_cell(p: &PixelCtx<'_>, rgb: &mut Rgb, depth: f32) {
     }
 
     if sky.shimmer && depth < 9.0 {
-        let sh = ((p.time * 3.2 + p.x as f32 * 0.21 + p.y as f32 * 0.13).sin()) * 6.0
-            * (1.0 - depth * (1.0 / 9.0));
+        let sh = fx::shimmer_sin(p.time, p.x, p.y) * 6.0 * (1.0 - depth * (1.0 / 9.0));
         rgb.r += sh;
         rgb.g += sh * 0.8;
         rgb.b += sh * 0.35;

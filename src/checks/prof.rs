@@ -28,7 +28,7 @@ pub fn run(_args: &[String]) -> i32 {
     }
     let creature_ms = t.elapsed().as_secs_f64() * 1000.0 / n as f64;
 
-    let mut renderer = crate::render::Renderer::new();
+    let mut renderer = crate::render::CpuRenderer::new();
     let mut buf = vec![0u8; 480 * 270 * 4];
     let frames = 400;
     let t = Instant::now();

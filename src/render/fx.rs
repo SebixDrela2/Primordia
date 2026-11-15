@@ -1,5 +1,91 @@
 use crate::elements::Elem;
 
+const TAU: f32 = std::f32::consts::TAU;
+
+/// The wave that runs over the water.
+#[must_use]
+pub fn wave_sin(x: i32, y: i32, time: f32) -> f32 {
+    ((x as f32 * 0.17) + (y as f32 * 0.09) + time * 1.6).sin()
+}
+
+/// The foam at the shore of the water.
+#[must_use]
+pub fn foam_sin(x: i32, y: i32, time: f32) -> f32 {
+    ((x as f32 * 0.31) + (y as f32 * 0.19) - time * 2.4).sin()
+}
+
+/// The light on the water, down a column.
+#[must_use]
+pub fn caustic_col_sin(x: i32, time: f32) -> f32 {
+    (x as f32 * 0.21 + time * 1.7).sin()
+}
+
+/// The light on the water, across a row.
+#[must_use]
+pub fn caustic_row_sin(y: i32, time: f32) -> f32 {
+    (y as f32 * 0.27 - time * 1.1).sin()
+}
+
+/// The fire that flickers.
+#[must_use]
+pub fn flicker_sin(time: f32, noise: f32) -> f32 {
+    (time * 11.0 + noise * TAU).sin()
+}
+
+/// The heat that pulses.
+#[must_use]
+pub fn heat_sin(time: f32, noise: f32) -> f32 {
+    (time * 2.1 + noise * TAU).sin()
+}
+
+/// The pulse of the magic and of the ember.
+#[must_use]
+pub fn pulse_sin(time: f32, speed: f32, noise: f32) -> f32 {
+    (time * speed + noise * TAU).sin()
+}
+
+/// The glitter of the crystal.
+#[must_use]
+pub fn sparkle_sin(time: f32, noise: f32) -> f32 {
+    (time * 3.0 + noise * TAU).sin()
+}
+
+/// The glitter of the ice.
+#[must_use]
+pub fn glint_sin(time: f32, noise: f32) -> f32 {
+    (time * 0.9 + noise * 6.0).sin()
+}
+
+/// The sheen of the tar.
+#[must_use]
+pub fn sheen_sin(time: f32, x: i32, y: i32) -> f32 {
+    (time * 0.5 + x as f32 * 0.05 + y as f32 * 0.03).sin()
+}
+
+/// The beat of the rot.
+#[must_use]
+pub fn rot_sin(time: f32, speed: f32, noise: f32) -> f32 {
+    (time * speed + noise * 7.0).sin()
+}
+
+/// The shimmer of the filth.
+#[must_use]
+pub fn foul_sin(time: f32, speed: f32, x: i32, y: i32) -> f32 {
+    (time * speed + x as f32 * 0.19 - y as f32 * 0.11).sin()
+}
+
+/// The vein of the metal.
+#[must_use]
+pub fn vein_sin(time: f32, noise: f32) -> f32 {
+    (time * 1.1 + noise * 9.0).sin()
+}
+
+/// The shimmer of the heatwave on the ground.
+#[must_use]
+pub fn shimmer_sin(time: f32, x: i32, y: i32) -> f32 {
+    (time * 3.2 + x as f32 * 0.21 + y as f32 * 0.13).sin()
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Fx {
 

@@ -24,6 +24,8 @@ use primordia::{H, W};
 use macroquad::prelude::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+mod rendertest;
+
 const VIEW_W: usize = 480;
 const VIEW_H: usize = 270;
 
@@ -111,6 +113,35 @@ fn get_random_seed() -> u64 {
     seed
 }
 
+/// Should the picture be painted on the graphics card?
+///
+/// The card is the one that paints the picture in the game. The
+/// renderer on the processor is the reference it is checked against,
+/// so it can be asked for instead with `PRIMORDIA_BACKEND=cpu`.
+fn gpu_enabled() -> bool {
+    std::env::var("PRIMORDIA_BACKEND").map_or(true, |v| !v.eq_ignore_ascii_case("cpu"))
+}
+
+/// Where the camera starts, from `PRIMORDIA_CAM`. It is either a pair
+/// of numbers, or the word `zorg`, which is dealt with later, when the
+/// world knows where its cave is.
+fn camera_from_env(value: Option<&str>) -> (f32, f32) {
+    let mut cam_x: f32 = 0.0;
+    let mut cam_y: f32 = 0.0;
+    if let Some(v) = value {
+        if !v.eq_ignore_ascii_case("zorg") {
+            let mut parts = v.split(',');
+            if let (Some(x), Some(y)) = (parts.next(), parts.next()) {
+                if let (Ok(x), Ok(y)) = (x.trim().parse::<f32>(), y.trim().parse::<f32>()) {
+                    cam_x = x;
+                    cam_y = y;
+                }
+            }
+        }
+    }
+    (cam_x, cam_y)
+}
+
 fn run_check(name: &str, args: &[String]) -> Option<i32> {
     match name {
         "aircheck" => Some(checks::aircheck::run(args)),
@@ -135,7 +166,12 @@ struct Game {
     seed: u64,
     world: World,
     creatures: CreatureSystem,
-    renderer: render::Renderer,
+    renderer: render::CpuRenderer,
+    /// The renderer on the graphics card. It is only there when the
+    /// game was asked to paint the picture on the card.
+    gpu: Option<render::GpuRenderer>,
+    /// The window of the world that is on the screen.
+    region: render::Region,
 
     cam_x: f32,
     cam_y: f32,
@@ -182,21 +218,8 @@ impl Game {
         let mut creatures = CreatureSystem::new(seed.wrapping_add(0x1234_5678_9ABC_DEF0));
         creatures.populate(&world, 64);
 
-        let mut cam_x: f32 = 0.0;
-        let mut cam_y: f32 = 0.0;
-
         let cam_env = std::env::var("PRIMORDIA_CAM").ok();
-        if let Some(v) = cam_env.as_deref() {
-            if !v.eq_ignore_ascii_case("zorg") {
-                let mut parts = v.split(',');
-                if let (Some(x), Some(y)) = (parts.next(), parts.next()) {
-                    if let (Ok(x), Ok(y)) = (x.trim().parse::<f32>(), y.trim().parse::<f32>()) {
-                        cam_x = x;
-                        cam_y = y;
-                    }
-                }
-            }
-        }
+        let (mut cam_x, mut cam_y) = camera_from_env(cam_env.as_deref());
 
         let wanted = std::env::var("PRIMORDIA_PANEL").ok();
         let mut ui = UiState::new();
@@ -254,7 +277,18 @@ impl Game {
             seed,
             world,
             creatures,
-            renderer: render::Renderer::new(),
+            renderer: render::CpuRenderer::new(),
+            gpu: if gpu_enabled() {
+                Some(render::GpuRenderer::new())
+            } else {
+                None
+            },
+            region: render::Region {
+                x: 0,
+                y: 0,
+                w: 0,
+                h: 0,
+            },
             cam_x,
             cam_y,
             cam_speed: 300.0,
@@ -713,27 +747,30 @@ self.paused = true;
         }
 
         if steps_taken > 0 || self.force_render {
-            self.renderer.render_region(
-                &self.world,
-                &self.creatures,
-                &mut self.region_pixels,
-                crate::render::Region {
-                    x: vis_left,
-                    y: vis_top,
-                    w: vis_width,
-                    h: vis_height,
-                },
-                crate::render::Clock {
-                    time: now,
-                    day_night: self.creatures.day_night,
-                    season: self.creatures.season,
-                    weather: self.world.weather,
-                },
-            );
-            self.region_image
-                .bytes
-                .copy_from_slice(&self.region_pixels);
-            self.region_texture.update(&self.region_image);
+            self.region = crate::render::Region {
+                x: vis_left,
+                y: vis_top,
+                w: vis_width,
+                h: vis_height,
+            };
+            if self.gpu.is_none() {
+                self.renderer.render_region(
+                    &self.world,
+                    &self.creatures,
+                    &mut self.region_pixels,
+                    self.region,
+                    crate::render::Clock {
+                        time: now,
+                        day_night: self.creatures.day_night,
+                        season: self.creatures.season,
+                        weather: self.world.weather,
+                    },
+                );
+                self.region_image
+                    .bytes
+                    .copy_from_slice(&self.region_pixels);
+                self.region_texture.update(&self.region_image);
+            }
             self.force_render = false;
             self.mini_dirty = true;
         }
@@ -780,19 +817,42 @@ self.paused = true;
     ) {
         let reg_scale_x = screen_width() / view_w;
         let reg_scale_y = screen_height() / view_h;
-        draw_texture_ex(
-            &self.region_texture,
-            (corner.0 as f32 - self.view_x) * reg_scale_x,
-            (corner.1 as f32 - self.view_y) * reg_scale_y,
-            WHITE,
-            DrawTextureParams {
-                dest_size: Some(vec2(
-                    self.region_w as f32 * reg_scale_x,
-                    self.region_h as f32 * reg_scale_y,
-                )),
-                ..Default::default()
-            },
-        );
+        let place = render::Place {
+            x: (corner.0 as f32 - self.view_x) * reg_scale_x,
+            y: (corner.1 as f32 - self.view_y) * reg_scale_y,
+            w: self.region_w as f32 * reg_scale_x,
+            h: self.region_h as f32 * reg_scale_y,
+        };
+        match self.gpu.as_mut() {
+            // The renderer on the card paints the picture straight onto
+            // the screen, so it is asked to do it where the picture goes.
+            Some(gpu) => {
+                gpu.render_region(
+                    &self.world,
+                    &self.creatures,
+                    self.region,
+                    crate::render::Clock {
+                        time: now,
+                        day_night: self.creatures.day_night,
+                        season: self.creatures.season,
+                        weather: self.world.weather,
+                    },
+                    place,
+                );
+            }
+            None => {
+                draw_texture_ex(
+                    &self.region_texture,
+                    place.x,
+                    place.y,
+                    WHITE,
+                    DrawTextureParams {
+                        dest_size: Some(vec2(place.w, place.h)),
+                        ..Default::default()
+                    },
+                );
+            }
+        }
 
         draw_vignette();
 
@@ -882,6 +942,10 @@ async fn main() {
     let argv: Vec<String> = std::env::args().collect();
     if argv.len() > 1 {
         let name = argv[1].clone();
+        if name == "rendertest" {
+            rendertest::run(&argv[2..]);
+            return;
+        }
         if let Some(code) = run_check(&name, &argv[2..]) {
             std::process::exit(code);
         }
