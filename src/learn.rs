@@ -78,19 +78,23 @@ fn read_ask(args: &[String]) -> Ask {
 }
 
 /// Write the best mind of the run out, if it is better than the one
-/// that is already in the file. It returns the fitness of the best
-/// mind there is.
-fn keep_the_best(session: &Session, ask: &Ask, best_fitness: f32) -> f32 {
+/// Write the lineage that would survive out of the world: the best of
+/// the colony, which is what the revival carries on with. It is written
+/// out when that lineage becomes another one, so the file always holds
+/// the mind that is alive right now.
+fn keep_the_best(session: &Session, ask: &Ask, seen: &mut u64) {
+    if session.champion_version == *seen {
+        return;
+    }
+    *seen = session.champion_version;
+
     let genome = session
         .champion
         .as_ref()
         .or(session.fallback_champion.as_ref());
     let Some(genome) = genome else {
-        return best_fitness;
+        return;
     };
-    if genome.fitness <= best_fitness {
-        return best_fitness;
-    }
 
     let mut model = Model::from_net(
         &genome.net,
@@ -101,17 +105,19 @@ fn keep_the_best(session: &Session, ask: &Ask, best_fitness: f32) -> f32 {
         genome.color,
     );
     model.fitness = genome.fitness;
-    model.generation = session.revival;
+    model.revival = session.revival;
+    model.generation = genome.generation;
     if let Err(err) = model.save(&ask.file) {
         eprintln!("cannot write {}: {err}", ask.file);
-        return best_fitness;
+        return;
     }
     if !ask.quiet {
-        println!("  the best mind fitted {:.3} - written to {}", model.fitness, ask.file);
+        println!(
+            "  the mind that survives fitted {:.3} - written to {}",
+            model.fitness, ask.file
+        );
     }
-    model.fitness
 }
-
 /// The learner. It ends the process when it is done.
 #[must_use]
 pub fn run(args: &[String]) -> i32 {
@@ -119,9 +125,7 @@ pub fn run(args: &[String]) -> i32 {
 
     // The mind the learning starts from: the one that is in the file,
     // if there is one.
-    let mut best_fitness = f32::MIN;
     if let Ok(model) = Model::load(&ask.file) {
-        best_fitness = model.fitness;
         if !ask.quiet {
             println!(
                 "starting from the model in {} ({} weights, fitness {:.3})",
@@ -136,6 +140,8 @@ pub fn run(args: &[String]) -> i32 {
     let mut rng = Rng::new(ask.seed);
     let mut generation: u64 = 0;
     let mut last_beat: u64 = 0;
+    // How many times the mind that would survive has changed.
+    let mut seen: u64 = 0;
 
     // The learner works for ever unless it is told how many
     // generations to do.
@@ -161,14 +167,14 @@ pub fn run(args: &[String]) -> i32 {
                     .fold(0.0f32, f32::max)
             );
         }
-        best_fitness = keep_the_best(&session, &ask, best_fitness);
+        keep_the_best(&session, &ask, &mut seen);
 
         let Some(outcome) = session.check_victory() else {
             continue;
         };
 
         // The run is over. The lineage that is carried into the next
-        // one is the mind that is written out.
+        // one is the mind that is written out: the mind that survives.
         let carried = session.carried();
         let mut saved = false;
         if let Some(genome) = &carried {
@@ -181,17 +187,14 @@ pub fn run(args: &[String]) -> i32 {
                 genome.color,
             );
             model.fitness = genome.fitness;
-            if model.fitness > best_fitness {
-                best_fitness = model.fitness;
-                model.generation = generation as u32 + 1;
-                if let Err(err) = model.save(&ask.file) {
-                    eprintln!("cannot write {}: {err}", ask.file);
-                    return 1;
-                }
-                saved = true;
+            model.revival = session.revival;
+            model.generation = generation as u32 + 1;
+            if let Err(err) = model.save(&ask.file) {
+                eprintln!("cannot write {}: {err}", ask.file);
+                return 1;
             }
+            saved = true;
         }
-
         generation += 1;
         if !ask.quiet {
             let what = match outcome {
@@ -225,7 +228,7 @@ pub fn run(args: &[String]) -> i32 {
     }
 
     println!(
-        "the learner worked through {generation} generations; the best mind fitted {best_fitness:.3} and is in {}",
+        "the learner worked through {generation} generations; the mind that survives is in {}",
         ask.file
     );
     0

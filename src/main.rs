@@ -543,6 +543,10 @@ let dt = get_frame_time();
     }
 
     fn check_victory(&mut self) {
+        // The screen of the last run is still up: it is not made again.
+        if self.victory.is_some() {
+            return;
+        }
         // The session says how the run ended: the learner works the
         // same one, so the two cannot drift apart.
         let Some(outcome) = self.session.check_victory() else {

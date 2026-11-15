@@ -26,7 +26,7 @@ use super::Net;
 const MAGIC: &[u8; 8] = b"PRIMMOD1";
 
 /// The version of the format this code writes.
-const VERSION: u32 = 1;
+const VERSION: u32 = 2;
 
 /// A model of a mind.
 #[derive(Clone, Debug)]
@@ -59,6 +59,8 @@ pub struct Model {
     pub generation: u32,
     /// How well it did.
     pub fitness: f32,
+    /// Which revival it came out of.
+    pub revival: u32,
 }
 
 impl Model {
@@ -81,6 +83,7 @@ impl Model {
             color,
             generation: 0,
             fitness: 0.0,
+            revival: 0,
         }
     }
 
@@ -151,6 +154,7 @@ impl Model {
         bytes.extend_from_slice(&self.color);
         bytes.extend_from_slice(&self.generation.to_le_bytes());
         bytes.extend_from_slice(&self.fitness.to_le_bytes());
+        bytes.extend_from_slice(&self.revival.to_le_bytes());
 
         let mut file = std::fs::File::create(Path::new(path))?;
         file.write_all(&bytes)?;
@@ -223,6 +227,7 @@ impl Model {
         color.copy_from_slice(reader.take(3)?);
         let generation = reader.number()?;
         let fitness = reader.decimal()?;
+        let revival = reader.number()?;
 
         Ok(Model {
             sizes,
@@ -239,6 +244,7 @@ impl Model {
             color,
             generation,
             fitness,
+            revival,
         })
     }
 }

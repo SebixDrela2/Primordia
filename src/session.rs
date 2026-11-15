@@ -42,6 +42,10 @@ pub struct Session {
     pub last_species: Option<u32>,
     /// How the last run ended.
     pub outcome: Option<Outcome>,
+    /// How many times the best of the colony has changed. The learner
+    /// uses it to know when the lineage that would survive has become
+    /// another one.
+    pub champion_version: u64,
 }
 
 impl Session {
@@ -63,6 +67,7 @@ impl Session {
             fallback_champion: None,
             last_species: None,
             outcome: None,
+            champion_version: 0,
         }
     }
 
@@ -82,6 +87,9 @@ impl Session {
             if self.last_species != Some(sp) || self.fallback_champion.is_none() {
                 self.last_species = Some(sp);
                 self.fallback_champion = self.creatures.champion_overall();
+                // The lineage that would survive has become another
+                // one.
+                self.champion_version += 1;
             }
         }
 
@@ -136,5 +144,58 @@ impl Session {
         self.last_species = None;
         self.fallback_champion = None;
         self.outcome = None;
+        self.champion_version += 1;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::creature::{brain_sizes, Net, Personality};
+    use crate::rng::Rng;
+
+    /// A genome to carry.
+    fn genome(generation: u32, fitness: f32) -> RevivalGenome {
+        let mut rng = Rng::new(3);
+        RevivalGenome {
+            net: Net::random(&brain_sizes(), &mut rng),
+            color: [10, 20, 30],
+            genes: [0.5; 32],
+            size: 1.0,
+            generation,
+            culture: 0,
+            personality: Personality::default(),
+            fitness,
+        }
+    }
+
+    /// The lineage of a won run must be carried into the next one, and
+    /// the next run must be a new world with a colony that carries it.
+    #[test]
+    fn a_won_run_is_carried_into_the_next_one() {
+        let mut session = Session::new(7, 8);
+        session.champion = Some(genome(4, 3.5));
+        session.outcome = Some(Outcome::Won { species: 1, zorgs: 0 });
+
+        let carried = session.carried().expect("the winner is carried");
+        assert_eq!(carried.generation, 4);
+
+        let old_seed = session.seed;
+        session.revive(old_seed.wrapping_add(1), Some(&carried));
+        assert_ne!(session.seed, old_seed);
+        assert_eq!(session.revival, 2);
+        assert!(!session.creatures.list.is_empty());
+        assert!(session.outcome.is_none());
+    }
+
+    /// A lost run must carry the best of the colony, not nothing.
+    #[test]
+    fn a_lost_run_carries_the_best_of_the_colony() {
+        let mut session = Session::new(9, 8);
+        session.fallback_champion = Some(genome(2, 1.5));
+        session.outcome = Some(Outcome::Lost { zorgs: 3 });
+        let carried = session.carried().expect("the best is carried");
+        assert_eq!(carried.generation, 2);
+    }
+}
+
