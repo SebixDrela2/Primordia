@@ -486,12 +486,9 @@ impl Creature {
         match c {
             Culture::Cultivation => 1.5,
             Culture::Mining => 1.4,
-            Culture::Warfare => 1.25,
-            Culture::Commerce => 1.35,
-            Culture::Craft => 1.3,
-            Culture::Ritual => 1.25,
-            Culture::Architecture => 1.35,
-            Culture::Hunting => 1.3,
+            Culture::Warfare | Culture::Ritual => 1.25,
+            Culture::Commerce | Culture::Architecture => 1.35,
+            Culture::Craft | Culture::Hunting => 1.3,
         }
     }
 

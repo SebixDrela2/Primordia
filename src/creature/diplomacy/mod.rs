@@ -379,8 +379,7 @@ pub fn diplomacy_reach(role: Role) -> f32 {
         Role::Queen | Role::Merchant => 14.0,
         Role::Priest | Role::Explorer => 12.0,
         Role::Shaman => 10.0,
-        Role::Soldier | Role::Builder => 8.0,
-        Role::Worker => 8.0,
+        Role::Soldier | Role::Builder | Role::Worker => 8.0,
     }
 }
 

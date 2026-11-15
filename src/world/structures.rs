@@ -139,9 +139,8 @@ impl World {
             let y = surface - 1;
             if self.get(x, y) == Elem::Empty {
                 match self.rng.range(5) {
-                    0 => self.set_xy(x, y, Elem::Tool),
+                    0 | 2 => self.set_xy(x, y, Elem::Tool),
                     1 => self.set_xy(x, y, Elem::Machine),
-                    2 => self.set_xy(x, y, Elem::Tool),
                     3 => self.set_xy(x, y, Elem::Anvil),
                     _ => self.set_xy(x, y, Elem::Furnace),
                 }

@@ -72,19 +72,15 @@ impl Landmark {
     #[must_use]
     pub fn radius(self) -> f32 {
         match self {
-            Landmark::CrystalGrove => 26.0,
-            Landmark::HotSpring => 22.0,
+            Landmark::CrystalGrove | Landmark::OldRuin => 26.0,
+            Landmark::HotSpring | Landmark::Undergrove => 22.0,
             Landmark::BoneField => 30.0,
             Landmark::FertileSoil => 34.0,
-            Landmark::OldRuin => 26.0,
-            Landmark::FungalWarren => 28.0,
+            Landmark::FungalWarren | Landmark::IronWomb => 28.0,
             Landmark::SaltFlat => 32.0,
-            Landmark::SunkenTemple => 24.0,
+            Landmark::SunkenTemple | Landmark::WhisperingStone => 24.0,
             Landmark::AmberField => 27.0,
-            Landmark::WhisperingStone => 24.0,
-            Landmark::IronWomb => 28.0,
             Landmark::Stormspire => 25.0,
-            Landmark::Undergrove => 22.0,
         }
     }
 

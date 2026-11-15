@@ -123,12 +123,12 @@ fn activation_deriv(kind: u8, y: f32) -> f32 {
                 0.0
             }
         }
-        activation::LEAKY => {
-            if y > 0.0 {
-                1.0
-            } else {
-                0.1
-            }
+        activation::LEAKY | activation::GELU => {
+        if y > 0.0 {
+        1.0
+        } else {
+        0.1
+        }
         }
         activation::TANH => {
 
@@ -139,13 +139,6 @@ fn activation_deriv(kind: u8, y: f32) -> f32 {
             let s = (y - 0.5).abs() * 2.0;
             let s = 1.0 - s;
             0.5 * s * s
-        }
-        activation::GELU => {
-            if y > 0.0 {
-                1.0
-            } else {
-                0.1
-            }
         }
         activation::SINE => 0.6 * (1.0 - y * y).max(0.0).sqrt(),
         _ => 1.0,

@@ -430,19 +430,17 @@ pub fn tech_tree() -> Vec<TechEntry> {
 #[must_use]
 pub fn tool_gate(tool: Tool) -> Option<Discovery> {
     Some(match tool {
-        Tool::Pickaxe | Tool::Spear => return None,
+        Tool::Pickaxe | Tool::Spear | Tool::None => return None,
         Tool::Sword | Tool::Hammer => Discovery::Smithing,
         Tool::Bow => Discovery::Ranged,
-        Tool::Shield => Discovery::Masonry,
+        Tool::Shield | Tool::Backpack => Discovery::Masonry,
         Tool::Cart => Discovery::Architecture,
-        Tool::Backpack => Discovery::Masonry,
         Tool::Drill => Discovery::Metallurgy,
         Tool::Scanner => Discovery::Cartography,
         Tool::Staff => Discovery::Sanctuary,
         Tool::Amulet => Discovery::Radiance,
         Tool::Sunfire => Discovery::Sanctification,
         Tool::Boat | Tool::Glider => Discovery::Navigation,
-        Tool::None => return None,
     })
 }
 

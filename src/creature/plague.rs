@@ -74,23 +74,21 @@ impl Plague {
     #[must_use]
     pub fn lethality(self) -> f32 {
         match self {
-            Plague::Flu => 0.0,
+            Plague::Flu | Plague::Parasite | Plague::Madness => 0.0,
             Plague::Plague => 0.30,
             Plague::Poison => 0.12,
             Plague::Curse => 0.08,
             Plague::Infection => 0.10,
-            Plague::Parasite | Plague::Madness => 0.0,
         }
     }
 
     #[must_use]
     pub fn drain(self) -> f32 {
         match self {
-            Plague::Flu => 0.10,
+            Plague::Flu | Plague::Infection => 0.10,
             Plague::Plague => 0.22,
             Plague::Poison => 0.14,
             Plague::Curse => 0.12,
-            Plague::Infection => 0.10,
             Plague::Parasite => 0.30,
             Plague::Madness => 0.08,
         }
@@ -100,12 +98,9 @@ impl Plague {
     pub fn slowness(self) -> f32 {
         match self {
             Plague::Flu => 0.7,
-            Plague::Plague => 0.8,
-            Plague::Poison => 0.85,
-            Plague::Curse => 0.9,
-            Plague::Infection => 0.8,
-            Plague::Parasite => 0.9,
-            Plague::Madness => 0.85,
+            Plague::Plague | Plague::Infection => 0.8,
+            Plague::Poison | Plague::Madness => 0.85,
+            Plague::Curse | Plague::Parasite => 0.9,
         }
     }
 
@@ -219,14 +214,13 @@ pub fn immunity_from_genes(genes: &[f32; 32]) -> [u8; 8] {
 impl From<Disease> for Plague {
     fn from(d: Disease) -> Plague {
         match d {
-            Disease::Flu => Plague::Flu,
+            Disease::Flu | Disease::None => Plague::Flu,
             Disease::Plague => Plague::Plague,
             Disease::Poison => Plague::Poison,
             Disease::Curse => Plague::Curse,
             Disease::Infection => Plague::Infection,
             Disease::Parasite => Plague::Parasite,
             Disease::Madness => Plague::Madness,
-            Disease::None => Plague::Flu,
         }
     }
 }

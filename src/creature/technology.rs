@@ -228,9 +228,9 @@ impl Discovery {
     #[must_use]
     pub fn tier(self) -> u8 {
         match self {
-            Discovery::Husbandry | Discovery::Pottery => 1,
+            Discovery::Husbandry | Discovery::Pottery | Discovery::Cognition => 1,
             Discovery::Smithing | Discovery::Ranged => 2,
-            Discovery::Architecture | Discovery::Masonry => 3,
+            Discovery::Architecture | Discovery::Masonry | Discovery::GrandCognition => 3,
             Discovery::Commerce | Discovery::Cartography => 4,
             Discovery::Medicine | Discovery::Herbalism | Discovery::Surgery => 5,
             Discovery::DeepMining | Discovery::Geodesy | Discovery::Smelting => 6,
@@ -248,8 +248,6 @@ impl Discovery {
             | Discovery::Alchemy
             | Discovery::Deepdiving
             | Discovery::Dominion => 10,
-            Discovery::Cognition => 1,
-            Discovery::GrandCognition => 3,
         }
     }
 
@@ -351,34 +349,23 @@ impl Discovery {
         match self {
             Discovery::Smithing => &[Culture::Craft, Culture::Mining],
             Discovery::Husbandry => &[Culture::Cultivation],
-            Discovery::Pottery => &[Culture::Craft],
-            Discovery::Ranged => &[Culture::Craft, Culture::Warfare],
+            Discovery::Pottery | Discovery::Cognition => &[Culture::Craft],
+            Discovery::Ranged | Discovery::Cartography | Discovery::Siegecraft => &[Culture::Craft, Culture::Warfare],
             Discovery::Architecture => &[Culture::Architecture],
             Discovery::Masonry => &[Culture::Craft, Culture::Architecture],
             Discovery::Metallurgy => &[Culture::Craft, Culture::Mining],
             Discovery::Commerce => &[Culture::Commerce, Culture::Ritual],
-            Discovery::Cartography => &[Culture::Craft, Culture::Warfare],
-            Discovery::Medicine => &[Culture::Craft, Culture::Ritual],
+            Discovery::Medicine | Discovery::Antitoxins | Discovery::Sanctification | Discovery::Sunfirecraft | Discovery::Alchemy | Discovery::Deepdiving => &[Culture::Craft, Culture::Ritual],
             Discovery::Herbalism => &[Culture::Cultivation, Culture::Ritual],
-            Discovery::Surgery => &[Culture::Ritual, Culture::Craft],
+            Discovery::Surgery | Discovery::Geodesy | Discovery::Purge | Discovery::Radiance => &[Culture::Ritual, Culture::Craft],
             Discovery::Astronomy | Discovery::Sanctuary => &[Culture::Ritual],
             Discovery::Navigation => &[Culture::Warfare, Culture::Craft],
             Discovery::DeepMining => &[Culture::Mining, Culture::Craft],
-            Discovery::Geodesy => &[Culture::Ritual, Culture::Craft],
             Discovery::Smelting => &[Culture::Craft, Culture::Mining],
-            Discovery::Antitoxins => &[Culture::Craft, Culture::Ritual],
-            Discovery::Purge => &[Culture::Ritual, Culture::Craft],
             Discovery::Wardcraft => &[Culture::Architecture, Culture::Ritual],
-            Discovery::Sanctification => &[Culture::Craft, Culture::Ritual],
-            Discovery::Sunfirecraft => &[Culture::Craft, Culture::Ritual],
-            Discovery::Radiance => &[Culture::Ritual, Culture::Craft],
-            Discovery::Siegecraft => &[Culture::Craft, Culture::Warfare],
             Discovery::Tactics => &[Culture::Warfare, Culture::Ritual],
             Discovery::Ironwill => &[Culture::Warfare, Culture::Cultivation],
-            Discovery::Alchemy => &[Culture::Craft, Culture::Ritual],
-            Discovery::Deepdiving => &[Culture::Craft, Culture::Ritual],
             Discovery::Dominion => &[Culture::Architecture, Culture::Craft],
-            Discovery::Cognition => &[Culture::Craft],
             Discovery::GrandCognition => &[Culture::Craft, Culture::Mining],
         }
     }
@@ -458,8 +445,7 @@ pub mod activity {
             4 => TRADE,
             5 => EAT,
             6 => MINE,
-            7 => CAST,
-            8 => CAST,
+            7 | 8 => CAST,
             9 => ATTACK,
             _ => BUILD,
         }

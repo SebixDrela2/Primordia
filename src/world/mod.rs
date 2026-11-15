@@ -128,10 +128,9 @@ impl Weather {
     pub fn speed_factor(self) -> f32 {
         match self {
             Weather::Clear => 1.0,
-            Weather::Rain => 0.9,
+            Weather::Rain | Weather::Meteor => 0.9,
             Weather::Storm => 0.72,
             Weather::Snow => 0.84,
-            Weather::Meteor => 0.9,
             Weather::Fog => 0.88,
             Weather::Heatwave => 0.95,
             Weather::Sandstorm => 0.78,
