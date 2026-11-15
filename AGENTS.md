@@ -95,15 +95,26 @@
   the colony out every 50 000 ticks, so that a long run in which
   nobody wins is not wasted either. The learner can be stopped at any
   moment and the work is still there.
+  Every mind that is written out says which **generation of learning**
+  it comes from: the first world the learner works through is
+  generation one, and every revival is the next generation. The learner
+  starts from the mind in the file when there is one, so stopping it
+  and starting it again carries the learning on rather than beginning
+  it over.
 - `primordia --run [--file model.bin]` is the **run**: the game itself,
   with the colony given the mind that was learned. The minds do not
   learn anything new, so what is seen is the doing of the weights that
-  were saved, and the picture is quicker for it. A panel down the left
-  of the screen shows the story of the run: the colony, the best of
-  them, and what was eaten.
+  were saved, and the picture is quicker for it. The heads-up display
+  says which generation the mind comes from, how many weights it has
+  and how many ticks of learning went into it, and then the story of
+  the colony: how many are alive, how well the best of them is doing
+  and what has been eaten.
 - The model file is a small file of numbers with a head that says what
   version it is (`src/creature/model.rs`). A file of the wrong version
-  is refused rather than read as nonsense.
+  is refused rather than read as nonsense. It holds the weights and the
+  biases of the mind, the genes, the traits, the temperament and the
+  culture that go with them, the generation of learning the mind comes
+  from, and how many ticks of learning have gone into it.
 
 ## Code size rules
 - **No file may exceed ~1000 lines.** A file may run slightly over that

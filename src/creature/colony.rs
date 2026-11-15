@@ -1,4 +1,4 @@
-use super::{CreatureSystem, Rng, CreatureStats, PredationMemory, Diplomacy, World, Role, in_crisis, Elem, ZORG_START, RevivalGenome, Faction, MAX_POP, CreatureGenesis, ZORG_MIN, ZORG_POP_CAP, discovery_bits, culture_bits, gene_distance, Creature, Personality, Affinity, decode_traits};
+use super::{CreatureSystem, Rng, CreatureStats, PredationMemory, Diplomacy, World, Role, in_crisis, Elem, ZORG_START, RevivalGenome, Faction, MAX_POP, CreatureGenesis, ZORG_MIN, ZORG_POP_CAP, discovery_bits, culture_bits, gene_distance, Creature, Personality, Affinity, decode_traits, Model};
 
 impl CreatureSystem {
     #[must_use]
@@ -183,6 +183,24 @@ impl CreatureSystem {
 
         self.spawn_zorgs(world, ZORG_START);
         self.update_stats();
+    }
+
+    /// Give the colony the mind of a model: the same weights, the same
+    /// genes and the same temperament for every one of them. The ZORGs
+    /// are left alone: they are not the colony.
+    pub fn give_the_mind(&mut self, model: &Model) {
+        let net = model.to_net();
+        for c in &mut self.list {
+            if c.faction == Faction::Zorg {
+                continue;
+            }
+            c.net = net.clone_net();
+            c.genes = model.genes;
+            c.traits = model.traits;
+            c.culture = model.culture;
+            c.size = model.size;
+            c.personality = model.personality;
+        }
     }
 
     #[must_use]

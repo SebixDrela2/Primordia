@@ -1,4 +1,4 @@
-use crate::creature::{CreatureSystem, trait_list};
+use crate::creature::{CreatureSystem, Faction, trait_list};
 use crate::ui::diplomacy::diplomacy_summary;
 use crate::world::World;
 use crate::W;
@@ -249,6 +249,19 @@ fn mind_summary(creatures: &CreatureSystem, species: u32) -> String {
     }
 }
 
+/// What the heads-up display needs to know about the model the run is
+/// on: the generation of learning the mind comes from, how big it is
+/// and how much learning has gone into it.
+#[derive(Clone, Copy)]
+pub struct ModelInfo {
+    /// Which generation of learning the mind comes from.
+    pub generation: u32,
+    /// How many weights it has.
+    pub weights: usize,
+    /// How many ticks of learning went into it.
+    pub ticks: u64,
+}
+
 /// What the heads-up display needs to know about the run: where the
 /// camera is, how fast the world runs, whether it is paused and how the
 /// run itself is going. These belong together, so they travel in one
@@ -261,6 +274,9 @@ pub struct HudState {
     pub paused: bool,
     pub zoom: f32,
     pub revival: u32,
+    /// The model the run is on, when the game was run on one that was
+    /// learned.
+    pub model: Option<ModelInfo>,
 }
 
 pub fn draw_hud(world: &World, creatures: &CreatureSystem, hud: &HudState) {
@@ -361,7 +377,7 @@ fn hud_head_lines(ctx: &HudContext) -> Vec<HudLine> {
     let stats = &creatures.stats;
 
     let line1 = format!(
-        "seed {}   REVIVAL {}   {} organisms   {} species   gen {}",
+        "seed {}   REVIVAL {}   {} organisms   {} species   colony gen {}",
         hud.seed, hud.revival, stats.population, stats.species, stats.max_generation
     );
 
@@ -434,6 +450,7 @@ fn hud_head_lines(ctx: &HudContext) -> Vec<HudLine> {
 fn hud_tail_lines(ctx: &HudContext) -> Vec<HudLine> {
     let world = ctx.world;
     let creatures = ctx.creatures;
+    let hud = ctx.hud;
     let stats = &creatures.stats;
 
     let p = &world.pressure;
@@ -470,12 +487,50 @@ fn hud_tail_lines(ctx: &HudContext) -> Vec<HudLine> {
         format!("SUCCESSION CRISIS: {}", names.join(", "))
     };
 
-    vec![
+    let mut all_lines = vec![
         HudLine { text: line7, y: 198.0, size: 15.0, color: Color::new(0.85, 0.55, 0.45, 0.8) },
         HudLine { text: line8, y: 218.0, size: 15.0, color: Color::new(0.45, 0.7, 1.0, 0.82) },
         HudLine { text: line9, y: 238.0, size: 15.0, color: Color::new(0.8, 0.65, 0.85, 0.82) },
         HudLine { text: line10, y: 258.0, size: 15.0, color: Color::new(0.95, 0.55, 0.35, 0.9) },
-    ]
+    ];
+
+    // The model the run is on, and the story of the colony: what the
+    // saved mind is doing, and that it is not learning anything.
+    if let Some(model) = hud.model {
+        all_lines.push(HudLine {
+            text: format!(
+                "the mind: generation {} of learning, {} weights, learned over {} ticks - it does not learn",
+                model.generation, model.weights, model.ticks
+            ),
+            y: 278.0,
+            size: 15.0,
+            color: Color::new(0.55, 0.85, 0.7, 0.85),
+        });
+        all_lines.push(HudLine {
+            text: format!(
+                "the colony: {} alive, the best {:.3}, {} eaten, {} built",
+                stats.population,
+                best_fitness(creatures),
+                creatures.eats_total,
+                creatures.builds_total
+            ),
+            y: 298.0,
+            size: 15.0,
+            color: Color::new(0.6, 0.8, 0.95, 0.82),
+        });
+    }
+
+    all_lines
+}
+
+/// The fittest animal of the colony.
+fn best_fitness(creatures: &CreatureSystem) -> f32 {
+    creatures
+        .list
+        .iter()
+        .filter(|c| c.faction == Faction::Player)
+        .map(|c| c.fitness)
+        .fold(0.0f32, f32::max)
 }
 
 /// The ten lines of numbers, drawn one under the other.

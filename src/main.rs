@@ -93,7 +93,8 @@ fn model_from_env() -> Option<Model> {
     match Model::load(&path) {
         Ok(model) => {
             eprintln!(
-                "running the model in {path} ({} weights, fitness {:.3})",
+                "running the model in {path} (generation {}, {} weights, fitness {:.3})",
+                model.generation,
                 model.weight_count(),
                 model.fitness
             );
@@ -127,17 +128,7 @@ fn model_path() -> String {
 /// learning.
 fn apply_model(creatures: &mut CreatureSystem, model: &Model) {
     creatures.learn = false;
-    for c in &mut creatures.list {
-        if c.faction == primordia::creature::Faction::Zorg {
-            continue;
-        }
-        c.net = model.to_net();
-        c.genes = model.genes;
-        c.traits = model.traits;
-        c.culture = model.culture;
-        c.size = model.size;
-        c.personality = model.personality;
-    }
+    creatures.give_the_mind(model);
 }
 
 fn window_conf() -> Conf {
@@ -218,8 +209,6 @@ struct Game {
     /// The model the colony is running on, when the game is run on one
     /// that was learned.
     model: Option<Model>,
-    /// The story of the run, for the panel.
-    story: primordia::ui::report::Story,
     /// The renderer on the graphics card. It paints the picture.
     gpu: render::GpuRenderer,
     /// The window of the world that is on the screen.
@@ -324,7 +313,6 @@ impl Game {
             seed,
             session,
             model,
-            story: primordia::ui::report::Story::new(),
             gpu: render::GpuRenderer::new(),
             region: render::Region {
                 x: 0,
@@ -371,7 +359,6 @@ impl Game {
         self.observe(now, dt);
         self.check_victory();
         self.advance_victory(dt);
-        self.story.note(&self.session.creatures);
 
         let view_w = VIEW_W as f32 / self.zoom;
         let view_h = VIEW_H as f32 / self.zoom;
@@ -838,16 +825,6 @@ self.paused = true;
         );
         self.effects.draw(self.view_x, self.view_y, screen_width() / view_w, screen_height() / view_h);
 
-        // The panel of the run, when the game is run on a model.
-        if let Some(model) = &self.model {
-            primordia::ui::report::draw_panel(
-                &self.story,
-                model,
-                screen_width(),
-                screen_height(),
-            );
-        }
-
         draw_minimap(
             &self.session.creatures,
             &self.session.world,
@@ -868,6 +845,11 @@ self.paused = true;
                 paused: self.paused,
                 zoom: self.zoom,
                 revival: self.session.revival,
+                model: self.model.as_ref().map(|m| primordia::ui::hud::ModelInfo {
+                    generation: m.generation,
+                    weights: m.weight_count(),
+                    ticks: m.ticks,
+                }),
             },
         );
         if screen_width() >= 1080.0 {

@@ -15,7 +15,9 @@
 //!   connections and the bias that goes with them),
 //! - the genes of the creature the network belongs to, so that the
 //!   traits and the body come with it,
-//! - what the creature had learnt (its culture) and how well it did.
+//! - what the creature had learnt (its culture) and how well it did,
+//! - the generation of learning the mind comes from, and how many ticks
+//!   of learning have gone into it.
 
 use std::io::{Read, Write};
 use std::path::Path;
@@ -26,7 +28,7 @@ use super::{Net, Personality};
 const MAGIC: &[u8; 8] = b"PRIMMOD1";
 
 /// The version of the format this code writes.
-const VERSION: u32 = 3;
+const VERSION: u32 = 4;
 
 /// A model of a mind.
 #[derive(Clone, Debug)]
@@ -57,12 +59,16 @@ pub struct Model {
     pub size: f32,
     /// The colour of the species.
     pub color: [u8; 3],
-    /// How many generations it is old.
+    /// The generation of learning the mind comes from: the world of the
+    /// learner it was learned in. The first world is generation one.
     pub generation: u32,
     /// How well it did.
     pub fitness: f32,
-    /// Which revival it came out of.
-    pub revival: u32,
+    /// How many breeding generations the mind is old. A child is one
+    /// generation on from its parent.
+    pub lineage: u32,
+    /// How many ticks of learning have gone into it.
+    pub ticks: u64,
 }
 
 impl Model {
@@ -94,7 +100,8 @@ impl Model {
             color,
             generation: 0,
             fitness: 0.0,
-            revival: 0,
+            lineage: 0,
+            ticks: 0,
         }
     }
 
@@ -174,7 +181,8 @@ impl Model {
         bytes.extend_from_slice(&self.color);
         bytes.extend_from_slice(&self.generation.to_le_bytes());
         bytes.extend_from_slice(&self.fitness.to_le_bytes());
-        bytes.extend_from_slice(&self.revival.to_le_bytes());
+        bytes.extend_from_slice(&self.lineage.to_le_bytes());
+        bytes.extend_from_slice(&self.ticks.to_le_bytes());
 
         let mut file = std::fs::File::create(Path::new(path))?;
         file.write_all(&bytes)?;
@@ -254,7 +262,8 @@ impl Model {
         color.copy_from_slice(reader.take(3)?);
         let generation = reader.number()?;
         let fitness = reader.decimal()?;
-        let revival = reader.number()?;
+        let lineage = reader.number()?;
+        let ticks = reader.big_number()?;
 
         Ok(Model {
             sizes,
@@ -272,7 +281,8 @@ impl Model {
             color,
             generation,
             fitness,
-            revival,
+            lineage,
+            ticks,
         })
     }
 }
@@ -298,6 +308,11 @@ impl<'a> Reader<'a> {
 
     fn number(&mut self) -> std::io::Result<u32> {
         Ok(u32::from_le_bytes(self.take(4)?.try_into().unwrap()))
+    }
+
+    /// A number that does not fit in four bytes.
+    fn big_number(&mut self) -> std::io::Result<u64> {
+        Ok(u64::from_le_bytes(self.take(8)?.try_into().unwrap()))
     }
 
     fn short(&mut self) -> std::io::Result<u16> {

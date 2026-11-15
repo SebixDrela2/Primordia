@@ -83,16 +83,15 @@ const SAVE_EVERY: u64 = 50_000;
 
 /// Write a mind out to the file.
 ///
-/// The generation of the model is the number of generations of
-/// learning it has been through, and not the generation of the
-/// creature it came from.
+/// The generation of the model is the generation of learning it comes
+/// from: the world of the learner it was learned in. The first world is
+/// generation one, and every revival is the next generation.
 fn write_model(
     genome: &RevivalGenome,
     session: &Session,
     ask: &Ask,
-    generation: u64,
-    note: &str,
-) {
+    ticks: u64,
+) -> Option<Model> {
     let mut model = Model::from_net(
         &genome.net,
         genome.genes,
@@ -103,25 +102,35 @@ fn write_model(
         genome.personality,
     );
     model.fitness = genome.fitness;
-    model.revival = session.revival;
-    model.generation = generation as u32;
+    // The generation of learning: the world this mind was learned in.
+    model.generation = session.revival;
+    // How old the mind is in breedings.
+    model.lineage = genome.generation;
+    // And this is how much learning has gone into it.
+    model.ticks = ticks;
     if let Err(err) = model.save(&ask.file) {
         eprintln!("cannot write {}: {err}", ask.file);
+        return None;
+    }
+    Some(model)
+}
+
+/// Say that a mind has been written out.
+fn say_written(ask: &Ask, model: &Model, note: &str) {
+    if ask.quiet {
         return;
     }
-    if !ask.quiet {
-        println!(
-            "  {note} fitted {:.3} - written to {}",
-            model.fitness, ask.file
-        );
-    }
+    println!(
+        "  {note} fitted {:.3} - generation {} - written to {}",
+        model.fitness, model.generation, ask.file
+    );
 }
 
 /// Write the lineage that would survive out of the world: the best of
 /// the colony, which is what the revival carries on with. It is written
 /// out when that lineage becomes another one, so the file always holds
 /// the mind that is alive right now.
-fn keep_the_best(session: &Session, ask: &Ask, seen: &mut u64, generation: u64) {
+fn keep_the_best(session: &Session, ask: &Ask, seen: &mut u64, ticks: u64) {
     if session.champion_version == *seen {
         return;
     }
@@ -134,12 +143,14 @@ fn keep_the_best(session: &Session, ask: &Ask, seen: &mut u64, generation: u64) 
     let Some(genome) = genome else {
         return;
     };
-    write_model(genome, session, ask, generation, "the mind that survives");
+    if let Some(model) = write_model(genome, session, ask, ticks) {
+        say_written(ask, &model, "the mind that survives");
+    }
 }
 
 /// Write the best of the colony out every so many ticks, so that the
 /// work of a long run is not lost when nobody wins.
-fn keep_it_safe(session: &Session, ask: &Ask, last: &mut u64, generation: u64) {
+fn keep_it_safe(session: &Session, ask: &Ask, last: &mut u64, ticks: u64) {
     let tick = session.creatures.tick;
     if tick < *last {
         // A new run: the clock starts again.
@@ -154,7 +165,9 @@ fn keep_it_safe(session: &Session, ask: &Ask, last: &mut u64, generation: u64) {
     let Some(genome) = session.creatures.champion_overall() else {
         return;
     };
-    write_model(&genome, session, ask, generation, "the best of the colony");
+    if let Some(model) = write_model(&genome, session, ask, ticks) {
+        say_written(ask, &model, "the best of the colony");
+    }
 }
 /// The learner. It ends the process when it is done.
 #[must_use]
@@ -163,11 +176,13 @@ pub fn run(args: &[String]) -> i32 {
 
     // The mind the learning starts from: the one that is in the file,
     // if there is one.
-    if let Ok(model) = Model::load(&ask.file) {
+    let saved = Model::load(&ask.file).ok();
+    if let Some(model) = &saved {
         if !ask.quiet {
             println!(
-                "starting from the model in {} ({} weights, fitness {:.3})",
+                "starting from the model in {} (generation {}, {} weights, fitness {:.3})",
                 ask.file,
+                model.generation,
                 model.weight_count(),
                 model.fitness
             );
@@ -175,6 +190,13 @@ pub fn run(args: &[String]) -> i32 {
     }
 
     let mut session = Session::new(ask.seed, ask.pop);
+    // The learning carries on from the mind in the file: the colony is
+    // given it, and the generation of learning goes on from where the
+    // file left off.
+    if let Some(model) = &saved {
+        session.creatures.give_the_mind(model);
+        session.revival = model.generation.max(1);
+    }
     let mut rng = Rng::new(ask.seed);
     let mut generation: u64 = 0;
     let mut last_beat: u64 = 0;
@@ -182,6 +204,8 @@ pub fn run(args: &[String]) -> i32 {
     let mut seen: u64 = 0;
     // When the model was last written out.
     let mut last_save: u64 = 0;
+    // How many ticks of learning there have been.
+    let mut learned: u64 = 0;
 
     // The learner works for ever unless it is told how many
     // generations to do.
@@ -189,6 +213,7 @@ pub fn run(args: &[String]) -> i32 {
         // The world turns and the colony lives. This is the whole
         // game, with nothing drawn.
         session.step();
+        learned += 1;
         // The things that happened are for the picture, and there is no
         // picture here, so they are thrown away.
         session.creatures.events.clear();
@@ -210,10 +235,10 @@ pub fn run(args: &[String]) -> i32 {
                     .fold(0.0f32, f32::max)
             );
         }
-        keep_the_best(&session, &ask, &mut seen, generation);
+        keep_the_best(&session, &ask, &mut seen, learned);
         // And every so many ticks the best of the colony is written
         // out, so that a long run without a winner is not wasted.
-        keep_it_safe(&session, &ask, &mut last_save, generation);
+        keep_it_safe(&session, &ask, &mut last_save, learned);
 
         let Some(outcome) = session.check_victory() else {
             continue;
@@ -224,24 +249,12 @@ pub fn run(args: &[String]) -> i32 {
         let carried = session.carried();
         let mut saved = false;
         if let Some(genome) = &carried {
-            let mut model = Model::from_net(
-                &genome.net,
-                genome.genes,
-                crate::creature::decode_traits(&genome.genes),
-                genome.culture,
-                genome.size,
-                genome.color,
-                genome.personality,
-            );
-            model.fitness = genome.fitness;
-            model.revival = session.revival;
-            model.generation = generation as u32 + 1;
-            if let Err(err) = model.save(&ask.file) {
-                eprintln!("cannot write {}: {err}", ask.file);
+            saved = write_model(genome, &session, &ask, learned).is_some();
+            if !saved {
                 return 1;
             }
-            saved = true;
-        }        generation += 1;
+        }
+        generation += 1;
         if !ask.quiet {
             let what = match outcome {
                 Outcome::Won { species, zorgs } => {
@@ -251,7 +264,8 @@ pub fn run(args: &[String]) -> i32 {
                 Outcome::Extinct => "nothing was left".to_owned(),
             };
             println!(
-                "generation {generation:>3}: {what} - {} alive, the best fitted {:.3}{}",
+                "generation {:>3}: {what} - {} alive, the best fitted {:.3}{}",
+                session.revival,
                 session.creatures.list.len(),
                 carried.as_ref().map_or(0.0, |g| g.fitness),
                 if saved {
@@ -274,8 +288,8 @@ pub fn run(args: &[String]) -> i32 {
     }
 
     println!(
-        "the learner worked through {generation} generations; the mind that survives is in {}",
-        ask.file
+        "the learner worked through {generation} generations; the mind that survives is in {} (generation {})",
+        ask.file, session.revival
     );
     0
 }
