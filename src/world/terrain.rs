@@ -14,11 +14,16 @@ impl World {
         (h * 0.66 + wobble).clamp(lo, hi) as i32
     }
 
+    /// Put a cell back on the next active list.
+    ///
+    /// `k` is the cell's element byte. The caller usually already has
+    /// it in hand, and reading `self.kind[i]` again here is a second
+    /// bounds-checked read of the same array in the hottest loop of the
+    /// whole world step.
     #[inline]
-    pub fn mark_active(&mut self, i: usize) {
-        let k = self.kind[i];
-        if k != Elem::Empty as u8 && !self.inert[k as usize] && !self.listed[i] {
-            self.listed[i] = true;
+    pub fn mark_active(&mut self, i: usize, k: u8) {
+        if k != Elem::Empty as u8 && !self.inert[k as usize] && self.listed[i] == 0 {
+            self.listed[i] = 1;
             self.next_active.push(i as u32);
         }
     }
@@ -27,10 +32,10 @@ impl World {
 
         self.next_active.clear();
         for i in 0..self.listed.len() {
-            self.listed[i] = false;
+            self.listed[i] = 0;
             let k = self.kind[i];
             if k != Elem::Empty as u8 && !self.inert[k as usize] {
-                self.listed[i] = true;
+                self.listed[i] = 1;
                 self.next_active.push(i as u32);
             }
         }

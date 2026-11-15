@@ -19,14 +19,17 @@ impl World {
         for ai in 0..n_active {
             let i = self.active[ai] as usize;
 
-            self.listed[i] = false;
+            self.listed[i] = 0;
             let e = Elem::from_u8(self.kind[i]);
             if e == Elem::Empty || self.inert[e as usize] {
                 continue;
             }
             self.update_cell(i, e);
 
-            self.mark_active(i);
+            // The cell may have changed while it was being updated, so
+            // its element byte is read again here.
+            let k = self.kind[i];
+            self.mark_active(i, k);
         }
 
         self.maintain();

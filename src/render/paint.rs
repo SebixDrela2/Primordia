@@ -19,7 +19,6 @@ struct SkyState {
     season_b: f32,
     haze: f32,
     haze_col: [f32; 3],
-    weather_dim: f32,
     flash: f32,
     shimmer: bool,
     aurora: bool,
@@ -28,6 +27,21 @@ struct SkyState {
     is_day: bool,
     gw: usize,
     gh: usize,
+    /// How much cloud there is, and the colour of it. These are the same
+    /// for every pixel of the picture, so they are worked out once.
+    cloud_cover: f32,
+    cloud_cr: f32,
+    cloud_cg: f32,
+    cloud_cb: f32,
+}
+
+/// The cloud of one row. The cloud is only worked out every third column
+/// and then carried along the row, so the amount of cloud is worked out
+/// with it.
+#[derive(Clone, Copy)]
+struct Cloud {
+    value: f32,
+    amount: f32,
 }
 
 /// The colour of one pixel, before it is written into the picture.
@@ -48,6 +62,11 @@ struct RowCtx<'a> {
     row_band: f32,
     ny2: f32,
     glow_row: usize,
+    /// Where this row sits in the cloud grid, and how far into the cell
+    /// it is. The same for every column of the row, so it is worked out
+    /// once when the row is set up.
+    cloud_gy0: usize,
+    cloud_ty: f32,
 }
 
 /// One pixel of the picture: where it is, what is in it, and what the
@@ -126,7 +145,6 @@ fn sky_state(world_w: usize, world_h: usize, clock: &Clock) -> SkyState {
         season_b: 0.96 + 0.04 * sb,
         haze: weather_haze,
         haze_col,
-        weather_dim,
         flash,
         shimmer,
         aurora: day < 0.32,
@@ -135,6 +153,10 @@ fn sky_state(world_w: usize, world_h: usize, clock: &Clock) -> SkyState {
         is_day: day > 0.25,
         gw: (world_w as f32 / GSX) as usize + 2,
         gh: (world_h as f32 / GSY) as usize + 2,
+        cloud_cover: 0.20 + 0.32 * day + weather_dim * 0.9,
+        cloud_cr: 206.0 - weather_dim * 90.0,
+        cloud_cg: 214.0 - weather_dim * 90.0,
+        cloud_cb: 232.0 - weather_dim * 60.0,
     }
 }
 
@@ -170,6 +192,10 @@ fn row_context<'a>(
             * ((row_y as f32 * 0.11).sin() * 0.5 + 0.5),
         ny2: ny * ny,
         glow_row: (ry as usize / bloom::STEP).min(tables.bloom.h.saturating_sub(1)),
+        // The cloud grid position of this row. It is the same for every
+        // column, so it is worked out once here.
+        cloud_gy0: 0,
+        cloud_ty: 0.0,
     }
 }
 
@@ -254,7 +280,7 @@ fn sky_aurora(p: &PixelCtx<'_>, rgb: &mut Rgb) {
 
 /// The cloud, which is only worked out every third column and then
 /// carried along the row.
-fn sky_cloud(p: &PixelCtx<'_>, rgb: &mut Rgb, cloud_value: &mut f32) {
+fn sky_cloud(p: &PixelCtx<'_>, rgb: &mut Rgb, cloud: &mut Cloud) {
     let sky = p.sky;
     let surf = p.world.ground[p.xr] as f32;
     if (p.y as f32) >= surf * 0.6 {
@@ -262,31 +288,25 @@ fn sky_cloud(p: &PixelCtx<'_>, rgb: &mut Rgb, cloud_value: &mut f32) {
     }
     if p.rx.is_multiple_of(3) {
         let fx = p.x as f32 / GSX;
-        let fy = p.y as f32 / GSY;
         let gx0 = (fx.floor() as usize).min(sky.gw - 2);
-        let gy0 = (fy.floor() as usize).min(sky.gh - 2);
         let tx = fx - gx0 as f32;
-        let ty = fy - gy0 as f32;
-        *cloud_value = sample_cloud(p.tables.cloud_row, sky.gw, gx0, gy0, tx, ty);
+        cloud.value = sample_cloud(p.tables.cloud_row, sky.gw, gx0, p.row.cloud_gy0, tx, p.row.cloud_ty);
+        cloud.amount = smoothstep(0.56, 0.78, cloud.value) * sky.cloud_cover;
     }
 
-    let cover = 0.20 + 0.32 * sky.day + sky.weather_dim * 0.9;
-    let amt = smoothstep(0.56, 0.78, *cloud_value) * cover;
+    let amt = cloud.amount;
     if amt > 0.002 {
-        let cr = 206.0 - sky.weather_dim * 90.0;
-        let cg = 214.0 - sky.weather_dim * 90.0;
-        let cb = 232.0 - sky.weather_dim * 60.0;
-        rgb.r += (cr - rgb.r) * amt;
-        rgb.g += (cg - rgb.g) * amt;
-        rgb.b += (cb - rgb.b) * amt;
+        rgb.r += (sky.cloud_cr - rgb.r) * amt;
+        rgb.g += (sky.cloud_cg - rgb.g) * amt;
+        rgb.b += (sky.cloud_cb - rgb.b) * amt;
     }
 }
 
 /// Paint the sky above the ground.
-fn paint_sky(p: &PixelCtx<'_>, cloud_value: &mut f32) -> Rgb {
+fn paint_sky(p: &PixelCtx<'_>, cloud: &mut Cloud) -> Rgb {
     let mut rgb = sky_gradient(p);
     sky_aurora(p, &mut rgb);
-    sky_cloud(p, &mut rgb, cloud_value);
+    sky_cloud(p, &mut rgb, cloud);
     rgb
 }
 
@@ -585,7 +605,7 @@ fn paint_cell(p: &PixelCtx<'_>) -> Rgb {
 }
 
 /// Paint one pixel of the picture.
-fn paint_pixel(p: &PixelCtx<'_>, elem_byte: u8, cloud_value: &mut f32) -> Rgb {
+fn paint_pixel(p: &PixelCtx<'_>, elem_byte: u8, cloud: &mut Cloud) -> Rgb {
     if elem_byte != Elem::Empty as u8 {
         return paint_cell(p);
     }
@@ -594,7 +614,7 @@ fn paint_pixel(p: &PixelCtx<'_>, elem_byte: u8, cloud_value: &mut f32) -> Rgb {
         return paint_ground(p);
     }
 
-    let mut rgb = paint_sky(p, cloud_value);
+    let mut rgb = paint_sky(p, cloud);
     let gcol = (p.rx / bloom::STEP + 1).min(p.tables.bloom.w - 1);
     let gl = p.tables.bloom.at(p.row.glow_row, gcol);
     rgb.r += gl[0] * bloom::STRENGTH;
@@ -641,8 +661,11 @@ pub(super) fn paint(
         if row_y < 0 || row_y >= world_h as i32 {
             continue;
         }
-        let mut cloud_value = 0.0f32;
-        let row = row_context(world, tables, geom, row_y, ry);
+        let mut cloud = Cloud { value: 0.0, amount: 0.0 };
+        let mut row = row_context(world, tables, geom, row_y, ry);
+        let fy = row_y as f32 / GSY;
+        row.cloud_gy0 = (fy.floor() as usize).min(sky.gh - 2);
+        row.cloud_ty = fy - row.cloud_gy0 as f32;
 
         for rx in 0..rw {
             let col_x = x0 + rx;
@@ -668,7 +691,7 @@ pub(super) fn paint(
                 light_col,
             };
 
-            let rgb = paint_pixel(&pixel, elem_byte, &mut cloud_value);
+            let rgb = paint_pixel(&pixel, elem_byte, &mut cloud);
 
             buf[offset] = clamp_u8(rgb.r);
             buf[offset + 1] = clamp_u8(rgb.g);

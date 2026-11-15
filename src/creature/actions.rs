@@ -69,10 +69,19 @@ fn scan_neighbours(
         }
         let dx = ox - c.x;
         let dy = oy - c.y;
-        let d = (dx * dx + dy * dy).sqrt();
+        let d2 = dx * dx + dy * dy;
 
         let fright = ctx.fear.fear_of(c.species, ospecies) * 0.22;
         let run = flee_range + fright;
+        // A creature that is further away than both the flee range and
+        // the hunt range is of no use, so the square root is not worked
+        // out for it.
+        let far = run.max(hunt_range);
+        if d2 > far * far + 1.0 {
+            return;
+        }
+        let d = d2.sqrt();
+
         if d < run && flee_target.is_none_or(|t| d < t.2) {
             flee_target = Some((dx, dy, d));
         }
@@ -676,14 +685,25 @@ fn nearest_foreign(
     agents: &[(u32, f32, f32, u32, u8, f32)],
 ) -> Option<(u32, f32)> {
     let mut nearest_foreign: Option<(u32, f32)> = None;
+    // The squared distance of the nearest one so far. A creature that is
+    // further away than this cannot be nearer, so the square root is
+    // only worked out for the ones that could still win.
+    let mut nearest_sq = f32::INFINITY;
     grid.near(c.x, c.y, 16, |idx| {
         let a = &agents[idx as usize];
         if a.0 == c.id || a.3 == c.species {
             return;
         }
-        let d = ((a.1 - c.x).powi(2) + (a.2 - c.y).powi(2)).sqrt();
+        let dx = a.1 - c.x;
+        let dy = a.2 - c.y;
+        let d2 = dx * dx + dy * dy;
+        if d2 >= nearest_sq {
+            return;
+        }
+        let d = d2.sqrt();
         if nearest_foreign.is_none_or(|(_, bd)| d < bd) {
             nearest_foreign = Some((a.3, d));
+            nearest_sq = d2;
         }
     });
     nearest_foreign

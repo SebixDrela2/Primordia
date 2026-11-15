@@ -100,10 +100,11 @@ fn cloud_grid(w: usize, h: usize) -> (usize, usize) {
 /// Read the cloud cover at a point, with the corners of the cell it
 /// falls in.
 fn sample_cloud(cloud_row: &[f32], gw: usize, gx0: usize, gy0: usize, tx: f32, ty: f32) -> f32 {
-    let c00 = cloud_row[gy0 * gw + gx0];
-    let c10 = cloud_row[gy0 * gw + gx0 + 1];
-    let c01 = cloud_row[(gy0 + 1) * gw + gx0];
-    let c11 = cloud_row[(gy0 + 1) * gw + gx0 + 1];
+    let base = gy0 * gw + gx0;
+    let c00 = cloud_row[base];
+    let c10 = cloud_row[base + 1];
+    let c01 = cloud_row[base + gw];
+    let c11 = cloud_row[base + gw + 1];
     (c00 * (1.0 - tx) + c10 * tx) * (1.0 - ty) + (c01 * (1.0 - tx) + c11 * tx) * ty
 }
 
@@ -495,7 +496,10 @@ fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
 
 #[inline]
 fn clamp_u8(v: f32) -> u8 {
-    v.clamp(0.0, 255.0) as u8
+    // A float to u8 cast in Rust saturates, so it already clamps to
+    // 0..=255. The explicit clamp was a second pair of comparisons on
+    // every channel of every pixel.
+    v as u8
 }
 
 const SCALE: i32 = light::LIGHT_SCALE as i32;

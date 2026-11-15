@@ -17,3 +17,10 @@ opt-level = 3
 opt-level = 3
 lto = "thin"
 codegen-units = 1
+
+# The profile the profiler uses: the speed of release, but with the
+# symbols a flame graph needs to name the functions it finds. Build it
+# with `cargo flamegraph --profile profiling`. See docs/PROFILING.md.
+[profile.profiling]
+inherits = "release"
+debug = 2

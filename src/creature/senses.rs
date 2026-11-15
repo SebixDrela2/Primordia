@@ -116,9 +116,16 @@ impl SpatialGrid {
         let y1 = (gy + r + 1).min(self.gh);
         let x0 = gx.saturating_sub(r);
         let x1 = (gx + r + 1).min(self.gw);
+        let gw = self.gw;
+        let buckets = &self.buckets;
         for by in y0..y1 {
-            for bx in x0..x1 {
-                for &i in &self.buckets[by * self.gw + bx] {
+            // The whole row of buckets is taken at once, so that the
+            // bounds are checked once for the row instead of once for
+            // every bucket in it.
+            let base = by * gw;
+            let row = &buckets[base + x0..base + x1];
+            for bucket in row {
+                for &i in bucket {
                     f(i);
                 }
             }
@@ -285,6 +292,13 @@ const SMELL_FALLOFF: f32 = 8.0;
 
 const KIN_RANGE: f32 = 120.0;
 
+/// The squared distance beyond which a creature is certainly out of
+/// reach, and the squared distance below which it is certainly too
+/// close. They are a shade wider than the range itself so that the
+/// ones near the edge are still measured properly.
+const KIN_FAR: f32 = 14401.0;
+const KIN_NEAR: f32 = 0.24;
+
 const KIN_FALLOFF: f32 = 40.0;
 
 const SMELL_STEP: i32 = 2;
@@ -326,28 +340,34 @@ impl RaySense {
     }
 }
 
-fn scan_ray(world: &World, tab: &ElemTables, cx: i32, cy: i32, dx: i32, dy: i32) -> RaySense {
-    let mut ray = RaySense::empty();
+/// A ray the creature is looking along.
+struct RayScan<'a> {
+    world: &'a World,
+    tab: &'a ElemTables,
+    cx: i32,
+    cy: i32,
+    dx: i32,
+    dy: i32,
+}
 
-    for step in 1..=SMELL_RANGE {
-        let step_size = if step <= SIGHT_RANGE { 1 } else { SMELL_STEP };
-        if step > SIGHT_RANGE && step % step_size != 0 {
-            continue;
+impl RayScan<'_> {
+    /// One step of the ray: the cell it reaches, and what that tells
+    /// the creature.
+    fn step(&self, ray: &mut RaySense, step: i32, in_sight: bool) {
+        let sx = self.cx + self.dx * step;
+        let sy = self.cy + self.dy * step;
+        if sx < 0 || sy < 0 || sx >= self.world.w as i32 || sy >= self.world.h as i32 {
+            return;
         }
-        let sx = cx + dx * step;
-        let sy = cy + dy * step;
-        if sx < 0 || sy < 0 || sx >= world.w as i32 || sy >= world.h as i32 {
-            continue;
-        }
-        let k = world.kind[sy as usize * world.w + sx as usize] as usize;
+        let k = self.world.kind[sy as usize * self.world.w + sx as usize] as usize;
         if k == Elem::Empty as usize {
-            continue;
+            return;
         }
-        let lk = &tab.look[k];
+        let lk = &self.tab.look[k];
         let w = 1.0 / step as f32;
 
         let sw = 1.0 / (1.0 + (step - 1) as f32 / SMELL_FALLOFF);
-        if !ray.found && step <= SIGHT_RANGE {
+        if !ray.found && in_sight {
             ray.found = true;
             ray.near = 1.0 - (step - 1) as f32 / SIGHT_RANGE as f32;
             ray.light = lk.bright;
@@ -363,17 +383,41 @@ fn scan_ray(world: &World, tab: &ElemTables, cx: i32, cy: i32, dx: i32, dy: i32)
             ray.warm = ray.warm.max(lk.warm * w);
         }
 
-        let sc = &tab.scent[k];
-        for (c, &scent_value) in sc.iter().enumerate() {
-            if scent_value * sw > ray.scent[c] {
-                ray.scent[c] = scent_value * sw;
+        let sc = &self.tab.scent[k];
+        for (dst, &scent_value) in ray.scent.iter_mut().zip(sc.iter()) {
+            if scent_value * sw > *dst {
+                *dst = scent_value * sw;
             }
         }
 
-        let n = tab.noise[k];
+        let n = self.tab.noise[k];
         if n * sw > ray.loud {
             ray.loud = n * sw;
         }
+    }
+}
+
+fn scan_ray(world: &World, tab: &ElemTables, cx: i32, cy: i32, dx: i32, dy: i32) -> RaySense {
+    let mut ray = RaySense::empty();
+    let scan = RayScan {
+        world,
+        tab,
+        cx,
+        cy,
+        dx,
+        dy,
+    };
+
+    // The cells of the sight are taken one by one. Past the sight the
+    // smell is only read every SMELL_STEP-th cell, so the ray jumps
+    // there rather than walking over the cells it would skip.
+    for step in 1..=SIGHT_RANGE {
+        scan.step(&mut ray, step, true);
+    }
+    let mut step = (SIGHT_RANGE / SMELL_STEP + 1) * SMELL_STEP;
+    while step <= SMELL_RANGE {
+        scan.step(&mut ray, step, false);
+        step += SMELL_STEP;
     }
 
     ray
@@ -393,7 +437,15 @@ fn scan_kin(
         let a = &agents[idx as usize];
         let dx = a.1 - cx as f32;
         let dy = a.2 - cy as f32;
-        let d = (dx * dx + dy * dy).sqrt();
+        let d2 = dx * dx + dy * dy;
+        // A creature that is plainly out of reach is turned away before
+        // the square root is worked out. The bound is a shade wider than
+        // the range itself, so that the ones near the edge are still
+        // measured the slow way and the answer is the same.
+        if !(KIN_NEAR..=KIN_FAR).contains(&d2) {
+            return;
+        }
+        let d = d2.sqrt();
         if !(0.5..=KIN_RANGE).contains(&d) {
             return;
         }
@@ -569,7 +621,14 @@ pub fn write_kin(
         }
         let dx = a.1 - c.x;
         let dy = a.2 - c.y;
-        let d = (dx * dx + dy * dy).sqrt();
+        let d2 = dx * dx + dy * dy;
+        // Out of reach is turned away before the square root is worked
+        // out. The bound is a shade wider than the range, so the ones
+        // near the edge are still measured the slow way.
+        if d2 > 901.0 {
+            return;
+        }
+        let d = d2.sqrt();
         if d > 30.0 {
             return;
         }

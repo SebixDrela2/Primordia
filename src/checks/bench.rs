@@ -12,6 +12,14 @@ const H: usize = 720;
 const ELEM_SLOTS: usize = Elem::MAX as usize + 1;
 
 fn get_random_seed() -> u64 {
+    // A seed can be forced from the outside, so that the same run can be
+    // repeated and compared with another.
+    if let Ok(seed) = std::env::var("PRIMORDIA_SEED") {
+        if let Ok(seed) = seed.parse::<u64>() {
+            eprintln!("SEED: {}", seed);
+            return seed;
+        }
+    }
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
     let nanos = now.as_nanos() as u64;
     let mut seed = nanos;

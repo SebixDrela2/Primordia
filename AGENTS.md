@@ -6,6 +6,8 @@
   182 inputs, all 33 outputs, the architecture, and exactly what is
   random, what is evolved and what is hard-coded. Read this before
   changing anything in `src/creature/brain.rs` or `src/creature/senses.rs`.
+- `docs/PROFILING.md` - how to find the hot paths and which functions
+  take the longest, without putting an attribute on every method.
 
 ## Build
 - Always compile with the native CPU target: `-C target-cpu=native`.
@@ -14,6 +16,11 @@
   For a portable build use
   `cargo build --release --config 'build.rustflags=[]'`.
 - Release builds are the ones to benchmark (`cargo build --release`).
+- `cargo clippy --all-targets --all-features` must be clean, and so must
+  `cargo clippy --all-targets --all-features -- -W clippy::pedantic -W clippy::perf`.
+  The library sets the lints in `src/lib.rs`; the binary sets the same
+  ones in `src/main.rs`, and both have the same block of `allow`s for
+  the casts the game does on purpose. No other `allow` is allowed.
 - Headless checks: `cargo run --release --bin primordia -- bench 6000`.
 - `cargo run --release --bin primordia -- spawncheck 3000` asserts that no
   underground-only material ever appears above the terrain.
@@ -61,6 +68,9 @@
   `PRIMORDIA_ZOOM=3.0` to start closer to the ground.
   `PRIMORDIA_CAM=x,y` opens the run somewhere else, and
   `PRIMORDIA_CAM=zorg` opens it on the ZORG cave in the deep.
+- `PRIMORDIA_SEED=12345 primordia` fixes the seed of the world, so the
+  same run can be repeated and compared with another. The game takes it
+  too; `bench` takes it as well.
 
 ## Code size rules
 - **No file may exceed ~1000 lines.** A file may run slightly over that
@@ -88,6 +98,10 @@
   - `src/render/`  mod.rs (the renderer and the tables it builds),
                    paint.rs (the pixel loop), fx.rs (element effects),
                    light.rs (dynamic light field)
+- `src/main.rs` is the game itself: the window, the camera and the
+  loop. The loop lives in a `Game` struct, one method to a phase
+  (the keys, the simulation, the victory, the picture), so that no
+  one function runs away with the whole game.
 
 ## Performance
 - The hot paths are `World::step`, `CreatureSystem::step` and
@@ -120,6 +134,16 @@
   scanned for its light sources, blurred at a quarter of the picture's
   size and laid over the picture in the pixel loop itself. A separate
   pass over the whole picture would cost twice as much.
+- The world step keeps a byte per cell to say whether the cell is
+  already on the next active list. A `bool` would be a bitfield, and
+  the flag is read once per active cell per tick.
+- The mind keeps its back-propagation deltas, and the ring of the last
+  few thoughts, and writes into them rather than making them afresh.
+  A thought used to clone the activations of every layer, and a lesson
+  cloned them again.
+- The ray a creature looks along jumps over the cells it is not going
+  to smell rather than testing each one, and a creature that is out of
+  reach is turned away before its distance is measured.
 
 ## Simulation rules
 - Never compare raw element bytes against numeric ranges; use the decoded

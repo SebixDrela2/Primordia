@@ -88,7 +88,7 @@ impl World {
             biome: vec![super::Biome::Grassland; width],
             active: Vec::with_capacity(cells / 8),
             next_active: Vec::with_capacity(cells / 8),
-            listed: vec![false; cells],
+            listed: vec![0; cells],
             inert: Elem::inert_table(),
             food_table: build_food_table(),
             gatherable: build_gatherable_table(),
@@ -164,7 +164,7 @@ impl World {
             Elem::Energy => 120,
             _ => 0,
         };
-        self.mark_active(i);
+        self.mark_active(i, e as u8);
     }
 
     #[inline]
@@ -174,8 +174,10 @@ impl World {
         self.col.swap(a, b);
         self.heat.swap(a, b);
         self.age.swap(a, b);
-        self.mark_active(a);
-        self.mark_active(b);
+        let ka = self.kind[a];
+        let kb = self.kind[b];
+        self.mark_active(a, ka);
+        self.mark_active(b, kb);
     }
 
     #[inline]

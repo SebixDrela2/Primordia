@@ -105,7 +105,20 @@ pub struct Net {
 
     learn_pre: Vec<f32>,
 
+    /// The last few forward passes, kept so that a lesson can be traced
+    /// back through them. This is a ring of `TRACE_LEN` traces that are
+    /// written into over and over: the old code built a fresh trace for
+    /// every forward pass and threw the old ones away, which meant a
+    /// dozen allocations per thought.
     traces: Vec<Trace>,
+
+    /// Where the next trace goes in the ring.
+    trace_next: usize,
+
+    /// The back-propagation deltas, reused between calls.
+    delta_buf: Vec<f32>,
+
+    in_delta_buf: Vec<f32>,
 
     pub skip: Vec<f32>,
 
@@ -150,6 +163,36 @@ struct Trace {
     in_layers: Vec<Vec<f32>>,
     out_layers: Vec<Vec<f32>>,
     pre: Vec<f32>,
+}
+
+impl Trace {
+    fn new(layers: usize) -> Self {
+        Trace {
+            in_layers: vec![Vec::new(); layers],
+            out_layers: vec![Vec::new(); layers],
+            pre: Vec::new(),
+        }
+    }
+
+    /// Take a copy of a forward pass into this trace, reusing the memory
+    /// it already holds. The old code built a brand new trace every time
+    /// and dropped the old one, so a thought cost a dozen allocations.
+    fn capture(&mut self, learn_in: &[Vec<f32>], learn_out: &[Vec<f32>], learn_pre: &[f32]) {
+        if self.in_layers.len() != learn_in.len() {
+            self.in_layers = vec![Vec::new(); learn_in.len()];
+            self.out_layers = vec![Vec::new(); learn_out.len()];
+        }
+        for (dst, src) in self.in_layers.iter_mut().zip(learn_in) {
+            dst.clear();
+            dst.extend_from_slice(src);
+        }
+        for (dst, src) in self.out_layers.iter_mut().zip(learn_out) {
+            dst.clear();
+            dst.extend_from_slice(src);
+        }
+        self.pre.clear();
+        self.pre.extend_from_slice(learn_pre);
+    }
 }
 
 pub struct MindView {
@@ -353,6 +396,9 @@ impl Net {
             learn_out: vec![Vec::new(); layers],
             learn_pre: Vec::new(),
             traces: Vec::new(),
+            trace_next: 0,
+            delta_buf: Vec::new(),
+            in_delta_buf: Vec::new(),
             skip: vec![0.0; crate::creature::senses::DIR_CHANNELS],
             skip_up: 0.0,
             last_input: Vec::new(),
@@ -390,6 +436,9 @@ impl Net {
             learn_out: self.learn_out.clone(),
             learn_pre: self.learn_pre.clone(),
             traces: self.traces.clone(),
+            trace_next: self.trace_next,
+            delta_buf: Vec::new(),
+            in_delta_buf: Vec::new(),
             skip: self.skip.clone(),
             skip_up: self.skip_up,
             last_input: self.last_input.clone(),
@@ -502,16 +551,18 @@ impl Net {
         self.last_input.clear();
         self.last_input.extend_from_slice(input);
 
-        self.traces.push(Trace {
-            in_layers: self.learn_in.clone(),
-            out_layers: self.learn_out.clone(),
-            pre: self.learn_pre.clone(),
-        });
-        while self.traces.len() > TRACE_LEN {
-            self.traces.remove(0);
+        // The trace of this pass. The oldest one is recycled, so a mind
+        // that thinks all day does not spend the day allocating.
+        if self.traces.len() >= TRACE_LEN {
+            let mut oldest = self.traces.remove(0);
+            oldest.capture(&self.learn_in, &self.learn_out, &self.learn_pre);
+            self.traces.push(oldest);
+        } else {
+            let mut fresh = Trace::new(self.learn_in.len());
+            fresh.capture(&self.learn_in, &self.learn_out, &self.learn_pre);
+            self.traces.push(fresh);
         }
     }
-
     fn apply_skip(&self, input: &[f32], out: &mut [f32]) {
         let dir_ch = crate::creature::senses::DIR_CHANNELS;
 
@@ -673,62 +724,126 @@ impl Net {
     }
 
     fn apply_target(&mut self, trace: &Trace, out_idx: usize, amount: f32, lr: f32, deep: bool) {
-        let layers = self.w.len();
-        let out_n = self.sizes[layers];
+        let mut state = Backprop {
+            w: &mut self.w,
+            sizes: &self.sizes,
+            delta: &mut self.delta_buf,
+            in_delta: &mut self.in_delta_buf,
+            activation: self.activation,
+        };
+        state.run(trace, out_idx, amount, lr, deep);
+    }
+
+    /// The back-propagation itself. It takes the pieces of the mind it
+    /// needs separately, so that a caller can read the trace of a thought
+    /// while it writes the weights of the same thought.
+    fn apply_target_from(
+        state: &mut Backprop<'_>,
+        trace: &Trace,
+        out_idx: usize,
+        amount: f32,
+        lr: f32,
+        deep: bool,
+    ) {
+        state.run(trace, out_idx, amount, lr, deep);
+    }
+
+
+}
+
+/// The state the back-propagation works on. It is separate from `Net` so
+/// that the trace of a thought can be read while the weights of the same
+/// thought are written: the two live in different fields.
+struct Backprop<'a> {
+    w: &'a mut [Vec<f32>],
+    sizes: &'a [usize],
+    delta: &'a mut Vec<f32>,
+    in_delta: &'a mut Vec<f32>,
+    activation: u8,
+}
+
+impl Backprop<'_> {
+    fn run(
+        &mut self,
+        trace: &Trace,
+        out_idx: usize,
+        amount: f32,
+        lr: f32,
+        deep: bool,
+    ) {
+        let w = &mut *self.w;
+        let sizes = self.sizes;
+        let delta_buf = &mut *self.delta;
+        let in_delta_buf = &mut *self.in_delta;
+        let activation = self.activation;
+
+        let layers = w.len();
+        let out_n = sizes[layers];
         if out_idx >= out_n || amount == 0.0 {
             return;
         }
 
-        let mut delta = vec![0.0f32; out_n];
+        // The two delta buffers are kept on the mind and reused: the old
+        // code allocated a fresh vector for the output delta and another
+        // one for every layer, on every call.
+        delta_buf.clear();
+        delta_buf.resize(out_n, 0.0);
         let out_deriv = 1.0 / (1.0 + trace.pre.get(out_idx).unwrap_or(&0.0).abs()).powi(2);
-        delta[out_idx] = amount * out_deriv;
+        delta_buf[out_idx] = amount * out_deriv;
 
         let bottom = if deep { 0 } else { layers.saturating_sub(2) };
         for layer in (bottom..layers).rev() {
-            let in_n = self.sizes[layer];
-            let out_n = self.sizes[layer + 1];
+            let in_n = sizes[layer];
+            let out_n = sizes[layer + 1];
             let x_in = &trace.in_layers[layer];
             let y_out = &trace.out_layers[layer];
 
             {
-                let ws = &mut self.w[layer];
+                let ws = &mut w[layer];
                 for j in 0..in_n {
                     let x = x_in.get(j).copied().unwrap_or(0.0);
                     if x == 0.0 {
                         continue;
                     }
-                    for (o, &d) in delta.iter().enumerate().take(out_n) {
+                    // The row of this input's weights, so that the write
+                    // below cannot be out of range and the check goes.
+                    let row = &mut ws[j * out_n..(j + 1) * out_n];
+                    for o in 0..out_n {
+                        let d = delta_buf[o];
                         if d == 0.0 {
                             continue;
                         }
-                        let idx = j * out_n + o;
-                        let v = ws[idx] + lr * d * x;
-                        ws[idx] = v.clamp(-6.0, 6.0);
+                        let v = row[o] + lr * d * x;
+                        row[o] = v.clamp(-6.0, 6.0);
                     }
                 }
             }
 
-            let mut in_delta = vec![0.0f32; in_n];
+            in_delta_buf.clear();
+            in_delta_buf.resize(in_n, 0.0);
             {
-                let ws = &self.w[layer];
+                let ws = &w[layer];
                 for o in 0..out_n {
-                    let d = delta[o];
+                    let d = delta_buf[o];
                     if d == 0.0 {
                         continue;
                     }
-                    for j in 0..in_n {
-                        in_delta[j] += d * ws[j * out_n + o];
+                    for (j, slot) in in_delta_buf.iter_mut().enumerate() {
+                        *slot += d * ws[j * out_n + o];
                     }
                 }
             }
 
-            for (j, d) in in_delta.iter_mut().enumerate().take(in_n) {
+            for (j, d) in in_delta_buf.iter_mut().enumerate() {
                 let y = y_out.get(j).copied().unwrap_or(0.0);
-                *d *= activation_deriv(self.activation, y);
+                *d *= activation_deriv(activation, y);
             }
-            delta = in_delta;
+            std::mem::swap(delta_buf, in_delta_buf);
         }
     }
+}
+
+impl Net {
 
     pub fn credit_desire(&mut self, dir: usize, amount: f32, lr: f32) {
         if self.traces.is_empty() || amount == 0.0 {
@@ -739,10 +854,29 @@ impl Net {
             return;
         }
 
-        let Some(trace) = self.traces.last().cloned() else {
+        // The trace of the last thought is read while the weights are
+        // written. The two live in different fields, so the borrow
+        // checker is happy and the trace does not have to be copied.
+        let Net {
+            w,
+            sizes,
+            traces,
+            delta_buf,
+            in_delta_buf,
+            activation,
+            ..
+        } = self;
+        let Some(trace) = traces.last() else {
             return;
         };
-        self.apply_target(&trace, out_idx, amount, lr, true);
+        let mut state = Backprop {
+            w,
+            sizes,
+            delta: delta_buf,
+            in_delta: in_delta_buf,
+            activation: *activation,
+        };
+        Self::apply_target_from(&mut state, trace, out_idx, amount, lr, true);
     }
 
     #[must_use]

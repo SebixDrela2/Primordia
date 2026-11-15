@@ -288,7 +288,11 @@ pub struct World {
 
     next_active: Vec<u32>,
 
-    listed: Vec<bool>,
+    /// One byte per cell: 1 when the cell is already in the next active
+    /// list. A byte rather than a `bool` because a `Vec<bool>` is a
+    /// bitfield, and every read of it costs a shift and a mask. This is
+    /// read once per active cell per tick, so it is worth the byte.
+    listed: Vec<u8>,
 
     pub inert: [bool; Elem::TABLE_LEN],
 
