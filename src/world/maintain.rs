@@ -1,230 +1,291 @@
 use super::{World, Elem, Volcano, Weather};
 
 impl World {
+    /// The upkeep of the world between steps: the weather, the seasons,
+    /// the plants and the resources that come back.
     pub fn maintain(&mut self) {
         let frame = self.frame;
         let w = self.w as i32;
 
         self.update_pressure();
+        self.maintain_tremors(frame, w);
+        self.maintain_seasons(frame, w);
+        self.maintain_volcano();
+        if frame.is_multiple_of(15) {
+            self.update_ground();
+        }
+        self.maintain_weather(frame, w);
+        self.maintain_deep_water(frame, w);
+        self.maintain_plants(frame, w);
+        self.maintain_resources(frame, w);
+        self.maintain_lava_pocket(frame, w);
+        self.maintain_terrain(frame);
+        self.maintain_zorg_larder(frame);
+        self.maintain_ore_veins(frame);
+        self.maintain_crystals(frame);
+        self.maintain_magma(frame, w);
+        self.age_meteor_events();
 
+        if frame.is_multiple_of(300) {
+            let total = self.census.particles as usize;
+            if total > (self.w * self.h * 85) / 100 {
+                self.compact();
+            }
+        }
+    }
+
+    /// The earthquakes that shake the caves.
+    fn maintain_tremors(&mut self, frame: u64, w: i32) {
         if frame.is_multiple_of(600) && frame > 0 && self.rng.chance(0.05 + self.pressure.extremes * 0.06) {
             let ex = self.rng.range(w as u32) as i32;
             let ey = self.surface_y(ex) + 20 + self.rng.range(40) as i32;
             let radius = 40 + self.rng.range(30) as i32;
             self.tremor(ex, ey, radius);
         }
+    }
 
-        if frame.is_multiple_of(120) {
-            match self.season {
+    /// The seasons: the summer dries the shallow water, the winter
+    /// freezes it.
+    fn maintain_seasons(&mut self, frame: u64, w: i32) {
+        if !frame.is_multiple_of(120) {
+            return;
+        }
+        match self.season {
+            1 => self.dry_shallow_water(w),
+            3 => self.freeze_shallow_water(w),
+            _ => {}
+        }
+    }
 
-                1 => {
-                    for _ in 0..6 {
-                        let x = self.rng.range(w as u32) as i32;
-                        let sy = self.surface_y(x);
-                        for y in (sy - 6..sy).rev() {
-                            if self.get(x, y) == Elem::Water {
-                                self.set_xy(x, y, Elem::Empty);
-                                break;
-                            }
-                        }
-                    }
+    fn dry_shallow_water(&mut self, w: i32) {
+        for _ in 0..6 {
+            let x = self.rng.range(w as u32) as i32;
+            let sy = self.surface_y(x);
+            for y in (sy - 6..sy).rev() {
+                if self.get(x, y) == Elem::Water {
+                    self.set_xy(x, y, Elem::Empty);
+                    break;
                 }
-
-                3 => {
-                    for _ in 0..4 {
-                        let x = self.rng.range(w as u32) as i32;
-                        let sy = self.surface_y(x);
-                        for y in (sy - 4..sy).rev() {
-                            if self.get(x, y) == Elem::Water {
-                                self.set_xy(x, y, Elem::Ice);
-                                break;
-                            }
-                        }
-                    }
-                }
-                _ => {}
             }
         }
+    }
 
+    fn freeze_shallow_water(&mut self, w: i32) {
+        for _ in 0..4 {
+            let x = self.rng.range(w as u32) as i32;
+            let sy = self.surface_y(x);
+            for y in (sy - 4..sy).rev() {
+                if self.get(x, y) == Elem::Water {
+                    self.set_xy(x, y, Elem::Ice);
+                    break;
+                }
+            }
+        }
+    }
+
+    /// The volcano stirs, and sometimes it wakes up.
+    fn maintain_volcano(&mut self) {
         self.tick_volcano();
         if self.volcano_state == Volcano::Grumbling
             && self.rng.chance(0.004 + self.pressure.volcanic * 0.02)
         {
             self.erupt();
         }
+    }
 
-        if frame.is_multiple_of(15) {
-            self.update_ground();
-        }
-
+    /// The weather: what it is, and what it does to the world.
+    fn maintain_weather(&mut self, frame: u64, w: i32) {
         if self.weather_timer == 0 {
-            let harsh = self.pressure.harshness;
-            let roll = self.rng.range(100) as f32;
-
-            let summer = self.season == 1;
-            let winter = self.season == 3;
-            self.weather = if roll < 34.0 - harsh * 16.0 {
-                Weather::Clear
-            } else if roll < 58.0 - harsh * 6.0 {
-                Weather::Rain
-            } else if roll < 68.0 + harsh * 10.0 {
-                Weather::Storm
-            } else if roll < 76.0 + harsh * 4.0 {
-                Weather::Snow
-            } else if roll < 84.0 {
-                if winter {
-                    Weather::Snow
-                } else if summer {
-                    Weather::Heatwave
-                } else {
-                    Weather::Fog
-                }
-            } else if roll < 92.0 {
-                if summer {
-                    Weather::Heatwave
-                } else {
-                    Weather::Fog
-                }
-            } else if roll < 96.0 {
-
-                if summer {
-                    Weather::Sandstorm
-                } else {
-                    Weather::Fog
-                }
-            } else {
-                Weather::Meteor
-            };
-            self.weather_timer = 500 + self.rng.range(700);
+            self.roll_weather();
         }
         self.weather_timer = self.weather_timer.saturating_sub(1);
 
         match self.weather {
-            Weather::Rain | Weather::Storm => {
-
-                let period = if self.weather == Weather::Storm { 15 } else { 30 };
-                let want = if self.weather == Weather::Storm { 3 } else { 2 };
-                if frame.is_multiple_of(period) {
-                    let mut added = 0;
-                    let mut attempts = 0;
-                    while added < want && attempts < 40 {
-                        attempts += 1;
-                        let x = self.rng.range(w as u32) as i32;
-                        let surf = self.surface_y(x);
-                        let y = surf - 1 - self.rng.range(6) as i32;
-                        if y > 0 && self.get(x, y) == Elem::Empty {
-                            let is_acid = self.weather == Weather::Storm && self.rng.chance(0.05);
-                            let e = if is_acid { Elem::Acid } else { Elem::Water };
-                            self.set_xy(x, y, e);
-                            added += 1;
-                        }
-                    }
-                }
-
-                if self.weather == Weather::Storm && self.rng.chance(0.02) {
-                    let x = self.rng.range(w as u32) as i32;
-                    let surf = self.surface_y(x);
-                    for dy in 0..6 {
-                        let y = surf - dy;
-                        if self.get(x, y) == Elem::Empty {
-                            self.set_xy(x, y, Elem::Fire);
-                        }
-                    }
-                }
-            }
-            Weather::Snow => {
-
-                if frame.is_multiple_of(60) {
-                    let mut added = 0;
-                    let mut attempts = 0;
-                    while added < 1 && attempts < 20 {
-                        attempts += 1;
-                        let x = self.rng.range(w as u32) as i32;
-                        let surf = self.surface_y(x);
-                        let y = surf - 1 - self.rng.range(4) as i32;
-                        if y > 0 && self.get(x, y) == Elem::Empty {
-                            self.set_xy(x, y, Elem::Ice);
-                            added += 1;
-                        }
-                    }
-                }
-            }
-            Weather::Fog => {
-
-                if frame.is_multiple_of(90) {
-                    for _ in 0..3 {
-                        let x = self.rng.range(w as u32) as i32;
-                        let surf = self.surface_y(x);
-                        let y = surf + self.rng.range(3) as i32;
-                        if y > 1 && y < self.h as i32 - 6 && self.get(x, y) == Elem::Empty {
-                            self.set_xy(x, y, Elem::Smoke);
-                        }
-                    }
-                }
-            }
-            Weather::Heatwave => {
-
-                if frame.is_multiple_of(70) {
-                    for _ in 0..2 {
-                        let x = self.rng.range(w as u32) as i32;
-                        let surf = self.surface_y(x);
-                        let y = surf - 1 - self.rng.range(3) as i32;
-                        if y > 1 && self.get(x, y) == Elem::Water {
-                            self.set_xy(x, y, Elem::Steam);
-                        }
-                    }
-                }
-            }
-            Weather::Meteor => {
-
-                if self.rng.chance(0.005 + self.pressure.harshness * 0.02) {
-                    let x = self.rng.range(w as u32) as i32;
-                    let surf = self.surface_y(x);
-                    let impact_y = surf + self.rng.range(4) as i32;
-                    for dy in 0..10 {
-                        let y = surf - dy;
-                        if self.get(x, y) == Elem::Empty {
-                            self.set_xy(x, y, Elem::Fire);
-                        }
-                    }
-
-                    for dx in -2..=2 {
-                        for dy in -1..=1 {
-                            let (cx, cy) = (x + dx, impact_y + dy);
-                            if self.get(cx, cy) == Elem::Empty {
-                                self.set_xy(cx, cy, Elem::Lava);
-                            }
-                        }
-                    }
-                    self.meteor_events.push((x as f32, impact_y as f32, 22));
-                }
-            }
-            Weather::Sandstorm => {
-
-                if frame.is_multiple_of(24) {
-                    for _ in 0..4 {
-                        let x = self.rng.range(w as u32) as i32;
-                        let surf = self.surface_y(x);
-                        let y = surf - 1 - self.rng.range(5) as i32;
-                        if y > 0 && self.get(x, y) == Elem::Empty {
-                            self.set_xy(x, y, Elem::Dust);
-                        }
-                    }
-                }
-                if frame.is_multiple_of(45) {
-                    for _ in 0..2 {
-                        let x = self.rng.range(w as u32) as i32;
-                        let surf = self.surface_y(x);
-                        let y = surf - 1 - self.rng.range(2) as i32;
-                        if y > 1 && self.get(x, y) == Elem::Water {
-                            self.set_xy(x, y, Elem::Steam);
-                        }
-                    }
-                }
-            }
+            Weather::Rain | Weather::Storm => self.rain_effects(frame, w),
+            Weather::Snow => self.snow_effects(frame, w),
+            Weather::Fog => self.fog_effects(frame, w),
+            Weather::Heatwave => self.heatwave_effects(frame, w),
+            Weather::Meteor => self.meteor_effects(w),
+            Weather::Sandstorm => self.sandstorm_effects(frame, w),
             Weather::Clear => {}
         }
+    }
 
+    /// The next kind of weather.
+    fn roll_weather(&mut self) {
+        let harsh = self.pressure.harshness;
+        let roll = self.rng.range(100) as f32;
+
+        let summer = self.season == 1;
+        let winter = self.season == 3;
+        self.weather = if roll < 34.0 - harsh * 16.0 {
+            Weather::Clear
+        } else if roll < 58.0 - harsh * 6.0 {
+            Weather::Rain
+        } else if roll < 68.0 + harsh * 10.0 {
+            Weather::Storm
+        } else if roll < 76.0 + harsh * 4.0 {
+            Weather::Snow
+        } else if roll < 84.0 {
+            if winter {
+                Weather::Snow
+            } else if summer {
+                Weather::Heatwave
+            } else {
+                Weather::Fog
+            }
+        } else if roll < 92.0 {
+            if summer {
+                Weather::Heatwave
+            } else {
+                Weather::Fog
+            }
+        } else if roll < 96.0 {
+            if summer {
+                Weather::Sandstorm
+            } else {
+                Weather::Fog
+            }
+        } else {
+            Weather::Meteor
+        };
+        self.weather_timer = 500 + self.rng.range(700);
+    }
+
+    /// The rain falls, and the storm burns and strikes.
+    fn rain_effects(&mut self, frame: u64, w: i32) {
+        let period = if self.weather == Weather::Storm { 15 } else { 30 };
+        let want = if self.weather == Weather::Storm { 3 } else { 2 };
+        if frame.is_multiple_of(period) {
+            let mut added = 0;
+            let mut attempts = 0;
+            while added < want && attempts < 40 {
+                attempts += 1;
+                let x = self.rng.range(w as u32) as i32;
+                let surf = self.surface_y(x);
+                let y = surf - 1 - self.rng.range(6) as i32;
+                if y > 0 && self.get(x, y) == Elem::Empty {
+                    let is_acid = self.weather == Weather::Storm && self.rng.chance(0.05);
+                    let e = if is_acid { Elem::Acid } else { Elem::Water };
+                    self.set_xy(x, y, e);
+                    added += 1;
+                }
+            }
+        }
+
+        if self.weather == Weather::Storm && self.rng.chance(0.02) {
+            let x = self.rng.range(w as u32) as i32;
+            let surf = self.surface_y(x);
+            for dy in 0..6 {
+                let y = surf - dy;
+                if self.get(x, y) == Elem::Empty {
+                    self.set_xy(x, y, Elem::Fire);
+                }
+            }
+        }
+    }
+
+    /// The snow settles.
+    fn snow_effects(&mut self, frame: u64, w: i32) {
+        if !frame.is_multiple_of(60) {
+            return;
+        }
+        let mut added = 0;
+        let mut attempts = 0;
+        while added < 1 && attempts < 20 {
+            attempts += 1;
+            let x = self.rng.range(w as u32) as i32;
+            let surf = self.surface_y(x);
+            let y = surf - 1 - self.rng.range(4) as i32;
+            if y > 0 && self.get(x, y) == Elem::Empty {
+                self.set_xy(x, y, Elem::Ice);
+                added += 1;
+            }
+        }
+    }
+
+    /// The fog lies in the hollows.
+    fn fog_effects(&mut self, frame: u64, w: i32) {
+        if !frame.is_multiple_of(90) {
+            return;
+        }
+        for _ in 0..3 {
+            let x = self.rng.range(w as u32) as i32;
+            let surf = self.surface_y(x);
+            let y = surf + self.rng.range(3) as i32;
+            if y > 1 && y < self.h as i32 - 6 && self.get(x, y) == Elem::Empty {
+                self.set_xy(x, y, Elem::Smoke);
+            }
+        }
+    }
+
+    /// The heatwave steams the water off.
+    fn heatwave_effects(&mut self, frame: u64, w: i32) {
+        if !frame.is_multiple_of(70) {
+            return;
+        }
+        for _ in 0..2 {
+            let x = self.rng.range(w as u32) as i32;
+            let surf = self.surface_y(x);
+            let y = surf - 1 - self.rng.range(3) as i32;
+            if y > 1 && self.get(x, y) == Elem::Water {
+                self.set_xy(x, y, Elem::Steam);
+            }
+        }
+    }
+
+    /// The meteors come down.
+    fn meteor_effects(&mut self, w: i32) {
+        if !self.rng.chance(0.005 + self.pressure.harshness * 0.02) {
+            return;
+        }
+        let x = self.rng.range(w as u32) as i32;
+        let surf = self.surface_y(x);
+        let impact_y = surf + self.rng.range(4) as i32;
+        for dy in 0..10 {
+            let y = surf - dy;
+            if self.get(x, y) == Elem::Empty {
+                self.set_xy(x, y, Elem::Fire);
+            }
+        }
+
+        for dx in -2..=2 {
+            for dy in -1..=1 {
+                let (cx, cy) = (x + dx, impact_y + dy);
+                if self.get(cx, cy) == Elem::Empty {
+                    self.set_xy(cx, cy, Elem::Lava);
+                }
+            }
+        }
+        self.meteor_events.push((x as f32, impact_y as f32, 22));
+    }
+
+    /// The sandstorm carries the dust, and drinks the water.
+    fn sandstorm_effects(&mut self, frame: u64, w: i32) {
+        if frame.is_multiple_of(24) {
+            for _ in 0..4 {
+                let x = self.rng.range(w as u32) as i32;
+                let surf = self.surface_y(x);
+                let y = surf - 1 - self.rng.range(5) as i32;
+                if y > 0 && self.get(x, y) == Elem::Empty {
+                    self.set_xy(x, y, Elem::Dust);
+                }
+            }
+        }
+        if frame.is_multiple_of(45) {
+            for _ in 0..2 {
+                let x = self.rng.range(w as u32) as i32;
+                let surf = self.surface_y(x);
+                let y = surf - 1 - self.rng.range(2) as i32;
+                if y > 1 && self.get(x, y) == Elem::Water {
+                    self.set_xy(x, y, Elem::Steam);
+                }
+            }
+        }
+    }
+
+    /// The water that gathers under the world.
+    fn maintain_deep_water(&mut self, frame: u64, w: i32) {
         if frame.is_multiple_of(200) {
             for _ in 0..1 {
                 let x = self.rng.range(w as u32) as i32;
@@ -245,72 +306,87 @@ impl World {
                 }
             }
         }
+    }
 
+    /// The plants: the regrowth and the culling of the green mat.
+    fn maintain_plants(&mut self, frame: u64, w: i32) {
         if frame.is_multiple_of(15) && self.census.plants < 4000 {
-            let scarcity = self.pressure.scarcity;
-            let base = if self.census.plants < 1200 {
-                32
-            } else if self.census.plants < 3000 {
-                18
-            } else {
-                9
-            };
-
-            let season_growth = match self.season {
-                0 => 1.8,
-                1 => 1.0,
-                2 => 0.9,
-                _ => 0.3,
-            };
-
-            let lean = 1.0 - 0.75 * self.difficulty;
-            let batches = ((base as f32)
-                * (1.0 - scarcity * 0.75)
-                * season_growth
-                * lean.max(0.05))
-                as u32;
-            for _ in 0..batches {
-                let x = self.rng.range((w - 4) as u32) as i32 + 2;
-                let sy = self.surface_y(x);
-
-                let y = sy - 1;
-                if self.get(x, y) != Elem::Empty {
-                    continue;
-                }
-
-                if !self.has_water_near(x, y, 5) && !self.rng.chance(0.5) {
-                    continue;
-                }
-                let e = if self.rng.chance(0.12) {
-                    Elem::Spore
-                } else if self.rng.chance(0.10) {
-                    Elem::Fungus
-                } else {
-                    Elem::Plant
-                };
-                self.set_xy(x, y, e);
-
-                if self.rng.chance(0.3) && self.get(x, y - 1) == Elem::Empty {
-                    self.set_xy(x, y - 1, e);
-                }
-            }
+            self.regrow_plants(w);
         }
 
         if frame.is_multiple_of(20) && self.census.plants > 3000 {
+            self.cull_plants();
+        }
+    }
 
-            let over = (self.census.plants - 3000) as f32 / 1000.0;
-            let n = (60.0 + over * 240.0) as u32;
-            for _ in 0..n {
-                let i = self.rng.range((self.w * self.h) as u32) as usize;
-                if matches!(
-                    Elem::from_u8(self.kind[i]),
-                    Elem::Plant | Elem::Spore | Elem::Fungus | Elem::Moss
-                ) {
-                    self.set_at(i, Elem::Empty);
-                }
+    /// The seedlings that put the green back.
+    fn regrow_plants(&mut self, w: i32) {
+        let scarcity = self.pressure.scarcity;
+        let base = if self.census.plants < 1200 {
+            32
+        } else if self.census.plants < 3000 {
+            18
+        } else {
+            9
+        };
+
+        let season_growth = match self.season {
+            0 => 1.8,
+            1 => 1.0,
+            2 => 0.9,
+            _ => 0.3,
+        };
+
+        let lean = 1.0 - 0.75 * self.difficulty;
+        let batches = ((base as f32)
+            * (1.0 - scarcity * 0.75)
+            * season_growth
+            * lean.max(0.05))
+            as u32;
+        for _ in 0..batches {
+            let x = self.rng.range((w - 4) as u32) as i32 + 2;
+            let sy = self.surface_y(x);
+
+            let y = sy - 1;
+            if self.get(x, y) != Elem::Empty {
+                continue;
+            }
+
+            if !self.has_water_near(x, y, 5) && !self.rng.chance(0.5) {
+                continue;
+            }
+            let e = if self.rng.chance(0.12) {
+                Elem::Spore
+            } else if self.rng.chance(0.10) {
+                Elem::Fungus
+            } else {
+                Elem::Plant
+            };
+            self.set_xy(x, y, e);
+
+            if self.rng.chance(0.3) && self.get(x, y - 1) == Elem::Empty {
+                self.set_xy(x, y - 1, e);
             }
         }
+    }
 
+    /// The green mat is culled when it grows too thick.
+    fn cull_plants(&mut self) {
+        let over = (self.census.plants - 3000) as f32 / 1000.0;
+        let n = (60.0 + over * 240.0) as u32;
+        for _ in 0..n {
+            let i = self.rng.range((self.w * self.h) as u32) as usize;
+            if matches!(
+                Elem::from_u8(self.kind[i]),
+                Elem::Plant | Elem::Spore | Elem::Fungus | Elem::Moss
+            ) {
+                self.set_at(i, Elem::Empty);
+            }
+        }
+    }
+
+    /// The energy, the oil and the sulfur that come back.
+    fn maintain_resources(&mut self, frame: u64, w: i32) {
         if frame.is_multiple_of(25) && self.census.energy < 150 {
             for _ in 0..4 {
                 let x = self.rng.range(w as u32) as i32;
@@ -324,7 +400,6 @@ impl World {
         }
 
         if frame.is_multiple_of(50) {
-
             if self.census.oil < 200 {
                 for _ in 0..3 {
                     let x = self.rng.range(w as u32) as i32;
@@ -346,104 +421,123 @@ impl World {
                 }
             }
         }
+    }
 
-        if frame % 1800 == 900 {
-            let cx = self.rng.range_i(8, w - 8);
-            let surf = self.surface_y(cx);
-            for dy in 0..6 {
-                for dx in -6..7 {
-                    if dx * dx + dy * dy <= 30 {
-                        let x = cx + dx;
-                        let y = surf + dy;
+    /// The pocket of lava that opens up under the surface.
+    fn maintain_lava_pocket(&mut self, frame: u64, w: i32) {
+        if frame % 1800 != 900 {
+            return;
+        }
+        let cx = self.rng.range_i(8, w - 8);
+        let surf = self.surface_y(cx);
+        for dy in 0..6 {
+            for dx in -6..7 {
+                if dx * dx + dy * dy <= 30 {
+                    let x = cx + dx;
+                    let y = surf + dy;
 
-                        if self.get(x, y).is_solid() {
-                            self.set_xy(x, y, Elem::Lava);
-                        }
+                    if self.get(x, y).is_solid() {
+                        self.set_xy(x, y, Elem::Lava);
                     }
                 }
             }
-
-            for dy in 1..10 {
-                let y = surf - dy;
-                if self.get(cx, y) == Elem::Empty {
-                    self.set_xy(cx, y, Elem::Fire);
-                }
-            }
         }
 
-        if frame.is_multiple_of(100) {
-            for _ in 0..8 {
-                let x = self.rng.range(self.w as u32) as i32;
-                let y = self.rng.range(self.h as u32) as i32;
-                if self.get(x, y) == Elem::Empty && self.get(x, y + 1).is_solid() {
-                    self.set_xy(x, y, Elem::Stone);
-                }
+        for dy in 1..10 {
+            let y = surf - dy;
+            if self.get(cx, y) == Elem::Empty {
+                self.set_xy(cx, y, Elem::Fire);
             }
         }
+    }
 
+    /// The loose rock that settles back into the ground.
+    fn maintain_terrain(&mut self, frame: u64) {
+        if !frame.is_multiple_of(100) {
+            return;
+        }
+        for _ in 0..8 {
+            let x = self.rng.range(self.w as u32) as i32;
+            let y = self.rng.range(self.h as u32) as i32;
+            if self.get(x, y) == Elem::Empty && self.get(x, y + 1).is_solid() {
+                self.set_xy(x, y, Elem::Stone);
+            }
+        }
+    }
+
+    /// The larder of the deep is filled again.
+    fn maintain_zorg_larder(&mut self, frame: u64) {
         if frame.is_multiple_of(10) {
             self.regrow_zorg_larder();
         }
+    }
 
-        if frame.is_multiple_of(250) {
-            let depletion = self.pressure.depletion;
+    /// The seams of ore that open up in the rock.
+    fn maintain_ore_veins(&mut self, frame: u64) {
+        if !frame.is_multiple_of(250) {
+            return;
+        }
+        let depletion = self.pressure.depletion;
 
-            let attempts = ((3.0 * (1.0 - depletion)) as u32).max(1);
-            for _ in 0..attempts {
-                let x = self.rng.range(self.w as u32) as i32;
-                let sy = self.surface_y(x);
-                let y = sy + 8 + self.rng.range((self.h as i32 - sy - 10).max(1) as u32) as i32;
-                if y < self.h as i32 - 1 && self.get(x, y) == Elem::Stone {
-                    let ore = match self.rng.range(6) {
-                        0 => Elem::Copper,
-                        1 => Elem::Iron,
-                        2 => Elem::Gold,
-                        3 => Elem::Silver,
-                        4 => Elem::Crystal,
-                        _ => Elem::Tin,
-                    };
-                    self.set_xy(x, y, ore);
-                }
+        let attempts = ((3.0 * (1.0 - depletion)) as u32).max(1);
+        for _ in 0..attempts {
+            let x = self.rng.range(self.w as u32) as i32;
+            let sy = self.surface_y(x);
+            let y = sy + 8 + self.rng.range((self.h as i32 - sy - 10).max(1) as u32) as i32;
+            if y < self.h as i32 - 1 && self.get(x, y) == Elem::Stone {
+                let ore = match self.rng.range(6) {
+                    0 => Elem::Copper,
+                    1 => Elem::Iron,
+                    2 => Elem::Gold,
+                    3 => Elem::Silver,
+                    4 => Elem::Crystal,
+                    _ => Elem::Tin,
+                };
+                self.set_xy(x, y, ore);
             }
         }
+    }
 
-        if frame.is_multiple_of(200) && self.census.crystal < 300 {
-            for _ in 0..3 {
-                let x = self.rng.range(self.w as u32) as i32;
-                let y = self.rng.range(self.h as u32) as i32;
-                if self.get(x, y) == Elem::Empty && self.has_water_near(x, y, 2) {
-                    self.set_xy(x, y, Elem::Crystal);
-                }
+    /// The crystal that grows near the water.
+    fn maintain_crystals(&mut self, frame: u64) {
+        if !frame.is_multiple_of(200) || self.census.crystal >= 300 {
+            return;
+        }
+        for _ in 0..3 {
+            let x = self.rng.range(self.w as u32) as i32;
+            let y = self.rng.range(self.h as u32) as i32;
+            if self.get(x, y) == Elem::Empty && self.has_water_near(x, y, 2) {
+                self.set_xy(x, y, Elem::Crystal);
             }
         }
+    }
 
-        if frame.is_multiple_of(600) && frame > 0 {
-            let volcanic = self.pressure.volcanic;
-            if volcanic > 0.05 && self.rng.chance(volcanic * 0.5) {
-                let x = self.rng.range(w as u32) as i32;
+    /// The magma that pushes up into the deep rock.
+    fn maintain_magma(&mut self, frame: u64, w: i32) {
+        if !frame.is_multiple_of(600) || frame == 0 {
+            return;
+        }
+        let volcanic = self.pressure.volcanic;
+        if volcanic > 0.05 && self.rng.chance(volcanic * 0.5) {
+            let x = self.rng.range(w as u32) as i32;
 
-                let mut y = self.h as i32 - 8;
-                while y > self.surface_y(x) + 20 {
-                    if self.get(x, y) == Elem::Stone {
-                        self.set_xy(x, y, Elem::Magma);
-                        break;
-                    }
-                    y -= 1;
+            let mut y = self.h as i32 - 8;
+            while y > self.surface_y(x) + 20 {
+                if self.get(x, y) == Elem::Stone {
+                    self.set_xy(x, y, Elem::Magma);
+                    break;
                 }
+                y -= 1;
             }
         }
+    }
 
+    /// The meteors burn themselves out.
+    fn age_meteor_events(&mut self) {
         for m in &mut self.meteor_events {
             m.2 = m.2.saturating_sub(1);
         }
         self.meteor_events.retain(|m| m.2 > 0);
-
-        if frame.is_multiple_of(300) {
-            let total = self.census.particles as usize;
-            if total > (self.w * self.h * 85) / 100 {
-                self.compact();
-            }
-        }
     }
 
     pub fn update_pressure(&mut self) {

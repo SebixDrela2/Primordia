@@ -15,6 +15,18 @@ pub struct Effect {
     life: f32,
 }
 
+/// A spark: where it is, how it flies, how big it is and how long it
+/// lives. These travel together, so they travel in one struct.
+pub struct Spark {
+    pub x: f32,
+    pub y: f32,
+    pub color: [u8; 3],
+    pub vx: f32,
+    pub vy: f32,
+    pub size: f32,
+    pub life: f32,
+}
+
 pub struct Effects {
     items: Vec<Effect>,
 }
@@ -39,18 +51,18 @@ impl Effects {
         });
     }
 
-    pub fn spark(&mut self, x: f32, y: f32, color: [u8; 3], vx: f32, vy: f32, size: f32, life: f32) {
+    pub fn spark(&mut self, spark: &Spark) {
         self.items.push(Effect {
             kind: EffectKind::Spark {
-                color,
-                vx,
-                vy,
-                size,
+                color: spark.color,
+                vx: spark.vx,
+                vy: spark.vy,
+                size: spark.size,
             },
-            x,
-            y,
+            x: spark.x,
+            y: spark.y,
             t: 0.0,
-            life,
+            life: spark.life,
         });
     }
 
@@ -69,15 +81,15 @@ impl Effects {
             let a = (i as f32 / count.max(1) as f32) * std::f32::consts::TAU;
             let jitter = ((i * 37) % 11) as f32 / 11.0 - 0.5;
             let s = speed * (0.6 + jitter);
-            self.spark(
+            self.spark(&Spark {
                 x,
                 y,
                 color,
-                a.cos() * s,
-                a.sin() * s,
-                2.0,
-                0.55 + jitter.abs() * 0.3,
-            );
+                vx: a.cos() * s,
+                vy: a.sin() * s,
+                size: 2.0,
+                life: 0.55 + jitter.abs() * 0.3,
+            });
         }
     }
 

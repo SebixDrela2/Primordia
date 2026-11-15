@@ -289,6 +289,136 @@ const KIN_FALLOFF: f32 = 40.0;
 
 const SMELL_STEP: i32 = 2;
 
+/// What one ray of the senses came up with: the sight of the nearest
+/// thing in that direction, its colours and its textures, the scents
+/// that drift down the ray and the noise that carries along it.
+struct RaySense {
+    found: bool,
+    near: f32,
+    light: f32,
+    red: f32,
+    green: f32,
+    blue: f32,
+    warm: f32,
+    soft: f32,
+    wet: f32,
+    sheen: f32,
+    scent: [f32; smell::CHANNELS],
+    loud: f32,
+}
+
+impl RaySense {
+    fn empty() -> Self {
+        RaySense {
+            found: false,
+            near: 0.0,
+            light: 0.0,
+            red: 0.0,
+            green: 0.0,
+            blue: 0.0,
+            warm: 0.0,
+            soft: 0.0,
+            wet: 0.0,
+            sheen: 0.0,
+            scent: [0.0; smell::CHANNELS],
+            loud: 0.0,
+        }
+    }
+}
+
+fn scan_ray(world: &World, tab: &ElemTables, cx: i32, cy: i32, dx: i32, dy: i32) -> RaySense {
+    let mut ray = RaySense::empty();
+
+    for step in 1..=SMELL_RANGE {
+        let step_size = if step <= SIGHT_RANGE { 1 } else { SMELL_STEP };
+        if step > SIGHT_RANGE && step % step_size != 0 {
+            continue;
+        }
+        let sx = cx + dx * step;
+        let sy = cy + dy * step;
+        if sx < 0 || sy < 0 || sx >= world.w as i32 || sy >= world.h as i32 {
+            continue;
+        }
+        let k = world.kind[sy as usize * world.w + sx as usize] as usize;
+        if k == Elem::Empty as usize {
+            continue;
+        }
+        let lk = &tab.look[k];
+        let w = 1.0 / step as f32;
+
+        let sw = 1.0 / (1.0 + (step - 1) as f32 / SMELL_FALLOFF);
+        if !ray.found && step <= SIGHT_RANGE {
+            ray.found = true;
+            ray.near = 1.0 - (step - 1) as f32 / SIGHT_RANGE as f32;
+            ray.light = lk.bright;
+            ray.red = lk.rgb[0];
+            ray.green = lk.rgb[1];
+            ray.blue = lk.rgb[2];
+            ray.warm = lk.warm;
+            ray.soft = lk.soft;
+            ray.wet = lk.wet;
+            ray.sheen = lk.sheen;
+        } else {
+            ray.light = ray.light.max(lk.bright * w);
+            ray.warm = ray.warm.max(lk.warm * w);
+        }
+
+        let sc = &tab.scent[k];
+        for (c, &scent_value) in sc.iter().enumerate() {
+            if scent_value * sw > ray.scent[c] {
+                ray.scent[c] = scent_value * sw;
+            }
+        }
+
+        let n = tab.noise[k];
+        if n * sw > ray.loud {
+            ray.loud = n * sw;
+        }
+    }
+
+    ray
+}
+
+fn scan_kin(
+    p: &mut Percept,
+    cx: i32,
+    cy: i32,
+    species: u32,
+    agents: &[(u32, f32, f32, u32, u8, f32)],
+    grid: &SpatialGrid,
+) {
+    let mut life = [0.0f32; DIRS];
+    let mut kin = [0.0f32; DIRS];
+    grid.near(cx as f32, cy as f32, KIN_RANGE as usize, |idx| {
+        let a = &agents[idx as usize];
+        let dx = a.1 - cx as f32;
+        let dy = a.2 - cy as f32;
+        let d = (dx * dx + dy * dy).sqrt();
+        if !(0.5..=KIN_RANGE).contains(&d) {
+            return;
+        }
+        let dir = direction_of(dx, dy);
+
+        if d <= SIGHT_RANGE as f32 {
+            let v = (1.0 - (d - 1.0) / SIGHT_RANGE as f32).max(0.0);
+            if v > life[dir] {
+                life[dir] = v;
+            }
+        }
+
+        if a.3 == species {
+            let w = 1.0 / (1.0 + (d - 1.0) / KIN_FALLOFF);
+            if w > kin[dir] {
+                kin[dir] = w;
+            }
+        }
+    });
+    for d in 0..DIRS {
+        p.dir[d][sight::LIFE] = life[d];
+        p.dir[d][sight::CHANNELS + smell::KIN] = kin[d];
+    }
+}
+
 #[must_use]
 pub fn scan_percept_with(
     world: &World,
@@ -302,120 +432,24 @@ pub fn scan_percept_with(
     let mut p = Percept::empty();
 
     for (d, (dx, dy)) in DIRS8.iter().enumerate() {
-        let mut found = false;
-        let mut near = 0.0f32;
-        let mut light = 0.0f32;
-        let mut red = 0.0f32;
-        let mut green = 0.0f32;
-        let mut blue = 0.0f32;
-        let mut warm = 0.0f32;
-        let mut soft = 0.0f32;
-        let mut wet = 0.0f32;
-        let mut sheen = 0.0f32;
-
-        let mut scent = [0.0f32; smell::CHANNELS];
-
-        let mut loud = 0.0f32;
-
-        for step in 1..=SMELL_RANGE {
-
-            let step_size = if step <= SIGHT_RANGE { 1 } else { SMELL_STEP };
-            if step > SIGHT_RANGE && step % step_size != 0 {
-                continue;
-            }
-            let sx = cx + dx * step;
-            let sy = cy + dy * step;
-            if sx < 0 || sy < 0 || sx >= world.w as i32 || sy >= world.h as i32 {
-                continue;
-            }
-            let k = world.kind[sy as usize * world.w + sx as usize] as usize;
-            if k == Elem::Empty as usize {
-                continue;
-            }
-            let lk = &tab.look[k];
-            let w = 1.0 / step as f32;
-
-            let sw = 1.0 / (1.0 + (step - 1) as f32 / SMELL_FALLOFF);
-            if !found && step <= SIGHT_RANGE {
-
-                found = true;
-                near = 1.0 - (step - 1) as f32 / SIGHT_RANGE as f32;
-                light = lk.bright;
-                red = lk.rgb[0];
-                green = lk.rgb[1];
-                blue = lk.rgb[2];
-                warm = lk.warm;
-                soft = lk.soft;
-                wet = lk.wet;
-                sheen = lk.sheen;
-            } else {
-
-                light = light.max(lk.bright * w);
-                warm = warm.max(lk.warm * w);
-            }
-
-            let sc = &tab.scent[k];
-            for c in 0..smell::CHANNELS {
-                if sc[c] * sw > scent[c] {
-                    scent[c] = sc[c] * sw;
-                }
-            }
-
-            let n = tab.noise[k];
-            if n * sw > loud {
-                loud = n * sw;
-            }
-        }
+        let ray = scan_ray(world, tab, cx, cy, *dx, *dy);
 
         let s = &mut p.dir[d];
-        s[sight::NEAR] = near;
-        s[sight::LIGHT] = light;
-        s[sight::RED] = red;
-        s[sight::GREEN] = green;
-        s[sight::BLUE] = blue;
-        s[sight::WARM] = warm;
-        s[sight::SOFT] = soft;
-        s[sight::WET] = wet;
-        s[sight::SHEEN] = sheen;
+        s[sight::NEAR] = ray.near;
+        s[sight::LIGHT] = ray.light;
+        s[sight::RED] = ray.red;
+        s[sight::GREEN] = ray.green;
+        s[sight::BLUE] = ray.blue;
+        s[sight::WARM] = ray.warm;
+        s[sight::SOFT] = ray.soft;
+        s[sight::WET] = ray.wet;
+        s[sight::SHEEN] = ray.sheen;
         let sb = sight::CHANNELS;
-        for c in 0..smell::CHANNELS {
-            s[sb + c] = scent[c];
-        }
-        s[sb + smell::CHANNELS] = loud;
+        s[sb..sb + smell::CHANNELS].copy_from_slice(&ray.scent[..smell::CHANNELS]);
+        s[sb + smell::CHANNELS] = ray.loud;
     }
 
-    {
-        let mut life = [0.0f32; DIRS];
-        let mut kin = [0.0f32; DIRS];
-        grid.near(cx as f32, cy as f32, KIN_RANGE as usize, |idx| {
-            let a = &agents[idx as usize];
-            let dx = a.1 - cx as f32;
-            let dy = a.2 - cy as f32;
-            let d = (dx * dx + dy * dy).sqrt();
-            if !(0.5..=KIN_RANGE).contains(&d) {
-                return;
-            }
-            let dir = direction_of(dx, dy);
-
-            if d <= SIGHT_RANGE as f32 {
-                let v = (1.0 - (d - 1.0) / SIGHT_RANGE as f32).max(0.0);
-                if v > life[dir] {
-                    life[dir] = v;
-                }
-            }
-
-            if a.3 == species {
-                let w = 1.0 / (1.0 + (d - 1.0) / KIN_FALLOFF);
-                if w > kin[dir] {
-                    kin[dir] = w;
-                }
-            }
-        });
-        for d in 0..DIRS {
-            p.dir[d][sight::LIFE] = life[d];
-            p.dir[d][sight::CHANNELS + smell::KIN] = kin[d];
-        }
-    }
+    scan_kin(&mut p, cx, cy, species, agents, grid);
 
     p
 }
@@ -597,9 +631,7 @@ pub fn write_kin(
 pub fn write_percept(p: &Percept, input: &mut [f32]) {
     for (d, dir) in p.dir.iter().enumerate() {
         let b = PERCEPT_BASE + d * DIR_CHANNELS;
-        for c in 0..DIR_CHANNELS {
-            input[b + c] = dir[c];
-        }
+        input[b..b + DIR_CHANNELS].copy_from_slice(&dir[..DIR_CHANNELS]);
     }
 }
 

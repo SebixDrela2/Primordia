@@ -239,7 +239,10 @@ impl CreatureSystem {
 
         let mut warren = 0.0f32;
         for c in &self.list {
-            if world.landmark_bonus(c.x, c.y).plague {
+            if world
+                .landmark_bonus(c.x, c.y)
+                .has(crate::world::Landmark::FungalWarren)
+            {
                 warren += 1.0;
             }
         }
@@ -255,7 +258,10 @@ impl CreatureSystem {
                 if c.disease != Disease::None {
                     continue;
                 }
-                if world.landmark_bonus(c.x, c.y).plague {
+                if world
+                    .landmark_bonus(c.x, c.y)
+                    .has(crate::world::Landmark::FungalWarren)
+                {
                     best = Some(i);
                     break;
                 }

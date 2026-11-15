@@ -347,6 +347,48 @@ impl CreatureSystem {
         Some(self.resolve_negotiation(index, partner_index, action))
     }
 
+    /// The bare chance that a proposal is taken, before the
+    /// temperaments and the reputations of the two are mixed in.
+    fn base_chance(
+        &self,
+        action: DiplomaticAction,
+        power_a: f32,
+        power_b: f32,
+        trust: f32,
+        state: RelationState,
+    ) -> f32 {
+        match action {
+            DiplomaticAction::Trade => {
+                0.25 + trust / 260.0 + state.bias() * 0.3
+            }
+            DiplomaticAction::Alliance => {
+                let power_ratio = power_a / power_b.max(0.001);
+                let balance = 1.0 - (power_ratio - 1.0).abs().min(1.0);
+                0.08 + trust / 130.0 + balance * 0.30 + state.bias() * 0.25
+            }
+            DiplomaticAction::Peace => {
+                let weariness = self
+                    .diplomacy
+                    .get(power_a as u32, power_b as u32)
+                    .map_or(0.0, |r| r.war_weariness);
+                let _ = weariness;
+                0.0
+            }
+            DiplomaticAction::Tribute => {
+                let ratio = power_a / power_b.max(0.001);
+                if ratio < 1.5 {
+                    -1.0
+                } else {
+                    0.05 + (ratio - 1.5).min(2.0) * 0.18 - trust / 200.0
+                }
+            }
+            DiplomaticAction::War => {
+                0.35 + (1.0 - trust / 100.0) * 0.4
+            }
+            DiplomaticAction::None => 0.5,
+        }
+    }
+
     pub fn resolve_negotiation(
         &mut self,
         actor: usize,
@@ -373,39 +415,13 @@ impl CreatureSystem {
         let actor_peaceful = self.list[actor].traits & trait_bits::PEACEFUL != 0;
         let partner_peaceful = self.list[partner].traits & trait_bits::PEACEFUL != 0;
 
-        let mut chance: f32;
-        match action {
-            DiplomaticAction::Trade => {
-                chance = 0.25 + trust / 260.0 + state.bias() * 0.3;
-            }
-            DiplomaticAction::Alliance => {
-
-                let power_ratio = power_a / power_b.max(0.001);
-                let balance = 1.0 - (power_ratio - 1.0).abs().min(1.0);
-                chance = 0.08 + trust / 130.0 + balance * 0.30 + state.bias() * 0.25;
-            }
-            DiplomaticAction::Peace => {
-
-                let weariness = self
-                    .diplomacy
-                    .get(sp_a, sp_b)
-                    .map_or(0.0, |r| r.war_weariness);
-                chance = 0.08 + weariness * 0.45 + trust / 300.0;
-            }
-            DiplomaticAction::Tribute => {
-
-                let ratio = power_a / power_b.max(0.001);
-                if ratio < 1.5 {
-                    chance = -1.0;
-                } else {
-                    chance = 0.05 + (ratio - 1.5).min(2.0) * 0.18 - trust / 200.0;
-                }
-            }
-            DiplomaticAction::War => {
-
-                chance = 0.35 + (1.0 - trust / 100.0) * 0.4;
-            }
-            DiplomaticAction::None => chance = 0.5,
+        let mut chance = self.base_chance(action, power_a, power_b, trust, state);
+        if action == DiplomaticAction::Peace {
+            let weariness = self
+                .diplomacy
+                .get(sp_a, sp_b)
+                .map_or(0.0, |r| r.war_weariness);
+            chance = 0.08 + weariness * 0.45 + trust / 300.0;
         }
 
         if partner_peaceful && action != DiplomaticAction::War {
@@ -424,10 +440,25 @@ impl CreatureSystem {
 
         let accepted = self.rng.chance(chance);
 
+        self.apply_negotiation(action, accepted, sp_a, sp_b, tick);
+
+        self.diplomacy.stats.negotiations += 1;
+        (action, accepted)
+    }
+
+    /// What a negotiation that was taken (or refused) actually does to
+    /// the record of the two species.
+    fn apply_negotiation(
+        &mut self,
+        action: DiplomaticAction,
+        accepted: bool,
+        sp_a: u32,
+        sp_b: u32,
+        tick: u64,
+    ) {
         match action {
             DiplomaticAction::Trade => {
                 if accepted {
-
                     let _ = self.sign_treaty(sp_a, sp_b, Treaty::TradePact, tick);
                 } else {
                     self.adjust_trust(sp_a, sp_b, -4.0);
@@ -478,19 +509,210 @@ impl CreatureSystem {
             }
             DiplomaticAction::None => {
                 if accepted {
-
                     self.adjust_trust(sp_a, sp_b, 3.0);
                 }
             }
         }
-
-        self.diplomacy.stats.negotiations += 1;
-        (action, accepted)
     }
 
     pub fn adjust_trust(&mut self, a: u32, b: u32, delta: f32) {
         let rel = self.diplomacy.get_mut(a, b);
         rel.trust = (rel.trust + delta).clamp(-100.0, 100.0);
+    }
+
+    /// The tribute the vassal owes its overlord.
+    fn pay_tributes(&mut self) {
+        self.diplomacy.tribute_timer += 1;
+        if self.diplomacy.tribute_timer < 120 {
+            return;
+        }
+        self.diplomacy.tribute_timer = 0;
+        let pairs: Vec<(u32, u32, bool)> = self
+            .diplomacy
+            .relations
+            .iter()
+            .filter(|r| r.has(Treaty::Tributary))
+            .map(|r| {
+                let overlord_is_a = r.state == RelationState::Overlord;
+                (r.a, r.b, overlord_is_a)
+            })
+            .collect();
+        for (a, b, overlord_is_a) in pairs {
+            let (overlord, vassal) = if overlord_is_a { (a, b) } else { (b, a) };
+            let amount = 40.0;
+            let mut paid = false;
+            for c in &mut self.list {
+                if c.species == vassal && c.energy > 120.0 {
+                    c.energy -= amount;
+                    paid = true;
+                    break;
+                }
+            }
+            if paid {
+                for c in &mut self.list {
+                    if c.species == overlord {
+                        c.energy = (c.energy + amount).min(c.max_energy);
+                        break;
+                    }
+                }
+                let rel = self.diplomacy.get_mut(a, b);
+                rel.tribute_paid += amount;
+                self.diplomacy.stats.tributes += 1;
+            } else {
+                self.adjust_trust(a, b, -3.0);
+            }
+        }
+    }
+
+    /// The home of every species that still has a queen.
+    fn homes(&self) -> Vec<(u32, f32, f32)> {
+        let mut homes: Vec<(u32, f32, f32)> = Vec::new();
+        for c in &self.list {
+            if c.role == Role::Queen && !homes.iter().any(|(id, _, _)| *id == c.species) {
+                homes.push((c.species, c.base_x, c.base_y));
+            }
+        }
+        homes
+    }
+
+    /// The ground every species holds.
+    fn held_claims(&self, homes: &[(u32, f32, f32)]) -> Vec<(u32, f32, f32, f32)> {
+        let mut claims: Vec<(u32, f32, f32, f32)> = Vec::new();
+        for (id, _hx, _hy) in homes {
+            if let Some((cx, cy, radius)) = self.claim_of(*id) {
+                claims.push((*id, cx, cy, radius));
+            }
+        }
+        claims
+    }
+
+    /// How many of the strangers are standing on the ground of each
+    /// colony.
+    fn count_trespass(&self, claims: &[(u32, f32, f32, f32)]) -> Vec<(u32, u32, u32)> {
+        let mut trespass: Vec<(u32, u32, u32)> = Vec::new();
+        for (owner, x, y, radius) in claims {
+            for c in &self.list {
+                if c.species == *owner {
+                    continue;
+                }
+                if (c.x - *x).powi(2) + (c.y - *y).powi(2) > *radius * *radius {
+                    continue;
+                }
+                if let Some(e) = trespass
+                    .iter_mut()
+                    .find(|(o, v, _)| *o == *owner && *v == c.species)
+                {
+                    e.2 += 1;
+                } else {
+                    trespass.push((*owner, c.species, 1));
+                }
+            }
+        }
+        trespass
+    }
+
+    /// How the relations between the species drift, and which wars have
+    /// worn themselves out.
+    fn drift_relations(
+        &mut self,
+        homes: &[(u32, f32, f32)],
+        trespass: &[(u32, u32, u32)],
+    ) -> Vec<(u32, u32)> {
+        let mut exhausted: Vec<(u32, u32)> = Vec::new();
+        for r in &mut self.diplomacy.relations {
+            if r.state == RelationState::War {
+                r.war_weariness = (r.war_weariness + 0.03).min(1.0);
+                r.trust = (r.trust - 0.15).max(-100.0);
+                if r.war_weariness >= 0.85 {
+                    exhausted.push((r.a, r.b));
+                }
+            } else {
+                let anchor = if r.has(Treaty::Alliance) {
+                    45.0
+                } else if r.has(Treaty::TradePact) {
+                    20.0
+                } else if r.has(Treaty::Ceasefire) {
+                    10.0
+                } else {
+                    0.0
+                };
+                r.trust += (anchor - r.trust) * 0.02;
+
+                for (owner, intruder, count) in trespass {
+                    let pair = (*owner == r.a && *intruder == r.b)
+                        || (*owner == r.b && *intruder == r.a);
+                    if pair && !r.has(Treaty::Alliance) {
+                        r.trust -= (*count as f32).min(6.0) * 0.12;
+                    }
+                }
+
+                if !r.has(Treaty::Alliance) && !r.has(Treaty::NonAggression) {
+                    let home_a = homes.iter().find(|(id, _, _)| *id == r.a);
+                    let home_b = homes.iter().find(|(id, _, _)| *id == r.b);
+                    if let (Some((_, ax, ay)), Some((_, bx, by))) = (home_a, home_b) {
+                        let d = ((ax - bx).powi(2) + (ay - by).powi(2)).sqrt();
+                        if d < 55.0 {
+                            r.trust -= (55.0 - d) * 0.06;
+                        }
+                    }
+                }
+                r.trust = r.trust.clamp(-100.0, 100.0);
+            }
+        }
+        exhausted
+    }
+
+    /// The wars that have gone on long enough, and the truces that
+    /// end them.
+    fn end_exhausted_wars(&mut self, exhausted: &[(u32, u32)]) {
+        for (a, b) in exhausted {
+            let (a, b) = (*a, *b);
+            if self.diplomacy.get(a, b).map(|r| r.state) != Some(RelationState::War) {
+                continue;
+            }
+            let power_a = self.species_power(a);
+            let power_b = self.species_power(b);
+            let winner = if power_a > power_b { a } else { b };
+            let loser = if winner == a { b } else { a };
+            self.break_treaty(a, b, Treaty::Alliance, self.tick);
+            let _ = self.sign_treaty(a, b, Treaty::Ceasefire, self.tick);
+            {
+                let rel = self.diplomacy.get_mut(a, b);
+                rel.state = RelationState::Cordial;
+                rel.war_weariness = 0.0;
+                rel.trust = (rel.trust + 8.0).clamp(-100.0, 100.0);
+            }
+            self.diplomacy.stats.truces += 1;
+            let name_a = self.species_name(a);
+            let name_b = self.species_name(b);
+            self.diplomacy.log_event(
+                format!("{} and {} lay down arms, worn out by the war", name_a, name_b),
+                self.species_color(winner),
+                self.tick,
+            );
+
+            self.adjust_trust(loser, winner, -12.0);
+        }
+    }
+
+    /// The count of the alliances, the wars and the treaties.
+    fn count_diplomacy(&mut self) {
+        let mut alliances = 0u32;
+        let mut wars = 0u32;
+        let mut treaties = 0u32;
+        for r in &self.diplomacy.relations {
+            if r.state == RelationState::Allied {
+                alliances += 1;
+            }
+            if r.state == RelationState::War {
+                wars += 1;
+            }
+            treaties += r.treaties.len() as u32;
+        }
+        self.diplomacy.stats.alliances = alliances;
+        self.diplomacy.stats.wars = wars;
+        self.diplomacy.stats.treaties = treaties;
+        self.diplomacy.stats.envoys = self.list.iter().filter(|c| c.role == Role::Envoy).count() as u32;
     }
 
     pub fn tick_diplomacy(&mut self) {
@@ -499,175 +721,18 @@ impl CreatureSystem {
             self.prune_diplomacy();
         }
 
-        self.diplomacy.tribute_timer += 1;
-        if self.diplomacy.tribute_timer >= 120 {
-            self.diplomacy.tribute_timer = 0;
-            let pairs: Vec<(u32, u32, bool)> = self
-                .diplomacy
-                .relations
-                .iter()
-                .filter(|r| r.has(Treaty::Tributary))
-                .map(|r| {
-                    let overlord_is_a = r.state == RelationState::Overlord;
-                    (r.a, r.b, overlord_is_a)
-                })
-                .collect();
-            for (a, b, overlord_is_a) in pairs {
-                let (overlord, vassal) = if overlord_is_a { (a, b) } else { (b, a) };
-                let amount = 40.0;
-                let mut paid = false;
-                for c in &mut self.list {
-                    if c.species == vassal && c.energy > 120.0 {
-                        c.energy -= amount;
-                        paid = true;
-                        break;
-                    }
-                }
-                if paid {
-                    for c in &mut self.list {
-                        if c.species == overlord {
-                            c.energy = (c.energy + amount).min(c.max_energy);
-                            break;
-                        }
-                    }
-                    let rel = self.diplomacy.get_mut(a, b);
-                    rel.tribute_paid += amount;
-                    self.diplomacy.stats.tributes += 1;
-                } else {
-
-                    self.adjust_trust(a, b, -3.0);
-                }
-            }
-        }
+        self.pay_tributes();
 
         if self.tick.is_multiple_of(60) {
-
-            let mut homes: Vec<(u32, f32, f32)> = Vec::new();
-            for c in &self.list {
-                if c.role == Role::Queen && !homes.iter().any(|(id, _, _)| *id == c.species) {
-                    homes.push((c.species, c.base_x, c.base_y));
-                }
-            }
-
-            let mut claims: Vec<(u32, f32, f32, f32)> = Vec::new();
-            for (id, _hx, _hy) in &homes {
-                if let Some((cx, cy, radius)) = self.claim_of(*id) {
-                    claims.push((*id, cx, cy, radius));
-                }
-            }
-
-            let mut trespass: Vec<(u32, u32, u32)> = Vec::new();
-            for (owner, x, y, radius) in claims {
-                for c in &self.list {
-                    if c.species == owner {
-                        continue;
-                    }
-                    if (c.x - x).powi(2) + (c.y - y).powi(2) > radius * radius {
-                        continue;
-                    }
-                    if let Some(e) = trespass
-                        .iter_mut()
-                        .find(|(o, v, _)| *o == owner && *v == c.species)
-                    {
-                        e.2 += 1;
-                    } else {
-                        trespass.push((owner, c.species, 1));
-                    }
-                }
-            }
-
-            let mut exhausted: Vec<(u32, u32)> = Vec::new();
-            for r in &mut self.diplomacy.relations {
-                if r.state == RelationState::War {
-
-                    r.war_weariness = (r.war_weariness + 0.03).min(1.0);
-                    r.trust = (r.trust - 0.15).max(-100.0);
-                    if r.war_weariness >= 0.85 {
-                        exhausted.push((r.a, r.b));
-                    }
-                } else {
-                    let anchor = if r.has(Treaty::Alliance) {
-                        45.0
-                    } else if r.has(Treaty::TradePact) {
-                        20.0
-                    } else if r.has(Treaty::Ceasefire) {
-                        10.0
-                    } else if r.has(Treaty::NonAggression) {
-                        0.0
-                    } else {
-                        0.0
-                    };
-                    r.trust += (anchor - r.trust) * 0.02;
-
-                    for (owner, intruder, count) in &trespass {
-                        let pair = (*owner == r.a && *intruder == r.b)
-                            || (*owner == r.b && *intruder == r.a);
-                        if pair && !r.has(Treaty::Alliance) {
-                            r.trust -= (*count as f32).min(6.0) * 0.12;
-                        }
-                    }
-
-                    if !r.has(Treaty::Alliance) && !r.has(Treaty::NonAggression) {
-                        let home_a = homes.iter().find(|(id, _, _)| *id == r.a);
-                        let home_b = homes.iter().find(|(id, _, _)| *id == r.b);
-                        if let (Some((_, ax, ay)), Some((_, bx, by))) = (home_a, home_b) {
-                            let d = ((ax - bx).powi(2) + (ay - by).powi(2)).sqrt();
-                            if d < 55.0 {
-                                r.trust -= (55.0 - d) * 0.06;
-                            }
-                        }
-                    }
-                    r.trust = r.trust.clamp(-100.0, 100.0);
-                }
-            }
-
-            for (a, b) in exhausted {
-                if self.diplomacy.get(a, b).map(|r| r.state) != Some(RelationState::War) {
-                    continue;
-                }
-                let power_a = self.species_power(a);
-                let power_b = self.species_power(b);
-                let winner = if power_a > power_b { a } else { b };
-                let loser = if winner == a { b } else { a };
-                self.break_treaty(a, b, Treaty::Alliance, self.tick);
-                let _ = self.sign_treaty(a, b, Treaty::Ceasefire, self.tick);
-                {
-                    let rel = self.diplomacy.get_mut(a, b);
-                    rel.state = RelationState::Cordial;
-                    rel.war_weariness = 0.0;
-                    rel.trust = (rel.trust + 8.0).clamp(-100.0, 100.0);
-                }
-                self.diplomacy.stats.truces += 1;
-                let name_a = self.species_name(a);
-                let name_b = self.species_name(b);
-                self.diplomacy.log_event(
-                    format!("{} and {} lay down arms, worn out by the war", name_a, name_b),
-                    self.species_color(winner),
-                    self.tick,
-                );
-
-                self.adjust_trust(loser, winner, -12.0);
-            }
+            let homes = self.homes();
+            let claims = self.held_claims(&homes);
+            let trespass = self.count_trespass(&claims);
+            let exhausted = self.drift_relations(&homes, &trespass);
+            self.end_exhausted_wars(&exhausted);
         }
 
         if self.tick.is_multiple_of(30) {
-            let mut alliances = 0u32;
-            let mut wars = 0u32;
-            let mut treaties = 0u32;
-            for r in &self.diplomacy.relations {
-                if r.state == RelationState::Allied {
-                    alliances += 1;
-                }
-                if r.state == RelationState::War {
-                    wars += 1;
-                }
-                treaties += r.treaties.len() as u32;
-            }
-            self.diplomacy.stats.alliances = alliances;
-            self.diplomacy.stats.wars = wars;
-            self.diplomacy.stats.treaties = treaties;
-            self.diplomacy.stats.envoys =
-                self.list.iter().filter(|c| c.role == Role::Envoy).count() as u32;
+            self.count_diplomacy();
         }
     }
 }

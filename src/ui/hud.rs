@@ -102,56 +102,56 @@ impl Telemetry {
     }
 }
 
-pub fn draw_telemetry(t: &Telemetry, x: f32, y: f32) {
-    let w = 314.0f32;
-    let h = 226.0f32;
+pub fn draw_telemetry(telemetry: &Telemetry, panel_x: f32, panel_y: f32) {
+    let panel_w = 314.0f32;
+    let panel_h = 226.0f32;
 
-    draw_rectangle(x, y, w, h, Color::new(0.03, 0.05, 0.08, 0.84));
-    draw_rectangle_lines(x, y, w, h, 1.5, Color::new(0.13, 0.83, 0.93, 0.35));
+    draw_rectangle(panel_x, panel_y, panel_w, panel_h, Color::new(0.03, 0.05, 0.08, 0.84));
+    draw_rectangle_lines(panel_x, panel_y, panel_w, panel_h, 1.5, Color::new(0.13, 0.83, 0.93, 0.35));
 
-    let pop_now = t.pop.last().copied().unwrap_or(0.0);
-    let sp_now = t.species.last().copied().unwrap_or(0.0);
-    draw_text("ECOLOGY", x + 12.0, y + 20.0, 14.0, Color::new(0.13, 0.83, 0.93, 0.9));
+    let pop_now = telemetry.pop.last().copied().unwrap_or(0.0);
+    let sp_now = telemetry.species.last().copied().unwrap_or(0.0);
+    draw_text("ECOLOGY", panel_x + 12.0, panel_y + 20.0, 14.0, Color::new(0.13, 0.83, 0.93, 0.9));
     draw_text(
         format!("pop {:.0}", pop_now),
-        x + 96.0,
-        y + 20.0,
+        panel_x + 96.0,
+        panel_y + 20.0,
         12.0,
         Color::new(0.35, 0.9, 1.0, 0.9),
     );
     draw_text(
         format!("species {:.0}", sp_now),
-        x + 184.0,
-        y + 20.0,
+        panel_x + 184.0,
+        panel_y + 20.0,
         12.0,
         Color::new(0.95, 0.78, 0.35, 0.9),
     );
 
-    let gx = x + 12.0;
-    let gy = y + 30.0;
-    let gw = w - 24.0;
+    let gx = panel_x + 12.0;
+    let gy = panel_y + 30.0;
+    let gw = panel_w - 24.0;
     let gh = 78.0;
     draw_rectangle(gx, gy, gw, gh, Color::new(0.02, 0.03, 0.05, 0.9));
     draw_rectangle_lines(gx, gy, gw, gh, 1.0, Color::new(0.2, 0.3, 0.4, 0.45));
 
-    let n = t.pop.len().min(160);
-    if n >= 2 {
-        let start = t.pop.len() - n;
-        let pop_max = t.pop[start..]
+    let samples = telemetry.pop.len().min(160);
+    if samples >= 2 {
+        let start = telemetry.pop.len() - samples;
+        let pop_max = telemetry.pop[start..]
             .iter()
             .copied()
             .fold(1.0f32, f32::max)
             .max(10.0);
-        let step = gw / (n - 1) as f32;
+        let step = gw / (samples - 1) as f32;
         let pop_color = Color::new(0.25, 0.85, 0.98, 0.85);
         let sp_color = Color::new(0.98, 0.78, 0.32, 0.8);
 
         let mut prev_pop: Option<(f32, f32)> = None;
         let mut prev_sp: Option<(f32, f32)> = None;
-        for i in 0..n {
-            let px = gx + i as f32 * step;
-            let pv = t.pop[start + i];
-            let sv = t.species[start + i];
+        for sample in 0..samples {
+            let px = gx + sample as f32 * step;
+            let pv = telemetry.pop[start + sample];
+            let sv = telemetry.species[start + sample];
             let py = gy + gh - (pv / pop_max).clamp(0.0, 1.0) * (gh - 6.0) - 3.0;
             let sy = gy + gh - (sv / 36.0).clamp(0.0, 1.0) * (gh - 6.0) - 3.0;
             if let Some((ox, oy)) = prev_pop {
@@ -174,28 +174,28 @@ pub fn draw_telemetry(t: &Telemetry, x: f32, y: f32) {
     }
 
     let ey = gy + gh + 18.0;
-    draw_text("EVENTS", x + 12.0, ey, 11.0, Color::new(0.55, 0.62, 0.7, 0.85));
+    draw_text("EVENTS", panel_x + 12.0, ey, 11.0, Color::new(0.55, 0.62, 0.7, 0.85));
     let mut yy = ey + 15.0;
     let mut any = false;
-    for (msg, age) in t.events.iter().rev() {
+    for (msg, age) in telemetry.events.iter().rev() {
         let alpha = (1.0 - age / 16.0).clamp(0.25, 1.0);
         draw_text(
             msg,
-            x + 12.0,
+            panel_x + 12.0,
             yy,
             11.0,
             Color::new(0.8, 0.86, 0.92, alpha),
         );
         yy += 14.0;
         any = true;
-        if yy > y + h - 8.0 {
+        if yy > panel_y + panel_h - 8.0 {
             break;
         }
     }
     if !any {
         draw_text(
             "hover to inspect - K for knowledge",
-            x + 12.0,
+            panel_x + 12.0,
             yy,
             11.0,
             Color::new(0.5, 0.58, 0.66, 0.7),
@@ -249,9 +249,23 @@ fn mind_summary(creatures: &CreatureSystem, species: u32) -> String {
     }
 }
 
-pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f32, seed: u64, sim_speed: f32, paused: bool, zoom: f32, revival: u32) {    let stats = &creatures.stats;
-    let biome_name = world.biome_at((cam_x as i32).clamp(0, W as i32 - 1)).name();
-    let weather_name = world.weather.name();
+/// What the heads-up display needs to know about the run: where the
+/// camera is, how fast the world runs, whether it is paused and how the
+/// run itself is going. These belong together, so they travel in one
+/// struct rather than as a list of arguments.
+pub struct HudState {
+    pub cam_x: f32,
+    pub cam_y: f32,
+    pub seed: u64,
+    pub sim_speed: f32,
+    pub paused: bool,
+    pub zoom: f32,
+    pub revival: u32,
+}
+
+pub fn draw_hud(world: &World, creatures: &CreatureSystem, hud: &HudState) {
+    let cam_x = hud.cam_x;
+    let cam_y = hud.cam_y;
 
     let cam_col = (cam_x as i32).clamp(0, W as i32 - 1);
     let cam_depth = (cam_y as i32) - world.surface_y(cam_col);
@@ -259,11 +273,46 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         let zone = crate::world::DepthZone::of(cam_depth);
         format!("{} ({})", zone.name(), zone.blurb())
     } else {
-        biome_name.to_string()
+        world.biome_at(cam_col).name().to_string()
     };
 
     let (leader, leader_traits) = dominant_lineage(creatures);
 
+    draw_hud_title();
+
+    let season_name = match creatures.season { 0=>"Spring", 1=>"Summer", 2=>"Autumn", _=>"Winter" };
+    let time_of_day = if creatures.day_night < 0.25 { "Dawn" } else if creatures.day_night < 0.5 { "Morning" } else if creatures.day_night < 0.75 { "Dusk" } else { "Night" };
+
+    let cam_air = world.fresh_air(cam_col, (cam_y as i32).clamp(0, world.h as i32 - 1), 4);
+    let air_name = if cam_air > 0.55 {
+        "fresh air"
+    } else if cam_air > 0.2 {
+        "stale air"
+    } else {
+        "no air"
+    };
+
+    let ctx = HudContext {
+        world,
+        creatures,
+        hud,
+        place,
+        season_name,
+        time_of_day,
+        air_name,
+        leader,
+        leader_traits,
+    };
+    let lines = hud_lines(&ctx);
+    draw_hud_lines(&lines);
+
+    draw_volcano_banner(world);
+    draw_help_line();
+    draw_paused_banner(hud.paused);
+}
+
+/// The name of the game and the rule under it.
+fn draw_hud_title() {
     draw_text(
         "PRIMORDIA",
         18.0,
@@ -272,13 +321,48 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         Color::new(0.13, 0.83, 0.93, 0.9),
     );
     draw_rectangle(18.0, 44.0, 64.0, 2.0, Color::new(0.13, 0.83, 0.93, 0.55));
+}
 
-    let season_name = match creatures.season { 0=>"Spring", 1=>"Summer", 2=>"Autumn", _=>"Winter" };
-    let time_of_day = if creatures.day_night < 0.25 { "Dawn" } else if creatures.day_night < 0.5 { "Morning" } else if creatures.day_night < 0.75 { "Dusk" } else { "Night" };
+/// The ten lines of numbers down the left of the screen, each with the
+/// colour and the place it is drawn in.
+struct HudLine {
+    text: String,
+    y: f32,
+    size: f32,
+    color: Color,
+}
+
+/// Everything the lines of numbers need, gathered in one place.
+struct HudContext<'a> {
+    world: &'a World,
+    creatures: &'a CreatureSystem,
+    hud: &'a HudState,
+    place: String,
+    season_name: &'static str,
+    time_of_day: &'static str,
+    air_name: &'static str,
+    leader: Option<u32>,
+    leader_traits: Vec<&'static str>,
+}
+
+/// The text of the ten lines, made here so that the drawing is one
+/// short loop.
+fn hud_lines(ctx: &HudContext) -> Vec<HudLine> {
+    let mut lines = hud_head_lines(ctx);
+    lines.extend(hud_tail_lines(ctx));
+    lines
+}
+
+/// The first six lines: the run, the world, the place and the lineage.
+fn hud_head_lines(ctx: &HudContext) -> Vec<HudLine> {
+    let world = ctx.world;
+    let creatures = ctx.creatures;
+    let hud = ctx.hud;
+    let stats = &creatures.stats;
 
     let line1 = format!(
         "seed {}   REVIVAL {}   {} organisms   {} species   gen {}",
-        seed, revival, stats.population, stats.species, stats.max_generation
+        hud.seed, hud.revival, stats.population, stats.species, stats.max_generation
     );
 
     let zorgs = creatures.zorg_count();
@@ -292,55 +376,65 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         world.census.particles, stats.avg_energy, stats.avg_fitness, deep
     );
 
-    let cam_air = world.fresh_air(cam_col, (cam_y as i32).clamp(0, world.h as i32 - 1), 4);
-    let air_name = if cam_air > 0.55 {
-        "fresh air"
-    } else if cam_air > 0.2 {
-        "stale air"
-    } else {
-        "no air"
-    };
     let line3 = format!(
         "{}  {}  {}  temp {:.0}C  mana {:.0}  spells {}  trades {}  SIMx{:.1}  zoom {:.1}x  {}",
-        place,
-        season_name,
-        time_of_day,
+        ctx.place,
+        ctx.season_name,
+        ctx.time_of_day,
         creatures.temperature,
         stats.avg_mana,
         stats.spells_cast,
         stats.trades,
-        sim_speed,
-        zoom,
-        air_name
+        hud.sim_speed,
+        hud.zoom,
+        ctx.air_name
     );
     let line4 = format!(
         "camera: ({:.0},{:.0})   fps {}   births {}   deaths {}  structs {}  towers {}  shots {}  {}",
-        cam_x,
-        cam_y,
+        hud.cam_x,
+        hud.cam_y,
         get_fps(),
         stats.births,
         stats.deaths,
         stats.structures,
         stats.towers,
         stats.shots,
-        weather_name
+        world.weather.name()
     );
     let line5 = format!(
         "hunger {:.0}  thirst {:.0}  stamina {:.0}  diseases {}",
         stats.avg_hunger, stats.avg_thirst, stats.avg_stamina, stats.diseases
-    );    let line6 = match leader {
+    );
+    let line6 = match ctx.leader {
         Some(sp) => format!(
             "lineage {} evolved: {}   mind: {}",
             sp,
-            if leader_traits.is_empty() {
+            if ctx.leader_traits.is_empty() {
                 "no special traits yet".to_string()
             } else {
-                leader_traits.join(", ")
+                ctx.leader_traits.join(", ")
             },
             mind_summary(creatures, sp)
         ),
         None => "lineage: none".to_string(),
     };
+
+    vec![
+        HudLine { text: line1, y: 66.0, size: 17.0, color: Color::new(0.85, 0.9, 0.95, 0.8) },
+        HudLine { text: line2, y: 88.0, size: 17.0, color: Color::new(0.6, 0.66, 0.74, 0.8) },
+        HudLine { text: line3, y: 110.0, size: 17.0, color: Color::new(0.7, 0.8, 0.6, 0.85) },
+        HudLine { text: line4, y: 132.0, size: 17.0, color: Color::new(0.45, 0.5, 0.58, 0.8) },
+        HudLine { text: line5, y: 154.0, size: 17.0, color: Color::new(0.6, 0.5, 0.58, 0.8) },
+        HudLine { text: line6, y: 176.0, size: 17.0, color: Color::new(0.55, 0.85, 0.7, 0.85) },
+    ]
+}
+
+/// The last four lines: the pressure, the diplomacy, the ages and the
+/// succession.
+fn hud_tail_lines(ctx: &HudContext) -> Vec<HudLine> {
+    let world = ctx.world;
+    let creatures = ctx.creatures;
+    let stats = &creatures.stats;
 
     let p = &world.pressure;
     let line7 = format!(
@@ -376,19 +470,26 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         format!("SUCCESSION CRISIS: {}", names.join(", "))
     };
 
-    draw_text(&line1, 18.0, 66.0, 17.0, Color::new(0.85, 0.9, 0.95, 0.8));
-    draw_text(&line2, 18.0, 88.0, 17.0, Color::new(0.6, 0.66, 0.74, 0.8));
-    draw_text(&line3, 18.0, 110.0, 17.0, Color::new(0.7, 0.8, 0.6, 0.85));
-    draw_text(&line4, 18.0, 132.0, 17.0, Color::new(0.45, 0.5, 0.58, 0.8));
-    draw_text(&line5, 18.0, 154.0, 17.0, Color::new(0.6, 0.5, 0.58, 0.8));
-    draw_text(&line6, 18.0, 176.0, 17.0, Color::new(0.55, 0.85, 0.7, 0.85));
-    draw_text(&line7, 18.0, 198.0, 15.0, Color::new(0.85, 0.55, 0.45, 0.8));
-    draw_text(&line8, 18.0, 218.0, 15.0, Color::new(0.45, 0.7, 1.0, 0.82));
-    draw_text(&line9, 18.0, 238.0, 15.0, Color::new(0.8, 0.65, 0.85, 0.82));
-    if !line10.is_empty() {
-        draw_text(&line10, 18.0, 258.0, 15.0, Color::new(0.95, 0.55, 0.35, 0.9));
-    }
+    vec![
+        HudLine { text: line7, y: 198.0, size: 15.0, color: Color::new(0.85, 0.55, 0.45, 0.8) },
+        HudLine { text: line8, y: 218.0, size: 15.0, color: Color::new(0.45, 0.7, 1.0, 0.82) },
+        HudLine { text: line9, y: 238.0, size: 15.0, color: Color::new(0.8, 0.65, 0.85, 0.82) },
+        HudLine { text: line10, y: 258.0, size: 15.0, color: Color::new(0.95, 0.55, 0.35, 0.9) },
+    ]
+}
 
+/// The ten lines of numbers, drawn one under the other.
+fn draw_hud_lines(lines: &[HudLine]) {
+    for line in lines {
+        if line.text.is_empty() {
+            continue;
+        }
+        draw_text(&line.text, 18.0, line.y, line.size, line.color);
+    }
+}
+
+/// The banner over the top of the screen when the mountain is awake.
+fn draw_volcano_banner(world: &World) {
     match world.volcano_state() {
         crate::world::Volcano::Erupting => {
             let flash = 0.6 + 0.4 * (get_time() as f32 * 6.0).sin();
@@ -420,7 +521,10 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         }
         crate::world::Volcano::Sleeping => {}
     }
+}
 
+/// The keys, along the bottom right.
+fn draw_help_line() {
     let help = "WASD/Arrows: move  |  scroll: zoom  |  P: pause  |  R: reroll  |  K: knowledge  |  G: diplomacy  |  M: minds  |  +/-: sim speed  |  hover: inspect  |  ESC: quit";
     let dims = measure_text(help, None, 15, 1.0);
     draw_text(
@@ -430,19 +534,23 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         15.0,
         Color::new(0.4, 0.45, 0.52, 0.7),
     );
+}
 
-    if paused {
-        let label = "PAUSED";
-        let dims = measure_text(label, None, 34, 1.0);
-        let x = (screen_width() - dims.width) / 2.0;
-        let y = screen_height() / 2.0 + 12.0;
-        draw_rectangle(x - 18.0, y - 34.0, dims.width + 36.0, 48.0, Color::new(0.03, 0.04, 0.07, 0.72));
-        draw_rectangle_lines(x - 18.0, y - 34.0, dims.width + 36.0, 48.0, 2.0, Color::new(0.13, 0.83, 0.93, 0.9));
-        draw_text(label, x, y, 34.0, Color::new(0.13, 0.83, 0.93, 0.95));
-        let hint = "(press P to resume)";
-        let hd = measure_text(hint, None, 15, 1.0);
-        draw_text(hint, (screen_width() - hd.width) / 2.0, y + 22.0, 15.0, Color::new(0.7, 0.78, 0.85, 0.85));
+/// The word in the middle of the screen when the run is held still.
+fn draw_paused_banner(paused: bool) {
+    if !paused {
+        return;
     }
+    let label = "PAUSED";
+    let dims = measure_text(label, None, 34, 1.0);
+    let x = (screen_width() - dims.width) / 2.0;
+    let y = screen_height() / 2.0 + 12.0;
+    draw_rectangle(x - 18.0, y - 34.0, dims.width + 36.0, 48.0, Color::new(0.03, 0.04, 0.07, 0.72));
+    draw_rectangle_lines(x - 18.0, y - 34.0, dims.width + 36.0, 48.0, 2.0, Color::new(0.13, 0.83, 0.93, 0.9));
+    draw_text(label, x, y, 34.0, Color::new(0.13, 0.83, 0.93, 0.95));
+    let hint = "(press P to resume)";
+    let hd = measure_text(hint, None, 15, 1.0);
+    draw_text(hint, (screen_width() - hd.width) / 2.0, y + 22.0, 15.0, Color::new(0.7, 0.78, 0.85, 0.85));
 }
 
 impl Default for Telemetry {

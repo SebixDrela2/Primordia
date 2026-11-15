@@ -64,40 +64,20 @@ pub fn draw_minds(creatures: &CreatureSystem, index: f32) {
     let subjects = gather(creatures);
     let sw = screen_width();
     let sh = screen_height();
-    let w = (sw * 0.97).min(1900.0);
-    let h = (sh * 0.95).min(1150.0);
-    let x = (sw - w) * 0.5;
-    let y = (sh - h) * 0.5;
+    let panel_w = (sw * 0.97).min(1900.0);
+    let panel_h = (sh * 0.95).min(1150.0);
+    let panel_x = (sw - panel_w) * 0.5;
+    let panel_y = (sh - panel_h) * 0.5;
 
-    draw_rectangle(x, y, w, h, Color::new(0.03, 0.05, 0.08, 0.98));
-    draw_rectangle_lines(x, y, w, h, 1.5, Color::new(0.25, 0.55, 0.7, 0.9));
-    draw_text(
-        "THE MINDS OF THE CLEVEREST",
-        x + 18.0,
-        y + 30.0,
-        24.0,
-        Color::new(0.4, 0.85, 0.95, 1.0),
-    );
-    draw_text(
-        "the cleverest animals of the cleverest colony - the deep is not a people and is not shown",
-        x + 18.0,
-        y + 52.0,
-        13.0,
-        Color::new(0.6, 0.68, 0.75, 0.9),
-    );
-    draw_text(
-        "scroll: another mind     close: M or Escape",
-        x + w - 300.0,
-        y + 30.0,
-        13.0,
-        Color::new(0.5, 0.58, 0.66, 0.9),
-    );
+    draw_rectangle(panel_x, panel_y, panel_w, panel_h, Color::new(0.03, 0.05, 0.08, 0.98));
+    draw_rectangle_lines(panel_x, panel_y, panel_w, panel_h, 1.5, Color::new(0.25, 0.55, 0.7, 0.9));
+    draw_minds_header(panel_x, panel_y, panel_w);
 
     if subjects.is_empty() {
         draw_text(
             "no colony has risen yet",
-            x + 18.0,
-            y + 110.0,
+            panel_x + 18.0,
+            panel_y + 110.0,
             18.0,
             Color::new(0.7, 0.7, 0.7, 0.9),
         );
@@ -107,16 +87,62 @@ pub fn draw_minds(creatures: &CreatureSystem, index: f32) {
     let n = subjects.len();
     let idx = (index.round().max(0.0) as usize).min(n - 1);
 
-    let chips_y = y + 72.0;
-    let mut cx = x + 18.0;
-    for (i, s) in subjects.iter().enumerate() {
-        let label = format!("{}  gen {}  fit {:.2}", s.name, s.generation, s.fitness);
+    let chips_y = panel_y + 72.0;
+    draw_mind_chips(&subjects, idx, panel_x, chips_y);
+
+    let top = chips_y + 26.0;
+    let legend_h = 56.0;
+    let area_h = (panel_y + panel_h - legend_h) - top;
+    let subject = &subjects[idx];
+    draw_subject(subject, panel_x + 14.0, top, panel_w - 28.0, area_h);
+
+    let legend_y = panel_y + panel_h - legend_h;
+    draw_rectangle(
+        panel_x,
+        legend_y,
+        panel_w,
+        legend_h,
+        Color::new(0.03, 0.05, 0.08, 0.99),
+    );
+    draw_legend(panel_x + 18.0, legend_y);
+}
+
+/// The title of the panel and the two lines that explain it.
+fn draw_minds_header(panel_x: f32, panel_y: f32, panel_w: f32) {
+    draw_text(
+        "THE MINDS OF THE CLEVEREST",
+        panel_x + 18.0,
+        panel_y + 30.0,
+        24.0,
+        Color::new(0.4, 0.85, 0.95, 1.0),
+    );
+    draw_text(
+        "the cleverest animals of the cleverest colony - the deep is not a people and is not shown",
+        panel_x + 18.0,
+        panel_y + 52.0,
+        13.0,
+        Color::new(0.6, 0.68, 0.75, 0.9),
+    );
+    draw_text(
+        "scroll: another mind     close: M or Escape",
+        panel_x + panel_w - 300.0,
+        panel_y + 30.0,
+        13.0,
+        Color::new(0.5, 0.58, 0.66, 0.9),
+    );
+}
+
+/// The row of chips, one per mind, with the chosen one picked out.
+fn draw_mind_chips(subjects: &[Subject], idx: usize, panel_x: f32, chips_y: f32) {
+    let mut cx = panel_x + 18.0;
+    for (chip_index, subject) in subjects.iter().enumerate() {
+        let label = format!("{}  gen {}  fit {:.2}", subject.name, subject.generation, subject.fitness);
         let tw = label.len() as f32 * 6.6 + 26.0;
-        let sel = i == idx;
+        let sel = chip_index == idx;
         let base = Color::new(
-            s.colour[0] as f32 / 255.0,
-            s.colour[1] as f32 / 255.0,
-            s.colour[2] as f32 / 255.0,
+            subject.colour[0] as f32 / 255.0,
+            subject.colour[1] as f32 / 255.0,
+            subject.colour[2] as f32 / 255.0,
             1.0,
         );
         draw_rectangle(
@@ -155,22 +181,6 @@ pub fn draw_minds(creatures: &CreatureSystem, index: f32) {
         );
         cx += tw + 8.0;
     }
-
-    let top = chips_y + 26.0;
-    let legend_h = 56.0;
-    let area_h = (y + h - legend_h) - top;
-    let s = &subjects[idx];
-    draw_subject(s, x + 14.0, top, w - 28.0, area_h);
-
-    let legend_y = y + h - legend_h;
-    draw_rectangle(
-        x,
-        legend_y,
-        w,
-        legend_h,
-        Color::new(0.03, 0.05, 0.08, 0.99),
-    );
-    draw_legend(x + 18.0, legend_y);
 }
 
 struct InputColumn {
@@ -261,44 +271,44 @@ fn layout(x: f32, y: f32, w: f32, h: f32, mind: &MindView) -> Layout {
 
 const DIR_SHORT: [&str; 8] = ["S", "SE", "E", "NE", "N", "NW", "W", "SW"];
 
-fn draw_subject(s: &Subject, x: f32, y: f32, w: f32, h: f32) {
+fn draw_subject(subject: &Subject, panel_x: f32, panel_y: f32, panel_w: f32, panel_h: f32) {
 
     let col = Color::new(
-        s.colour[0] as f32 / 255.0,
-        s.colour[1] as f32 / 255.0,
-        s.colour[2] as f32 / 255.0,
+        subject.colour[0] as f32 / 255.0,
+        subject.colour[1] as f32 / 255.0,
+        subject.colour[2] as f32 / 255.0,
         1.0,
     );
     draw_text(
         format!(
             "{}   species {}   generation {}   fitness {:.2}",
-            s.name, s.species, s.generation, s.fitness
+            subject.name, subject.species, subject.generation, subject.fitness
         ),
-        x + 4.0,
-        y + 14.0,
+        panel_x + 4.0,
+        panel_y + 14.0,
         17.0,
         col,
     );
     draw_text(
         format!(
             "tier {} mind   {} hidden units   {} decisions   {} firing with   {} senses in",
-            s.mind.arch,
-            s.mind.hidden_layers.iter().sum::<usize>(),
-            s.mind.outputs,
-            crate::creature::activation::name(s.mind.activation),
-            s.mind.channels.len()
+            subject.mind.arch,
+            subject.mind.hidden_layers.iter().sum::<usize>(),
+            subject.mind.outputs,
+            crate::creature::activation::name(subject.mind.activation),
+            subject.mind.channels.len()
         ),
-        x + 470.0,
-        y + 14.0,
+        panel_x + 470.0,
+        panel_y + 14.0,
         12.0,
         Color::new(0.58, 0.66, 0.74, 0.9),
     );
 
-    let lay = layout(x, y, w, h, &s.mind);
-    draw_connections(s, &lay);
-    draw_inputs(s, &lay);
-    draw_hidden(s, &lay);
-    draw_outputs(s, &lay);
+    let lay = layout(panel_x, panel_y, panel_w, panel_h, &subject.mind);
+    draw_connections(subject, &lay);
+    draw_inputs(subject, &lay);
+    draw_hidden(subject, &lay);
+    draw_outputs(subject, &lay);
 }
 
 fn channel_colour(kind: usize, index: usize) -> Color {
@@ -587,91 +597,107 @@ fn pull_colour(pull: f32, drive: f32, strength: f32) -> Color {
 const STRONG: f32 = 0.22;
 
 fn draw_connections(s: &Subject, lay: &Layout) {
-
     let grey = Color::new(0.5, 0.58, 0.68, 0.045);
 
-    if let Some(&first) = lay.hidden.first() {
-        let n0 = s.mind.hidden_layers.first().copied().unwrap_or(0);
-        let mut peak = 0.0f32;
-        for col in &lay.inputs {
-            for i in 0..n0 {
-                let p = s.mind.column_pull(0, col.first, col.count, i);
-                if p.abs() > peak {
-                    peak = p.abs();
-                }
-            }
-        }
-        for col in &lay.inputs {
-            let sy = col.ys.iter().sum::<f32>() / col.ys.len().max(1) as f32;
-            for i in 0..n0 {
-                let pull = s.mind.column_pull(0, col.first, col.count, i);
-                let hy = lay.top + i as f32 * lay.step;
-                if pull.abs() < peak * STRONG {
-
-                    draw_line(col.x, sy, first, hy, 0.4, grey);
-                    continue;
-                }
-                let drive = s.mind.unit_drive(0, i);
-                let c = pull_colour(pull, drive, pull.abs() / peak.max(0.001));
-                draw_line(col.x, sy, first, hy, 0.8, c);
-            }
-        }
-    }
+    draw_input_connections(s, lay, grey);
 
     for c in 0..s.mind.hidden_layers.len().saturating_sub(1) {
-        let n0 = s.mind.hidden_layers[c];
-        let n1 = s.mind.hidden_layers[c + 1];
-        let (x0, x1) = (lay.hidden[c], lay.hidden[c + 1]);
-        let mut peak = 0.0f32;
+        draw_layer_connections(s, lay, c, grey);
+    }
+
+    draw_output_connections(s, lay, grey);
+}
+
+/// The lines from the input layer to the first hidden layer.
+fn draw_input_connections(s: &Subject, lay: &Layout, grey: Color) {
+    let Some(&first) = lay.hidden.first() else {
+        return;
+    };
+    let n0 = s.mind.hidden_layers.first().copied().unwrap_or(0);
+    let mut peak = 0.0f32;
+    for col in &lay.inputs {
         for i in 0..n0 {
-            for j in 0..n1 {
-                let p = s.mind.unit_pull(c, i, j);
-                if p.abs() > peak {
-                    peak = p.abs();
-                }
-            }
-        }
-        for i in 0..n0 {
-            for j in 0..n1 {
-                let pull = s.mind.unit_pull(c, i, j);
-                let (sx, sy) = (x0, lay.top + i as f32 * lay.step);
-                let (hx, hy) = (x1, lay.top + j as f32 * lay.step);
-                if pull.abs() < peak * STRONG {
-                    draw_line(sx, sy, hx, hy, 0.35, grey);
-                    continue;
-                }
-                let drive = s.mind.unit_drive(c, j);
-                let col = pull_colour(pull, drive, pull.abs() / peak.max(0.001));
-                draw_line(sx, sy, hx, hy, 0.8, col);
+            let p = s.mind.column_pull(0, col.first, col.count, i);
+            if p.abs() > peak {
+                peak = p.abs();
             }
         }
     }
+    for col in &lay.inputs {
+        let sy = col.ys.iter().sum::<f32>() / col.ys.len().max(1) as f32;
+        for i in 0..n0 {
+            let pull = s.mind.column_pull(0, col.first, col.count, i);
+            let hy = lay.top + i as f32 * lay.step;
+            if pull.abs() < peak * STRONG {
 
-    let last = s.mind.hidden_layers.len().saturating_sub(1);
-    if let Some(&lh) = lay.hidden.last() {
-        let n = s.mind.hidden_layers.last().copied().unwrap_or(0);
-        let mut peak = 0.0f32;
-        for i in 0..n {
-            for o in 0..s.mind.outputs {
-                let p = s.mind.unit_pull(last, i, o);
-                if p.abs() > peak {
-                    peak = p.abs();
-                }
+                draw_line(col.x, sy, first, hy, 0.4, grey);
+                continue;
+            }
+            let drive = s.mind.unit_drive(0, i);
+            let c = pull_colour(pull, drive, pull.abs() / peak.max(0.001));
+            draw_line(col.x, sy, first, hy, 0.8, c);
+        }
+    }
+}
+
+/// The lines from one hidden layer to the next.
+fn draw_layer_connections(s: &Subject, lay: &Layout, c: usize, grey: Color) {
+    let n0 = s.mind.hidden_layers[c];
+    let n1 = s.mind.hidden_layers[c + 1];
+    let (x0, x1) = (lay.hidden[c], lay.hidden[c + 1]);
+    let mut peak = 0.0f32;
+    for i in 0..n0 {
+        for j in 0..n1 {
+            let p = s.mind.unit_pull(c, i, j);
+            if p.abs() > peak {
+                peak = p.abs();
             }
         }
-        for i in 0..n {
-            for o in 0..s.mind.outputs {
-                let pull = s.mind.unit_pull(last, i, o);
-                let (sx, sy) = (lh, lay.top + i as f32 * lay.step);
-                let (hx, hy) = (lay.output, lay.top + o as f32 * lay.step);
-                if pull.abs() < peak * STRONG {
-                    draw_line(sx, sy, hx, hy, 0.35, grey);
-                    continue;
-                }
-                let drive = s.mind.drive(o);
-                let col = pull_colour(pull, drive, pull.abs() / peak.max(0.001));
-                draw_line(sx, sy, hx, hy, 0.9, col);
+    }
+    for i in 0..n0 {
+        for j in 0..n1 {
+            let pull = s.mind.unit_pull(c, i, j);
+            let (sx, sy) = (x0, lay.top + i as f32 * lay.step);
+            let (hx, hy) = (x1, lay.top + j as f32 * lay.step);
+            if pull.abs() < peak * STRONG {
+                draw_line(sx, sy, hx, hy, 0.35, grey);
+                continue;
             }
+            let drive = s.mind.unit_drive(c, j);
+            let col = pull_colour(pull, drive, pull.abs() / peak.max(0.001));
+            draw_line(sx, sy, hx, hy, 0.8, col);
+        }
+    }
+}
+
+/// The lines from the last hidden layer to the decisions.
+fn draw_output_connections(s: &Subject, lay: &Layout, grey: Color) {
+    let last = s.mind.hidden_layers.len().saturating_sub(1);
+    let Some(&lh) = lay.hidden.last() else {
+        return;
+    };
+    let n = s.mind.hidden_layers.last().copied().unwrap_or(0);
+    let mut peak = 0.0f32;
+    for i in 0..n {
+        for o in 0..s.mind.outputs {
+            let p = s.mind.unit_pull(last, i, o);
+            if p.abs() > peak {
+                peak = p.abs();
+            }
+        }
+    }
+    for i in 0..n {
+        for o in 0..s.mind.outputs {
+            let pull = s.mind.unit_pull(last, i, o);
+            let (sx, sy) = (lh, lay.top + i as f32 * lay.step);
+            let (hx, hy) = (lay.output, lay.top + o as f32 * lay.step);
+            if pull.abs() < peak * STRONG {
+                draw_line(sx, sy, hx, hy, 0.35, grey);
+                continue;
+            }
+            let drive = s.mind.drive(o);
+            let col = pull_colour(pull, drive, pull.abs() / peak.max(0.001));
+            draw_line(sx, sy, hx, hy, 0.9, col);
         }
     }
 }

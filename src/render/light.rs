@@ -63,26 +63,26 @@ impl LightField {
     }
 
     fn blur_horizontal(&mut self, radius: usize) {
-        let w = self.w;
-        let h = self.h;
-        let r = radius.min(w.saturating_sub(1));
-        if r == 0 {
+        let width = self.w;
+        let height = self.h;
+        let span = radius.min(width.saturating_sub(1));
+        if span == 0 {
             return;
         }
 
         let mut prefix = std::mem::take(&mut self.prefix);
-        prefix.resize(w + 1, [0.0; 3]);
-        for y in 0..h {
-            let row = y * w;
+        prefix.resize(width + 1, [0.0; 3]);
+        for y in 0..height {
+            let row = y * width;
             prefix[0] = [0.0; 3];
-            for x in 0..w {
+            for x in 0..width {
                 let c = self.buf[row + x];
                 let p = prefix[x];
                 prefix[x + 1] = [p[0] + c[0], p[1] + c[1], p[2] + c[2]];
             }
-            for x in 0..w {
-                let lo = x.saturating_sub(r);
-                let hi = (x + r).min(w - 1);
+            for x in 0..width {
+                let lo = x.saturating_sub(span);
+                let hi = (x + span).min(width - 1);
                 let a = prefix[lo];
                 let b = prefix[hi + 1];
                 let inv = 1.0 / (hi - lo + 1) as f32;
@@ -98,29 +98,29 @@ impl LightField {
     }
 
     fn blur_vertical(&mut self, radius: usize) {
-        let w = self.w;
-        let h = self.h;
-        let r = radius.min(h.saturating_sub(1));
-        if r == 0 {
+        let width = self.w;
+        let height = self.h;
+        let span = radius.min(height.saturating_sub(1));
+        if span == 0 {
             return;
         }
 
         let mut prefix = std::mem::take(&mut self.prefix);
-        prefix.resize(h + 1, [0.0; 3]);
-        for x in 0..w {
+        prefix.resize(height + 1, [0.0; 3]);
+        for x in 0..width {
             prefix[0] = [0.0; 3];
-            for y in 0..h {
-                let c = self.buf[y * w + x];
+            for y in 0..height {
+                let c = self.buf[y * width + x];
                 let p = prefix[y];
                 prefix[y + 1] = [p[0] + c[0], p[1] + c[1], p[2] + c[2]];
             }
-            for y in 0..h {
-                let lo = y.saturating_sub(r);
-                let hi = (y + r).min(h - 1);
+            for y in 0..height {
+                let lo = y.saturating_sub(span);
+                let hi = (y + span).min(height - 1);
                 let a = prefix[lo];
                 let b = prefix[hi + 1];
                 let inv = 1.0 / (hi - lo + 1) as f32;
-                self.buf[y * w + x] = [
+                self.buf[y * width + x] = [
                     (b[0] - a[0]) * inv,
                     (b[1] - a[1]) * inv,
                     (b[2] - a[2]) * inv,

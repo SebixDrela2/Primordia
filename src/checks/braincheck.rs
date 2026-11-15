@@ -1,35 +1,29 @@
 
-use crate::creature::CreatureSystem;
+use crate::creature::{Creature, CreatureSystem};
 use crate::creature::senses::{DIR_CHANNELS, sight, smell};
 use crate::world::World;
 
 const W: usize = 1280;
 const H: usize = 720;
 
-#[must_use]
-pub fn run(args: &[String]) -> i32 {
-    let mut args = args.iter();
-    let steps: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(12000);
-    let seed: u64 = args
-        .next()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0x11FE_5678_9ABC_0004);
-
-    let mut failures = 0u32;
-
-    println!("=== brain check ===");
-    println!("steps: {}", steps);
-
+/// The senses have to be primitive, but there have to be enough of them.
+fn check_senses() -> u32 {
     println!("--- the senses ---");
     println!("  inputs: {}", crate::creature::INPUTS);
     println!("  outputs: {}", crate::creature::OUTPUTS);
     println!("  per direction: {} channels", DIR_CHANNELS);
+    let mut failures = 0;
     if crate::creature::INPUTS < 100 {
         println!("FAIL: there are too few senses for a brain to work with");
         failures += 1;
     }
+    failures
+}
 
+/// A newborn mind wants what it smells, and it can learn to want it.
+fn check_learning() -> u32 {
     println!("--- the learning ---");
+    let mut failures = 0;
     let instinct = test_instinct();
     if instinct {
         println!("OK: a newborn mind already wants what it smells");
@@ -44,13 +38,65 @@ pub fn run(args: &[String]) -> i32 {
         println!("FAIL: a mind cannot learn to want what it smells");
         failures += 1;
     }
+    failures
+}
 
-    println!("--- the world ---");
-    let mut world = World::new(W, H, seed);
-    world.seed();
-    let mut creatures = CreatureSystem::new(seed.wrapping_add(0x1234_5678_9ABC_DEF0));
-    creatures.populate(&world, 64);
+fn avg_energy(creatures: &CreatureSystem) -> f32 {
+    let p = creatures.list.len().max(1) as f32;
+    creatures.list.iter().map(|c| c.energy).sum::<f32>() / p
+}
 
+fn avg_depth(world: &World, creatures: &CreatureSystem) -> f32 {
+    let p = creatures.list.len().max(1) as f32;
+    creatures
+        .list
+        .iter()
+        .map(|c| (c.y.round() as i32 - world.surface_y(c.x.round() as i32)).max(0) as f32)
+        .sum::<f32>()
+        / p
+}
+
+/// Is there something worth eating within reach of this creature?
+fn food_in_reach(world: &World, c: &Creature) -> bool {
+    let cx = c.x.round() as i32;
+    let cy = c.y.round() as i32;
+    for (dx, dy) in crate::world::DIRS8.iter().copied().chain([(0, 0)]) {
+        let e = world.get(cx + dx, cy + dy);
+        if e.is_edible() && e.nutrition() > 3.0 {
+            return true;
+        }
+    }
+    false
+}
+
+fn count_food_in_reach(world: &World, creatures: &CreatureSystem) -> usize {
+    let mut n = 0;
+    for c in &creatures.list {
+        if food_in_reach(world, c) {
+            n += 1;
+        }
+    }
+    n
+}
+
+fn report_world_step(world: &World, creatures: &CreatureSystem, i: u64, hunger: f32) {
+    println!(
+        "  step {} pop {} species {} hunger {:.0} energy {:.0} depth {:.0} food {} zorgs {} births {} deaths {}",
+        i,
+        creatures.list.len(),
+        creatures.stats.species,
+        hunger,
+        avg_energy(creatures),
+        avg_depth(world, creatures),
+        count_food_in_reach(world, creatures),
+        creatures.list.iter().filter(|c| c.faction == crate::creature::Faction::Zorg).count(),
+        creatures.stats.births,
+        creatures.stats.deaths
+    );
+}
+
+/// Step the world and the creatures, and watch the hunger of the colony.
+fn run_world(world: &mut World, creatures: &mut CreatureSystem, steps: u64) -> (f32, f32) {
     let mut hunger_first = 0.0f32;
     let mut hunger_second = 0.0f32;
     let mut samples_first = 0u32;
@@ -58,23 +104,11 @@ pub fn run(args: &[String]) -> i32 {
     for i in 0..steps {
 
         world.step();
-        creatures.step(&mut world);
+        creatures.step(world);
         if i.is_multiple_of(300) {
             let pop = creatures.list.len().max(1) as f32;
             let hunger: f32 = creatures.list.iter().map(|c| c.hunger).sum::<f32>() / pop;
-            println!(
-                "  step {} pop {} species {} hunger {:.0} energy {:.0} depth {:.0} food {} zorgs {} births {} deaths {}",
-                i,
-                creatures.list.len(),
-                creatures.stats.species,
-                hunger,
-                { let p = creatures.list.len().max(1) as f32; creatures.list.iter().map(|c| c.energy).sum::<f32>() / p },
-                { let p = creatures.list.len().max(1) as f32; creatures.list.iter().map(|c| (c.y.round() as i32 - world.surface_y(c.x.round() as i32)).max(0) as f32).sum::<f32>() / p },
-                { let mut n = 0; for c in &creatures.list { let cx = c.x.round() as i32; let cy = c.y.round() as i32; for (dx, dy) in crate::world::DIRS8.iter().copied().chain([(0,0)]) { let e = world.get(cx+dx, cy+dy); if e.is_edible() && e.nutrition() > 3.0 { n += 1; break; } } } n },
-                creatures.list.iter().filter(|c| c.faction == crate::creature::Faction::Zorg).count(),
-                creatures.stats.births,
-                creatures.stats.deaths
-            );
+            report_world_step(world, creatures, i, hunger);
             if i < steps / 2 {
                 hunger_first += hunger;
                 samples_first += 1;
@@ -84,10 +118,13 @@ pub fn run(args: &[String]) -> i32 {
             }
         }
     }
-    hunger_first /= samples_first.max(1) as f32;
-    hunger_second /= samples_second.max(1) as f32;
-    println!("  hunger in the first half:  {:.1}", hunger_first);
-    println!("  hunger in the second half: {:.1}", hunger_second);
+    (
+        hunger_first / samples_first.max(1) as f32,
+        hunger_second / samples_second.max(1) as f32,
+    )
+}
+
+fn print_meals(creatures: &CreatureSystem) {
     println!("  meals: {}", creatures.eats_total);
 
     let mut meals: Vec<(&str, u32)> = Vec::new();
@@ -100,7 +137,10 @@ pub fn run(args: &[String]) -> i32 {
     for (name, n) in meals.iter().take(8) {
         println!("    {} meals: {}", name, n);
     }
+}
 
+/// What the colony looks like at the end of the run.
+fn print_colony(world: &World, creatures: &CreatureSystem) {
     let mut starved = 0u32;
     let mut hurt = 0u32;
     for c in &creatures.list {
@@ -127,16 +167,7 @@ pub fn run(args: &[String]) -> i32 {
     let mut resting = 0u32;
     let mut tired = 0u32;
     for c in &creatures.list {
-        let cx = c.x.round() as i32;
-        let cy = c.y.round() as i32;
-        let mut near = false;
-        for (dx, dy) in crate::world::DIRS8.iter().copied().chain([(0, 0)]) {
-            let e = world.get(cx + dx, cy + dy);
-            if e.is_edible() && e.nutrition() > 3.0 {
-                near = true;
-            }
-        }
-        if near {
+        if food_in_reach(world, c) {
             with_food += 1;
         }
         if c.resting {
@@ -159,6 +190,11 @@ pub fn run(args: &[String]) -> i32 {
     println!("  average depth below the surface: {:.1}", depth / total.max(1) as f32);
     println!("  population: {}", creatures.list.len());
     println!("  species: {}", creatures.stats.species);
+}
+
+/// The colony has to have fed itself and it has to still be alive.
+fn check_colony(creatures: &CreatureSystem, hunger_first: f32, hunger_second: f32) -> u32 {
+    let mut failures = 0;
     if creatures.eats_total == 0 {
         println!("FAIL: no creature ever ate");
         failures += 1;
@@ -172,6 +208,39 @@ pub fn run(args: &[String]) -> i32 {
         println!("FAIL: everything died");
         failures += 1;
     }
+    failures
+}
+
+#[must_use]
+pub fn run(args: &[String]) -> i32 {
+    let mut args = args.iter();
+    let steps: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(12000);
+    let seed: u64 = args
+        .next()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0x11FE_5678_9ABC_0004);
+
+    let mut failures = 0u32;
+
+    println!("=== brain check ===");
+    println!("steps: {}", steps);
+
+    failures += check_senses();
+    failures += check_learning();
+
+    println!("--- the world ---");
+    let mut world = World::new(W, H, seed);
+    world.seed();
+    let mut creatures = CreatureSystem::new(seed.wrapping_add(0x1234_5678_9ABC_DEF0));
+    creatures.populate(&world, 64);
+
+    let (hunger_first, hunger_second) = run_world(&mut world, &mut creatures, steps);
+    println!("  hunger in the first half:  {:.1}", hunger_first);
+    println!("  hunger in the second half: {:.1}", hunger_second);
+
+    print_meals(&creatures);
+    print_colony(&world, &creatures);
+    failures += check_colony(&creatures, hunger_first, hunger_second);
 
     if failures == 0 {
         println!("OK: the minds hold together");
@@ -187,7 +256,7 @@ fn test_instinct() -> bool {
     let net = crate::creature::Net::random(&crate::creature::brain_sizes_for(0), &mut rng);
     let mut net = net;
     let mut act = Vec::new();
-    let mut next = Vec::new();
+    let mut scratch = Vec::new();
 
     let want = 3usize;
     let mut input = vec![0.0f32; crate::creature::INPUTS];
@@ -197,7 +266,7 @@ fn test_instinct() -> bool {
     input[base + sight::SOFT] = 0.9;
 
     input[base + sight::CHANNELS + smell::SWEET] = 1.0;
-    net.forward_into(&input, &mut act, &mut next);
+    net.forward_into(&input, &mut act, &mut scratch);
 
     let mut best = 0usize;
     let mut best_val = f32::MIN;
@@ -219,7 +288,7 @@ fn test_learning() -> bool {
     net.skip.iter_mut().for_each(|v| *v = 0.0);
     net.skip_up = 0.0;
     let mut act = Vec::new();
-    let mut next = Vec::new();
+    let mut scratch = Vec::new();
 
     let want = 3usize;
 
@@ -236,7 +305,7 @@ fn test_learning() -> bool {
         input[base + sight::GREEN] = 0.8;
         input[base + sight::SOFT] = 0.9;
         input[base + sight::CHANNELS + smell::SWEET] = 1.0;
-        net.forward_into(&input, &mut act, &mut next);
+        net.forward_into(&input, &mut act, &mut scratch);
         let d = net.out_cache_or(&act, crate::creature::outputs::DESIRE + want);
         if round == 0 {
             desire_before = d;

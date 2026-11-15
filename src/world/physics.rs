@@ -53,7 +53,7 @@ impl World {
         }
 
         match e.behavior() {
-            Behavior::Static => {}
+            Behavior::Static | Behavior::Conduct | Behavior::Spread | Behavior::Hatch | Behavior::Decay => {},
             Behavior::Fall => self.step_fall(i),
             Behavior::Flow => self.step_flow(i),
             Behavior::Rise => self.step_rise(i),
@@ -61,9 +61,7 @@ impl World {
             Behavior::Burn => self.step_burn(i),
             Behavior::Grow => self.step_grow(i, e),
             Behavior::Energy => self.step_energy(i),
-            Behavior::Conduct | Behavior::Spread => {},
             Behavior::Cultivate => self.step_cultivate(i),
-            Behavior::Hatch | Behavior::Decay => {},
         }
     }
 

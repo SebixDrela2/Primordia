@@ -85,7 +85,8 @@
                    sanctify
   - `src/ui/`      effects, hud, knowledge, minimap, victory, actors,
                    atmosphere, diplomacy, tech
-  - `src/render/`  mod.rs (pixel loop), fx.rs (element effects),
+  - `src/render/`  mod.rs (the renderer and the tables it builds),
+                   paint.rs (the pixel loop), fx.rs (element effects),
                    light.rs (dynamic light field)
 
 ## Performance

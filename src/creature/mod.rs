@@ -1,8 +1,10 @@
 mod actions;
+mod actions_craft;
 mod bonds;
 mod brain;
 mod building;
 mod colony;
+mod colony_spawn;
 mod combat;
 mod diplomacy;
 mod enums;
@@ -21,6 +23,8 @@ mod spells;
 mod succession;
 mod stats;
 mod step;
+mod step_creature;
+mod step_mind;
 mod tech;
 mod technology;
 mod zorg;
@@ -435,6 +439,7 @@ pub struct RevivalGenome {
 }
 
 use actions::{act_steer, act_move, act_eat, act_mine, act_craft, act_combat};
+pub use actions::SteerContext;
 pub use brain::*;
 use building::act_build;
 pub use diplomacy::*;
@@ -446,6 +451,7 @@ pub use personality::*;
 pub use plague::*;
 pub use predation::*;
 pub use spells::*;
+pub use spells::SpellContext;
 pub use tech::*;
 pub use senses::*;
 pub use speciation::*;

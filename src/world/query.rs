@@ -105,18 +105,18 @@ impl World {
 
     #[must_use]
     pub fn eat(&mut self, x: i32, y: i32) -> Option<(f32, f32)> {
-        let i = self.idx_xy(x, y)?;
-        let e = Elem::from_u8(self.kind[i]);
-        if e == Elem::Empty || e == Elem::Void {
+        let index = self.idx_xy(x, y)?;
+        let elem = Elem::from_u8(self.kind[index]);
+        if elem == Elem::Empty || elem == Elem::Void {
             return None;
         }
-        let n = e.nutrition();
-        let t = e.toxicity();
-        if n <= 0.0 && t <= 0.0 {
+        let nutrition = elem.nutrition();
+        let toxicity = elem.toxicity();
+        if nutrition <= 0.0 && toxicity <= 0.0 {
             return None;
         }
-        self.set_at(i, Elem::Empty);
-        Some((n, t))
+        self.set_at(index, Elem::Empty);
+        Some((nutrition, toxicity))
     }
 
     #[must_use]
@@ -151,8 +151,8 @@ impl World {
         let r2 = radius * radius;
         for dy in -radius..=radius {
             for dx in -radius..=radius {
-                let d2 = dx * dx + dy * dy;
-                if d2 > r2 {
+                let dist_sq = dx * dx + dy * dy;
+                if dist_sq > r2 {
                     continue;
                 }
                 let sx = x + dx;
@@ -160,23 +160,25 @@ impl World {
                 if sx < 0 || sy < 0 || sx >= self.w as i32 || sy >= self.h as i32 {
                     continue;
                 }
-                let k = self.kind[sy as usize * self.w + sx as usize];
-                if k == Elem::Empty as u8 || !self.zorg_food_table[k as usize] {
+                let kind = self.kind[sy as usize * self.w + sx as usize];
+                if kind == Elem::Empty as u8 || !self.zorg_food_table[kind as usize] {
                     continue;
                 }
 
                 let touching = dx.abs() <= 1 && dy.abs() <= 1 && dy <= 0;
-                if !touching && !Elem::from_u8(k).is_passable() {
+                if !touching && !Elem::from_u8(kind).is_passable() {
                     continue;
                 }
-                let nutrition = self.zorg_nutrition_table[k as usize];
+                let nutrition = self.zorg_nutrition_table[kind as usize];
 
                 let better = match best {
                     None => true,
-                    Some((_, _, n, d)) => nutrition > n || ((nutrition - n).abs() < 1e-6 && d2 < d),
+                    Some((_, _, best_nutrition, best_dist)) => {
+                        nutrition > best_nutrition || ((nutrition - best_nutrition).abs() < 1e-6 && dist_sq < best_dist)
+                    }
                 };
                 if better {
-                    best = Some((sx, sy, nutrition, d2));
+                    best = Some((sx, sy, nutrition, dist_sq));
                 }
             }
         }
@@ -185,18 +187,18 @@ impl World {
 
     #[must_use]
     pub fn eat_zorg(&mut self, x: i32, y: i32) -> Option<(f32, f32)> {
-        let i = self.idx_xy(x, y)?;
-        let e = Elem::from_u8(self.kind[i]);
-        if e == Elem::Empty || e == Elem::Void {
+        let index = self.idx_xy(x, y)?;
+        let elem = Elem::from_u8(self.kind[index]);
+        if elem == Elem::Empty || elem == Elem::Void {
             return None;
         }
-        let n = self.zorg_nutrition_table[e as usize];
-        if n <= 0.0 {
+        let nutrition = self.zorg_nutrition_table[elem as usize];
+        if nutrition <= 0.0 {
             return None;
         }
-        self.set_at(i, Elem::Empty);
+        self.set_at(index, Elem::Empty);
 
-        Some((n, crate::creature::zorg_toxicity(e)))
+        Some((nutrition, crate::creature::zorg_toxicity(elem)))
     }
 
     #[must_use]
@@ -266,8 +268,8 @@ impl World {
 
     #[must_use]
     pub fn find_empty_passable_near(&self, x: i32, y: i32, radius: i32) -> Option<(i32, i32)> {
-        let w = self.w as i32;
-        let h = self.h as i32;
+        let width = self.w as i32;
+        let height = self.h as i32;
         for r in 1..=radius {
             for dy in -r..=r {
                 for dx in -r..=r {
@@ -276,11 +278,11 @@ impl World {
                     }
                     let nx = x + dx;
                     let ny = y + dy;
-                    if nx < 0 || ny < 0 || nx >= w || ny >= h {
+                    if nx < 0 || ny < 0 || nx >= width || ny >= height {
                         continue;
                     }
-                    let e = self.get(nx, ny);
-                    if e == Elem::Empty || e.is_passable() {
+                    let elem = self.get(nx, ny);
+                    if elem == Elem::Empty || elem.is_passable() {
                         return Some((nx, ny));
                     }
                 }

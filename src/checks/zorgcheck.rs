@@ -8,39 +8,23 @@ const H: usize = 720;
 
 const RUN: u64 = 6000;
 
-#[must_use]
-pub fn run(_args: &[String]) -> i32 {
-    let seed: u64 = std::env::args()
-        .nth(1)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0x11FE_5678_9ABC_0001);
+/// What the cave itself is like.
+struct Cave {
+    width: i32,
+    height: i32,
+    open: u32,
+    floor_ok: u32,
+    food: u32,
+}
 
-    let mut world = World::new(W, H, seed);
-    world.seed();
-    let mut creatures = CreatureSystem::new(seed.wrapping_add(0x1234_5678_9ABC_DEF0));
-    creatures.populate(&world, 64);
-
-    println!("=== zorg cave check ===");
-    let mut failures = 0u32;
-
-    let Some((cx, cy)) = world.zorg_cave_center() else {
-        println!("FAIL: the world has no ZORG cave");
-        std::process::exit(1);
-    };
-    let surface = world.surface_y(cx);
-    let depth = cy - surface;
-    println!(
-        "  the cave is at ({}, {}), {} below the surface",
-        cx, cy, depth
-    );
-
+/// Scan the hollow of the cave.
+fn scan_cave(world: &World, cx: i32, cy: i32) -> Cave {
     let mut min_x = i32::MAX;
     let mut max_x = i32::MIN;
     let mut min_y = i32::MAX;
     let mut max_y = i32::MIN;
     let mut open = 0u32;
     let mut floor_ok = 0u32;
-    let mut food = 0u32;
     for y in (cy - 30)..(cy + 30) {
         for x in (cx - 45)..(cx + 45) {
             if !world.in_zorg_cave(x, y) {
@@ -56,29 +40,42 @@ pub fn run(_args: &[String]) -> i32 {
                     floor_ok += 1;
                 }
             }
-            if crate::creature::zorg_food(world.get(x, y)) {
+        }
+    }
+    Cave {
+        width: max_x - min_x + 1,
+        height: max_y - min_y + 1,
+        open,
+        floor_ok,
+        food: count_cave_food(world, cx, cy),
+    }
+}
+
+/// The cells of the cave that the ZORGs can eat.
+fn count_cave_food(world: &World, cx: i32, cy: i32) -> u32 {
+    let mut food = 0u32;
+    for y in (cy - 30)..(cy + 30) {
+        for x in (cx - 45)..(cx + 45) {
+            if world.in_zorg_cave(x, y) && crate::creature::zorg_food(world.get(x, y)) {
                 food += 1;
             }
         }
     }
-    println!(
-        "  it is {} x {} cells, {} of them open, {} of them with a floor",
-        max_x - min_x + 1,
-        max_y - min_y + 1,
-        open,
-        floor_ok
-    );
-    println!("  {} cells of it are ZORG food", food);
+    food
+}
 
-    if open < 200 {
-        println!("FAIL: the cave is not hollow enough ({} open cells)", open);
+/// The cave has to be hollow, floored, stocked and deep.
+fn check_cave(world: &World, cave: &Cave, depth: i32, cy: i32) -> u32 {
+    let mut failures = 0;
+    if cave.open < 200 {
+        println!("FAIL: the cave is not hollow enough ({} open cells)", cave.open);
         failures += 1;
     }
-    if floor_ok < 30 {
+    if cave.floor_ok < 30 {
         println!("FAIL: the cave has hardly any floor to stand on");
         failures += 1;
     }
-    if food < 50 {
+    if cave.food < 50 {
         println!("FAIL: the cave has no larder for the ZORGs");
         failures += 1;
     }
@@ -92,7 +89,12 @@ pub fn run(_args: &[String]) -> i32 {
         println!("FAIL: the cave runs into the bedrock");
         failures += 1;
     }
+    failures
+}
 
+/// Every founding ZORG has to be born in the cave and in the open.
+fn check_spawns(world: &World, creatures: &CreatureSystem) -> u32 {
+    let mut failures = 0;
     let mut outside = 0;
     let mut inside = 0;
     let mut buried = 0;
@@ -122,58 +124,63 @@ pub fn run(_args: &[String]) -> i32 {
         println!("FAIL: {} ZORGs spawned inside the rock", buried);
         failures += 1;
     }
+    failures
+}
 
-    if failures == 0 {
-        println!("\nOK: the ZORG cave is sound");
-    } else {
-        println!("\n{} FAILURES", failures);
-        std::process::exit(1);
-    }
+fn report_deep_step(
+    world: &World,
+    creatures: &CreatureSystem,
+    i: u64,
+    cx: i32,
+    cy: i32,
+    peak: &mut u32,
+) {
+    let zorgs: Vec<&crate::creature::Creature> = creatures
+        .list
+        .iter()
+        .filter(|c| c.faction == Faction::Zorg)
+        .collect();
+    let n = zorgs.len().max(1) as f32;
+    *peak = (*peak).max(zorgs.len() as u32);
+    let hunger: f32 = zorgs.iter().map(|c| c.hunger).sum::<f32>() / n;
+    let energy: f32 = zorgs.iter().map(|c| c.energy).sum::<f32>() / n;
+    let in_cave = zorgs
+        .iter()
+        .filter(|c| world.in_zorg_cave(c.x.round() as i32, c.y.round() as i32))
+        .count();
 
-    println!("\n--- the deep over time ---");
+    let left = count_cave_food(world, cx, cy);
+    println!(
+        "  step {:5}  zorgs {:3}  in cave {:3}  hunger {:5.1}  energy {:6.1}  food left {:5}  plants {:5}",
+        i,
+        zorgs.len(),
+        in_cave,
+        hunger,
+        energy,
+        left,
+        world.census.plants
+    );
+}
+
+/// Watch the deep over time.
+fn run_deep(world: &mut World, seed: u64, cx: i32, cy: i32) -> (CreatureSystem, u32) {
     let mut creatures = CreatureSystem::new(seed.wrapping_add(0x1234_5678_9ABC_DEF0));
-    creatures.populate(&world, 64);
+    creatures.populate(world, 64);
     let mut peak = 0u32;
     for i in 0..RUN {
         world.step();
-        creatures.step(&mut world);
+        creatures.step(world);
         if i % 1000 != 0 {
             continue;
         }
-        let zorgs: Vec<&crate::creature::Creature> = creatures
-            .list
-            .iter()
-            .filter(|c| c.faction == Faction::Zorg)
-            .collect();
-        let n = zorgs.len().max(1) as f32;
-        peak = peak.max(zorgs.len() as u32);
-        let hunger: f32 = zorgs.iter().map(|c| c.hunger).sum::<f32>() / n;
-        let energy: f32 = zorgs.iter().map(|c| c.energy).sum::<f32>() / n;
-        let in_cave = zorgs
-            .iter()
-            .filter(|c| world.in_zorg_cave(c.x.round() as i32, c.y.round() as i32))
-            .count();
-
-        let mut left = 0u32;
-        for y in (cy - 30)..(cy + 30) {
-            for x in (cx - 45)..(cx + 45) {
-                if world.in_zorg_cave(x, y) && crate::creature::zorg_food(world.get(x, y)) {
-                    left += 1;
-                }
-            }
-        }
-        println!(
-            "  step {:5}  zorgs {:3}  in cave {:3}  hunger {:5.1}  energy {:6.1}  food left {:5}  plants {:5}",
-            i,
-            zorgs.len(),
-            in_cave,
-            hunger,
-            energy,
-            left,
-            world.census.plants
-        );
+        report_deep_step(world, &creatures, i, cx, cy, &mut peak);
     }
+    (creatures, peak)
+}
 
+/// The ZORGs have to survive and to keep breeding.
+fn check_deep_population(creatures: &CreatureSystem, peak: u32) -> u32 {
+    let mut failures = 0;
     let alive = creatures.zorg_count();
     println!("  {} ZORGs alive at the end (peak {})", alive, peak);
     if alive == 0 {
@@ -184,7 +191,10 @@ pub fn run(_args: &[String]) -> i32 {
         println!("FAIL: the ZORGs never grew (peak {})", peak);
         failures += 1;
     }
+    failures
+}
 
+fn report_players(world: &World, creatures: &CreatureSystem) {
     let player_species = {
         let mut v: Vec<u32> = creatures
             .list
@@ -204,7 +214,10 @@ pub fn run(_args: &[String]) -> i32 {
     if !world.zorg_cave_sealed {
         println!("NOTE: the deep is still open: the run cannot end against it");
     }
+}
 
+/// Who has worked out sanctification, and who is raising the wards.
+fn report_sanctification(world: &World, creatures: &CreatureSystem) {
     let sanctified: Vec<u32> = creatures
         .discoveries
         .iter()
@@ -248,7 +261,11 @@ pub fn run(_args: &[String]) -> i32 {
     if wards == 0 {
         println!("NOTE: no ward has been raised yet");
     }
+}
 
+/// Every ZORG carries a sickness out of the deep.
+fn check_sickness(creatures: &CreatureSystem) -> u32 {
+    let mut failures = 0;
     let carriers = creatures
         .list
         .iter()
@@ -267,7 +284,12 @@ pub fn run(_args: &[String]) -> i32 {
         println!("FAIL: not one ZORG is carrying a sickness");
         failures += 1;
     }
+    failures
+}
 
+/// The ZORGs leave their filth behind them.
+fn check_filth(world: &World) -> u32 {
+    let mut failures = 0;
     let mut filth = 0u32;
     let mut on_the_surface = 0u32;
     for x in 0..world.w as i32 {
@@ -297,6 +319,60 @@ pub fn run(_args: &[String]) -> i32 {
 
         println!("NOTE: the corruption has not reached the surface yet");
     }
+    failures
+}
+
+#[must_use]
+pub fn run(_args: &[String]) -> i32 {
+    let seed: u64 = std::env::args()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0x11FE_5678_9ABC_0001);
+
+    let mut world = World::new(W, H, seed);
+    world.seed();
+    let mut creatures = CreatureSystem::new(seed.wrapping_add(0x1234_5678_9ABC_DEF0));
+    creatures.populate(&world, 64);
+
+    println!("=== zorg cave check ===");
+    let mut failures = 0u32;
+
+    let Some((cx, cy)) = world.zorg_cave_center() else {
+        println!("FAIL: the world has no ZORG cave");
+        std::process::exit(1);
+    };
+    let surface = world.surface_y(cx);
+    let depth = cy - surface;
+    println!(
+        "  the cave is at ({}, {}), {} below the surface",
+        cx, cy, depth
+    );
+
+    let cave = scan_cave(&world, cx, cy);
+    println!(
+        "  it is {} x {} cells, {} of them open, {} of them with a floor",
+        cave.width, cave.height, cave.open, cave.floor_ok
+    );
+    println!("  {} cells of it are ZORG food", cave.food);
+
+    failures += check_cave(&world, &cave, depth, cy);
+    failures += check_spawns(&world, &creatures);
+
+    if failures == 0 {
+        println!("\nOK: the ZORG cave is sound");
+    } else {
+        println!("\n{} FAILURES", failures);
+        std::process::exit(1);
+    }
+
+    println!("\n--- the deep over time ---");
+    let (creatures, peak) = run_deep(&mut world, seed, cx, cy);
+
+    failures += check_deep_population(&creatures, peak);
+    report_players(&world, &creatures);
+    report_sanctification(&world, &creatures);
+    failures += check_sickness(&creatures);
+    failures += check_filth(&world);
 
     if failures == 0 {
         println!("\nOK: the deep is a home for the ZORGs");

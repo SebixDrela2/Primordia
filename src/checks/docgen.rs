@@ -23,8 +23,7 @@ fn behavior_name(b: Behavior) -> &'static str {
 pub fn run(_args: &[String]) -> i32 {
     println!("| # | Element | Category | Behaviour | Density | Nutrition | Toxicity | Lifetime | Solid | Edible | Emits light | Description |");
     println!("|---|---------|----------|-----------|---------|-----------|----------|----------|-------|--------|------------|-------------|");
-    let mut n = 0;
-    for v in 1..=Elem::MAX {
+    for (n, v) in (1..=Elem::MAX).enumerate() {
         let e = Elem::from_u8(v);
         let life = e.lifetime();
         let life_s = if life == u32::MAX {
@@ -48,7 +47,6 @@ pub fn run(_args: &[String]) -> i32 {
             emit,
             e.description(),
         );
-        n += 1;
     }
     0
 }

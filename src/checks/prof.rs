@@ -37,14 +37,18 @@ pub fn run(_args: &[String]) -> i32 {
             &w,
             &cs,
             &mut buf,
-            400,
-            300,
-            480,
-            270,
-            i as f32 * 0.016,
-            0.3,
-            0,
-            crate::world::Weather::Clear,
+            crate::render::Region {
+                x: 400,
+                y: 300,
+                w: 480,
+                h: 270,
+            },
+            crate::render::Clock {
+                time: i as f32 * 0.016,
+                day_night: 0.3,
+                season: 0,
+                weather: crate::world::Weather::Clear,
+            },
         );
     }
     let region_ms = t.elapsed().as_secs_f64() * 1000.0 / frames as f64;
@@ -52,7 +56,17 @@ pub fn run(_args: &[String]) -> i32 {
     let mut full = vec![0u8; 1280 * 720 * 4];
     let t = Instant::now();
     for i in 0..40 {
-        renderer.render_world(&w, &cs, &mut full, i as f32 * 0.016, 0.3, 0, crate::world::Weather::Clear);
+        renderer.render_world(
+            &w,
+            &cs,
+            &mut full,
+            crate::render::Clock {
+                time: i as f32 * 0.016,
+                day_night: 0.3,
+                season: 0,
+                weather: crate::world::Weather::Clear,
+            },
+        );
     }
     let world_render_ms = t.elapsed().as_secs_f64() * 1000.0 / 40_f64;
 

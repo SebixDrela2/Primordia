@@ -624,7 +624,7 @@ impl Net {
             let old_out = old_sizes.get(layer + 1).copied().unwrap_or(0);
             let had_old = layer < self.w.len();
             let old_ws: &[f32] = if had_old { &self.w[layer] } else { &[] };
-            let old_bs: &[f32] = if had_old { &self.b[layer] } else { &[] };
+            let old_bias: &[f32] = if had_old { &self.b[layer] } else { &[] };
             for o in 0..out_n {
                 for j in 0..in_n {
 
@@ -636,7 +636,7 @@ impl Net {
                     ws[j * out_n + o] = v;
                 }
                 bs[o] = if o < old_out && had_old {
-                    old_bs[o]
+                    old_bias[o]
                 } else {
                     (rng.f32() * 2.0 - 1.0) * 0.1
                 };
@@ -739,7 +739,9 @@ impl Net {
             return;
         }
 
-        let trace = self.traces.last().unwrap().clone();
+        let Some(trace) = self.traces.last().cloned() else {
+            return;
+        };
         self.apply_target(&trace, out_idx, amount, lr, true);
     }
 

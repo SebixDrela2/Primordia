@@ -43,16 +43,16 @@ impl Bloom {
         }
     }
 
-    pub fn add(&mut self, x: usize, y: usize, r: f32, g: f32, b: f32) {
+    pub fn add(&mut self, x: usize, y: usize, red: f32, green: f32, blue: f32) {
         let gx = x / STEP + 1;
         let gy = y / STEP + 1;
         if gx >= self.w || gy >= self.h {
             return;
         }
         let d = (gy * self.w + gx) * 3;
-        self.buf[d] += r * GAIN;
-        self.buf[d + 1] += g * GAIN;
-        self.buf[d + 2] += b * GAIN;
+        self.buf[d] += red * GAIN;
+        self.buf[d + 1] += green * GAIN;
+        self.buf[d + 2] += blue * GAIN;
     }
 
     pub fn blur(&mut self) {
@@ -74,34 +74,34 @@ impl Bloom {
     }
 }
 
-fn blur_box(src: &[f32], dst: &mut [f32], w: usize, h: usize, horizontal: bool) {
+fn blur_box(src: &[f32], dst: &mut [f32], width: usize, height: usize, horizontal: bool) {
 
-    for y in 0..h {
-        for x in 0..w {
-            let mut r = 0.0f32;
-            let mut g = 0.0f32;
-            let mut b = 0.0f32;
-            let mut n = 0.0f32;
+    for y in 0..height {
+        for x in 0..width {
+            let mut red = 0.0f32;
+            let mut green = 0.0f32;
+            let mut blue = 0.0f32;
+            let mut weight_sum = 0.0f32;
             for (k, weight) in [(-1i32, 1.0f32), (0, 2.0), (1, 1.0)] {
                 let (sx, sy) = if horizontal {
                     (x as i32 + k, y as i32)
                 } else {
                     (x as i32, y as i32 + k)
                 };
-                if sx < 0 || sy < 0 || sx >= w as i32 || sy >= h as i32 {
+                if sx < 0 || sy < 0 || sx >= width as i32 || sy >= height as i32 {
                     continue;
                 }
-                let s = ((sy as usize) * w + sx as usize) * 3;
-                r += src[s] * weight;
-                g += src[s + 1] * weight;
-                b += src[s + 2] * weight;
-                n += weight;
+                let s = ((sy as usize) * width + sx as usize) * 3;
+                red += src[s] * weight;
+                green += src[s + 1] * weight;
+                blue += src[s + 2] * weight;
+                weight_sum += weight;
             }
-            let d = (y * w + x) * 3;
-            if n > 0.0 {
-                dst[d] = r / n;
-                dst[d + 1] = g / n;
-                dst[d + 2] = b / n;
+            let d = (y * width + x) * 3;
+            if weight_sum > 0.0 {
+                dst[d] = red / weight_sum;
+                dst[d + 1] = green / weight_sum;
+                dst[d + 2] = blue / weight_sum;
             } else {
                 dst[d] = 0.0;
                 dst[d + 1] = 0.0;

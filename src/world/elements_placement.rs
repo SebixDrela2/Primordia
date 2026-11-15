@@ -3,7 +3,6 @@ use super::{World, Elem};
 impl World {
     pub fn place_element_museum(&mut self, w: i32, h: i32) {
         let start_x = (w as f32 * 0.05) as i32;
-        let _start_y = (h as f32 * 0.8) as i32;
         let mut idx = 0;
         for v in 1..=Elem::Food as u8 {
             let e = Elem::from_u8(v);
@@ -34,8 +33,28 @@ impl World {
 }
 
 impl World {
+    /// The wide spread of materials a world is made of: the liquids, the
+    /// gases, the ores, the plants and the old buildings.
     pub fn place_diverse_elements(&mut self, w: i32, h: i32) {
+        self.place_liquids(w, h);
+        self.place_blood_and_poison(w);
+        self.place_gases(w, h);
+        self.place_loose_minerals(w, h);
+        self.place_mud_and_tar(w, h);
+        self.place_metal_veins(w, h);
+        self.place_ash_and_noble_veins(w, h);
+        self.place_fungus_moss_roots(w);
+        self.place_bones_and_mana(w, h);
+        self.place_soul_magma_void(w, h);
+        self.place_snow_and_ember(w, h);
+        self.place_old_buildings(w, h);
+        self.place_workshops(w, h);
+        self.place_charcoal_and_magic(w, h);
+        self.place_life_and_sickness(w, h);
+    }
 
+    /// Mercury, alcohol and honey.
+    fn place_liquids(&mut self, w: i32, h: i32) {
         for _ in 0..5 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = h - 5 - self.rng.range(20) as i32;
@@ -83,7 +102,10 @@ impl World {
                 }
             }
         }
+    }
 
+    /// Blood, poison and chlorine.
+    fn place_blood_and_poison(&mut self, w: i32) {
         for _ in 0..2 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
@@ -131,7 +153,10 @@ impl World {
                 }
             }
         }
+    }
 
+    /// Methane and oxygen.
+    fn place_gases(&mut self, w: i32, h: i32) {
         for _ in 0..5 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
@@ -164,7 +189,10 @@ impl World {
                 }
             }
         }
+    }
 
+    /// Sulfur, ash, dust, gunpowder and fertilizer.
+    fn place_loose_minerals(&mut self, w: i32, h: i32) {
         for _ in 0..15 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = h - 10 - self.rng.range(20) as i32;
@@ -206,7 +234,10 @@ impl World {
                 self.set_xy(cx, cy, Elem::Fertilizer);
             }
         }
+    }
 
+    /// Mud at the waterline and tar in the deep.
+    fn place_mud_and_tar(&mut self, w: i32, h: i32) {
         for _ in 0..10 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
@@ -231,17 +262,20 @@ impl World {
                 }
             }
         }
+    }
 
+    /// The common veins: tin, bronze and iron.
+    fn place_metal_veins(&mut self, w: i32, h: i32) {
         for _ in 0..20 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = h - 15 - self.rng.range(35) as i32;
             let len = 10 + self.rng.range(20);
             let angle = self.rng.f32() * std::f32::consts::PI * 2.0;
-            let dx_f = angle.cos();
-            let dy_f = angle.sin();
+            let dir_x = angle.cos();
+            let dir_y = angle.sin();
             for i in 0..len {
-                let x = cx + (dx_f * i as f32) as i32;
-                let y = cy + (dy_f * i as f32) as i32;
+                let x = cx + (dir_x * i as f32) as i32;
+                let y = cy + (dir_y * i as f32) as i32;
                 if x > 2 && x < w - 2 && y > 2 && y < h - 5
                     && self.get(x, y) == Elem::Stone && self.rng.chance(0.3) {
                         self.set_xy(x, y, Elem::Tin);
@@ -254,11 +288,11 @@ impl World {
             let cy = h - 18 - self.rng.range(30) as i32;
             let len = 8 + self.rng.range(15);
             let angle = self.rng.f32() * std::f32::consts::PI * 2.0;
-            let dx_f = angle.cos();
-            let dy_f = angle.sin();
+            let dir_x = angle.cos();
+            let dir_y = angle.sin();
             for i in 0..len {
-                let x = cx + (dx_f * i as f32) as i32;
-                let y = cy + (dy_f * i as f32) as i32;
+                let x = cx + (dir_x * i as f32) as i32;
+                let y = cy + (dir_y * i as f32) as i32;
                 if x > 2 && x < w - 2 && y > 2 && y < h - 5
                     && self.get(x, y) == Elem::Stone && self.rng.chance(0.25) {
                         self.set_xy(x, y, Elem::Bronze);
@@ -271,28 +305,32 @@ impl World {
             let cy = h - 20 - self.rng.range(30) as i32;
             let len = 12 + self.rng.range(18);
             let angle = self.rng.f32() * std::f32::consts::PI * 2.0;
-            let dx_f = angle.cos();
-            let dy_f = angle.sin();
+            let dir_x = angle.cos();
+            let dir_y = angle.sin();
             for i in 0..len {
-                let x = cx + (dx_f * i as f32) as i32;
-                let y = cy + (dy_f * i as f32) as i32;
+                let x = cx + (dir_x * i as f32) as i32;
+                let y = cy + (dir_y * i as f32) as i32;
                 if x > 2 && x < w - 2 && y > 2 && y < h - 5
                     && self.get(x, y) == Elem::Stone && self.rng.chance(0.35) {
                         self.set_xy(x, y, Elem::Iron);
                     }
             }
         }
+    }
 
+    /// Steel and silver veins, and the long ash drifts of the middle
+    /// depths.
+    fn place_ash_and_noble_veins(&mut self, w: i32, h: i32) {
         for _ in 0..5 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = h - 22 - self.rng.range(25) as i32;
             let len = 6 + self.rng.range(10);
             let angle = self.rng.f32() * std::f32::consts::PI * 2.0;
-            let dx_f = angle.cos();
-            let dy_f = angle.sin();
+            let dir_x = angle.cos();
+            let dir_y = angle.sin();
             for i in 0..len {
-                let x = cx + (dx_f * i as f32) as i32;
-                let y = cy + (dy_f * i as f32) as i32;
+                let x = cx + (dir_x * i as f32) as i32;
+                let y = cy + (dir_y * i as f32) as i32;
                 if x > 2 && x < w - 2 && y > 2 && y < h - 5
                     && self.get(x, y) == Elem::Stone && self.rng.chance(0.2) {
                         self.set_xy(x, y, Elem::Steel);
@@ -305,11 +343,11 @@ impl World {
             let cy = h - 18 - self.rng.range(30) as i32;
             let len = 10 + self.rng.range(15);
             let angle = self.rng.f32() * std::f32::consts::PI * 2.0;
-            let dx_f = angle.cos();
-            let dy_f = angle.sin();
+            let dir_x = angle.cos();
+            let dir_y = angle.sin();
             for i in 0..len {
-                let x = cx + (dx_f * i as f32) as i32;
-                let y = cy + (dy_f * i as f32) as i32;
+                let x = cx + (dir_x * i as f32) as i32;
+                let y = cy + (dir_y * i as f32) as i32;
                 if x > 2 && x < w - 2 && y > 2 && y < h - 5
                     && self.get(x, y) == Elem::Stone && self.rng.chance(0.3) {
                         self.set_xy(x, y, Elem::Silver);
@@ -322,18 +360,21 @@ impl World {
             let cy = self.rng.range((h / 2) as u32) as i32 + h / 4;
             let len = 20 + self.rng.range(30);
             let angle = self.rng.f32() * std::f32::consts::PI * 2.0;
-            let dx_f = angle.cos();
-            let dy_f = angle.sin();
+            let dir_x = angle.cos();
+            let dir_y = angle.sin();
             for i in 0..len {
-                let x = cx + (dx_f * i as f32) as i32;
-                let y = cy + (dy_f * i as f32) as i32;
+                let x = cx + (dir_x * i as f32) as i32;
+                let y = cy + (dir_y * i as f32) as i32;
                 if x > 2 && x < w - 2 && y > 2 && y < h - 5
                     && self.get(x, y) == Elem::Stone && self.rng.chance(0.5) {
                         self.set_xy(x, y, Elem::Ash);
                     }
             }
         }
+    }
 
+    /// Fungus, moss and roots.
+    fn place_fungus_moss_roots(&mut self, w: i32) {
         for _ in 0..20 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
@@ -361,7 +402,10 @@ impl World {
                 self.set_xy(cx, cy, Elem::Roots);
             }
         }
+    }
 
+    /// Meat, bone, leather and the mana that gathers by the water.
+    fn place_bones_and_mana(&mut self, w: i32, h: i32) {
         for _ in 0..10 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
@@ -391,7 +435,11 @@ impl World {
                 self.set_xy(cx, cy, Elem::Mana);
             }
         }
+    }
 
+    /// A soul in the deep, a pocket of magma and a hole where nothing
+    /// is.
+    fn place_soul_magma_void(&mut self, w: i32, h: i32) {
         for _ in 0..3 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = h - 8 - self.rng.range(15) as i32;
@@ -435,7 +483,10 @@ impl World {
                 }
             }
         }
+    }
 
+    /// Snow under the hollow and embers in the warm rock.
+    fn place_snow_and_ember(&mut self, w: i32, h: i32) {
         for _ in 0..40 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.surface_y(cx) + 20 + self.rng.range(50) as i32;
@@ -471,7 +522,10 @@ impl World {
                 }
             }
         }
+    }
 
+    /// The old stone walls and the machine drifts.
+    fn place_old_buildings(&mut self, w: i32, h: i32) {
         for _ in 0..8 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = (self.rng.range(h as u32 / 2) as i32) + h / 4;
@@ -499,11 +553,11 @@ impl World {
             let cy = self.rng.range((h / 2) as u32) as i32 + h / 4;
             let len = 15 + self.rng.range(10);
             let angle = self.rng.f32() * std::f32::consts::PI * 2.0;
-            let dx_f = angle.cos();
-            let dy_f = angle.sin();
+            let dir_x = angle.cos();
+            let dir_y = angle.sin();
             for i in 0..len {
-                let x = cx + (dx_f * i as f32) as i32;
-                let y = cy + (dy_f * i as f32) as i32;
+                let x = cx + (dir_x * i as f32) as i32;
+                let y = cy + (dir_y * i as f32) as i32;
                 if x > 2 && x < w - 2 && y > 2 && y < h - 5
                     && self.get(x, y) == Elem::Empty && self.rng.chance(0.3) {
                         match self.rng.range(3) {
@@ -514,7 +568,10 @@ impl World {
                     }
             }
         }
+    }
 
+    /// The workshops: tools, furnaces, anvils, doors and chests.
+    fn place_workshops(&mut self, w: i32, h: i32) {
         for _ in 0..10 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
@@ -542,7 +599,11 @@ impl World {
                 }
             }
         }
+    }
 
+    /// Charcoal in the rock, and the old magic: runes, wards and
+    /// portals.
+    fn place_charcoal_and_magic(&mut self, w: i32, h: i32) {
         for _ in 0..14 {
             let cx = self.rng.range(w as u32) as i32;
             let cy = self.surface_y(cx) + 10 + self.rng.range(50) as i32;
@@ -582,7 +643,10 @@ impl World {
                 self.set_xy(cx, cy, Elem::Portal);
             }
         }
+    }
 
+    /// Eggs, corpses, the sickness and the food.
+    fn place_life_and_sickness(&mut self, w: i32, h: i32) {
         for _ in 0..3 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
@@ -642,5 +706,4 @@ impl World {
             }
         }
     }
-
 }

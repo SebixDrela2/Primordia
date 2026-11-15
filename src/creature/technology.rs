@@ -594,6 +594,13 @@ impl CreatureSystem {
         }
     }
 
+    /// Work out which discoveries the species have earned.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a species entry cannot be read back after being pushed
+    /// onto the list, which would mean the list was changed underneath
+    /// the push.
     pub fn check_discoveries(&mut self, world: &World) {
         if !self.tick.is_multiple_of(300) {
             return;
@@ -609,7 +616,7 @@ impl CreatureSystem {
             entry.2 |= c.culture;
             entry.3 += 1;
 
-            if world.landmark_bonus(c.x, c.y).lore {
+            if world.landmark_bonus(c.x, c.y).has(crate::world::Landmark::SunkenTemple) {
                 entry.4 = true;
             }
         }

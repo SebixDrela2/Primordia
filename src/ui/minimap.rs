@@ -5,42 +5,42 @@ use crate::{H, W};
 use macroquad::prelude::*;
 
 pub fn draw_vignette() {
-    let w = screen_width();
-    let h = screen_height();
+    let width = screen_width();
+    let height = screen_height();
     let steps = 12;
-    let band = (w.min(h) * 0.22).max(40.0);
+    let band = (width.min(height) * 0.22).max(40.0);
     for i in 0..steps {
-        let f = 1.0 - i as f32 / steps as f32;
-        let a = 0.05 * f;
-        let t = band * f;
-        let c = Color::new(0.0, 0.0, 0.0, a);
-        draw_rectangle(0.0, 0.0, w, t, c);
-        draw_rectangle(0.0, h - t, w, t, c);
-        draw_rectangle(0.0, 0.0, t, h, c);
-        draw_rectangle(w - t, 0.0, t, h, c);
+        let falloff = 1.0 - i as f32 / steps as f32;
+        let alpha = 0.05 * falloff;
+        let thickness = band * falloff;
+        let shade = Color::new(0.0, 0.0, 0.0, alpha);
+        draw_rectangle(0.0, 0.0, width, thickness, shade);
+        draw_rectangle(0.0, height - thickness, width, thickness, shade);
+        draw_rectangle(0.0, 0.0, thickness, height, shade);
+        draw_rectangle(width - thickness, 0.0, thickness, height, shade);
     }
 }
 
 pub fn draw_weather(weather: world::Weather, time: f32) {
-    let w = screen_width();
-    let h = screen_height();
+    let width = screen_width();
+    let height = screen_height();
     match weather {
         world::Weather::Rain | world::Weather::Storm => {
-            let n = if weather == world::Weather::Storm { 150 } else { 70 };
+            let drops = if weather == world::Weather::Storm { 150 } else { 70 };
             let slant = if weather == world::Weather::Storm { 14.0 } else { 7.0 };
-            for i in 0..n {
+            for i in 0..drops {
                 let fi = i as f32;
                 let ii = i as u32;
-                let x = ((fi * 97.3 + time * 260.0) % w as f32).max(0.0);
-                let y = ((fi * 53.7 + time * (620.0 + fi * 3.0)) % h as f32).max(0.0);
-                let a = 0.16 + (ii % 5) as f32 * 0.03;
+                let x = ((fi * 97.3 + time * 260.0) % width as f32).max(0.0);
+                let y = ((fi * 53.7 + time * (620.0 + fi * 3.0)) % height as f32).max(0.0);
+                let alpha = 0.16 + (ii % 5) as f32 * 0.03;
                 draw_line(
                     x,
                     y,
                     x - slant,
                     y + 18.0,
                     1.0,
-                    Color::new(0.62, 0.72, 0.88, a),
+                    Color::new(0.62, 0.72, 0.88, alpha),
                 );
             }
         }
@@ -48,10 +48,10 @@ pub fn draw_weather(weather: world::Weather, time: f32) {
             for i in 0..110 {
                 let fi = i as f32;
                 let ii = i as u32;
-                let x = ((fi * 71.9 + time * 26.0 + (ii % 7) as f32 * 13.0) % w as f32).max(0.0);
-                let y = ((fi * 41.3 + time * (55.0 + (ii % 9) as f32 * 4.0)) % h as f32).max(0.0);
-                let s = 1.0 + (ii % 3) as f32 * 0.5;
-                draw_circle(x, y, s, Color::new(0.95, 0.97, 1.0, 0.5));
+                let x = ((fi * 71.9 + time * 26.0 + (ii % 7) as f32 * 13.0) % width as f32).max(0.0);
+                let y = ((fi * 41.3 + time * (55.0 + (ii % 9) as f32 * 4.0)) % height as f32).max(0.0);
+                let flake = 1.0 + (ii % 3) as f32 * 0.5;
+                draw_circle(x, y, flake, Color::new(0.95, 0.97, 1.0, 0.5));
             }
         }
         world::Weather::Sandstorm => {
@@ -59,16 +59,16 @@ pub fn draw_weather(weather: world::Weather, time: f32) {
             for i in 0..140 {
                 let fi = i as f32;
                 let ii = i as u32;
-                let x = ((fi * 91.7 + time * 620.0) % w as f32).max(0.0);
-                let y = ((fi * 37.1 + time * (180.0 + (ii % 5) as f32 * 30.0)) % h as f32).max(0.0);
-                let a = 0.10 + (ii % 4) as f32 * 0.04;
+                let x = ((fi * 91.7 + time * 620.0) % width as f32).max(0.0);
+                let y = ((fi * 37.1 + time * (180.0 + (ii % 5) as f32 * 30.0)) % height as f32).max(0.0);
+                let alpha = 0.10 + (ii % 4) as f32 * 0.04;
                 draw_line(
                     x,
                     y,
                     x - 26.0,
                     y + 5.0,
                     1.0,
-                    Color::new(0.86, 0.74, 0.48, a),
+                    Color::new(0.86, 0.74, 0.48, alpha),
                 );
             }
         }

@@ -1,15 +1,30 @@
 use super::{Rng, Creature, World, SpatialGrid, energy_cost, Spell, DIRS4, Elem};
 
+/// The world a spell is cast into: the grid of the creatures, the
+/// creatures themselves and the lists the spell's effects are written
+/// into. These belong together, so they travel in one struct rather
+/// than as a list of arguments.
+pub struct SpellContext<'a> {
+    pub grid: &'a SpatialGrid,
+    pub agents: &'a [(u32, f32, f32, u32, u8, f32)],
+    pub spell_targets: &'a mut Vec<(usize, usize, f32)>,
+    pub disease_targets: &'a mut Vec<usize>,
+}
+
 pub fn cast_spell_effects(
     rng: &mut Rng,
     index: usize,
     c: &mut Creature,
     world: &mut World,
-    grid: &SpatialGrid,
-    agents: &[(u32, f32, f32, u32, u8, f32)],
-    spell_targets: &mut Vec<(usize, usize, f32)>,
-    disease_targets: &mut Vec<usize>,
+    ctx: &mut SpellContext<'_>,
 ) {
+    let grid = ctx.grid;
+    let agents = ctx.agents;
+    let SpellContext {
+        spell_targets,
+        disease_targets,
+        ..
+    } = ctx;
     c.energy = (c.energy - energy_cost::SPELL).max(0.0);
     c.spell_cooldown = 30;
     c.mana = (c.mana - 10.0).max(0.0);

@@ -143,7 +143,7 @@ async fn main() {
         .as_deref()
         .is_some_and(|p| p.eq_ignore_ascii_case("diplomacy"))
     {
-        ui.diplomacy_open = true;
+        ui.panels.open(Panel::Diplomacy);
     }
 
     if std::env::var("PRIMORDIA_PANEL")
@@ -151,7 +151,7 @@ async fn main() {
         .as_deref()
         .is_some_and(|p| p.eq_ignore_ascii_case("tech"))
     {
-        ui.tech_open = true;
+        ui.panels.open(Panel::Tech);
     }
 
     if std::env::var("PRIMORDIA_PANEL")
@@ -159,7 +159,7 @@ async fn main() {
         .as_deref()
         .is_some_and(|p| p.eq_ignore_ascii_case("minds"))
     {
-        ui.minds_open = true;
+        ui.panels.open(Panel::Minds);
     }
 
     let snapshot = std::env::var("PRIMORDIA_SNAPSHOT").ok();
@@ -253,19 +253,19 @@ async fn main() {
         }
 
         if is_key_pressed(KeyCode::K) {
-            ui.knowledge_open = !ui.knowledge_open;
+            ui.panels.toggle(Panel::Knowledge);
         }
 
         if is_key_pressed(KeyCode::T) {
-            ui.tech_open = !ui.tech_open;
+            ui.panels.toggle(Panel::Tech);
         }
 
         if is_key_pressed(KeyCode::G) {
-            ui.diplomacy_open = !ui.diplomacy_open;
+            ui.panels.toggle(Panel::Diplomacy);
         }
 
         if is_key_pressed(KeyCode::M) {
-            ui.minds_open = !ui.minds_open;
+            ui.panels.toggle(Panel::Minds);
         }
 
         if is_key_pressed(KeyCode::Equal) || is_key_pressed(KeyCode::KpAdd) {
@@ -284,9 +284,9 @@ async fn main() {
 
         let (_, wheel_y) = mouse_wheel();
         let (mx, my) = mouse_position();
-        let over_tech = ui.tech_open && tech_tree_under_pointer(mx, my);
+        let over_tech = ui.panels.has(Panel::Tech) && tech_tree_under_pointer(mx, my);
 
-        if ui.minds_open && wheel_y != 0.0 {
+        if ui.panels.has(Panel::Minds) && wheel_y != 0.0 {
             ui.minds_index = (ui.minds_index - wheel_y.signum()).max(0.0);
         } else if wheel_y != 0.0 && !over_tech {
             let direction = wheel_y.signum();
@@ -406,8 +406,7 @@ async fn main() {
                     generation: creatures.stats.max_generation,
                     revival,
                     timer: 1.0,
-                    extinction: true,
-                    lost: false,
+                    outcome: Outcome::Extinct,
                     zorgs: 0,
                     alliances: 0,
                     wars: 0,
@@ -429,8 +428,7 @@ async fn main() {
                     generation: creatures.stats.max_generation,
                     revival,
                     timer: 1.0,
-                    extinction: true,
-                    lost: true,
+                    outcome: Outcome::Lost,
                     zorgs,
                     alliances: 0,
                     wars: 0,
@@ -490,8 +488,7 @@ async fn main() {
                         generation: creatures.stats.max_generation,
                         revival,
                         timer: 1.0,
-                        extinction: false,
-                        lost: false,
+                        outcome: Outcome::Won,
                         zorgs,
                         alliances,
                         wars,
@@ -511,7 +508,7 @@ async fn main() {
             v.timer -= dt;
             if v.timer <= 0.0 {
 
-                let won = !v.extinction && !v.lost;
+                let won = v.outcome.is_won();
 
                 let carried: Option<RevivalGenome> = if won {
 
@@ -602,14 +599,18 @@ async fn main() {
                 &world,
                 &creatures,
                 &mut region_pixels,
-                vis_x0,
-                vis_y0,
-                vis_w,
-                vis_h,
-                now,
-                creatures.day_night,
-                creatures.season,
-                world.weather,
+                crate::render::Region {
+                    x: vis_x0,
+                    y: vis_y0,
+                    w: vis_w,
+                    h: vis_h,
+                },
+                crate::render::Clock {
+                    time: now,
+                    day_night: creatures.day_night,
+                    season: creatures.season,
+                    weather: world.weather,
+                },
             );
             region_image
                 .bytes
@@ -664,7 +665,19 @@ async fn main() {
         draw_vignette();
 
         draw_atmosphere(&world, view_x, view_y, view_w, view_h, now, creatures.day_night);
-        draw_actors(&creatures, &mut world, &ui.hover, view_x, view_y, view_w, view_h, zoom, now);
+        draw_actors(
+            &creatures,
+            &mut world,
+            &ui.hover,
+            &primordia::ui::actors::ActorView {
+                x: view_x,
+                y: view_y,
+                w: view_w,
+                h: view_h,
+                zoom,
+            },
+            now,
+        );
         effects.draw(view_x, view_y, screen_width() / view_w, screen_height() / view_h);
 
         draw_minimap(
@@ -676,27 +689,39 @@ async fn main() {
             view_h,
             &mini_texture,
         );
-        draw_hud(&world, &creatures, view_x, view_y, seed, sim_speed, paused, zoom, revival);
+        draw_hud(
+            &world,
+            &creatures,
+            &primordia::ui::hud::HudState {
+                cam_x: view_x,
+                cam_y: view_y,
+                seed,
+                sim_speed,
+                paused,
+                zoom,
+                revival,
+            },
+        );
         if screen_width() >= 1080.0 {
             draw_telemetry(&telemetry, screen_width() - 332.0, 18.0);
         }
 
-        if ui.diplomacy_open {
+        if ui.panels.has(Panel::Diplomacy) {
             draw_diplomacy_panel(&creatures, 18.0, 248.0);
         }
 
         draw_tooltip(&world, &creatures, &ui, mx, my);
 
-        if ui.knowledge_open {
+        if ui.panels.has(Panel::Knowledge) {
             draw_knowledge_window(&world, &creatures, &ui);
         }
 
-        if ui.tech_open {
+        if ui.panels.has(Panel::Tech) {
             draw_tech_tree(&creatures, &mut ui);
         }
         draw_tech_panel(&creatures);
 
-        if ui.minds_open {
+        if ui.panels.has(Panel::Minds) {
             draw_minds(&creatures, ui.minds_index);
         }
 

@@ -12,198 +12,251 @@ const ZORG_LARDER_TARGET: u32 = 200;
 
 const ZORG_LARDER_DEPTH: i32 = 4;
 
-fn is_zorg_poison(e: Elem) -> bool {
+/// The poisons the ZORGs live on.
+const ZORG_POISONS: [Elem; 7] = [
+    Elem::Acid,
+    Elem::Poison,
+    Elem::Tar,
+    Elem::Mercury,
+    Elem::Oil,
+    Elem::Sulfur,
+    Elem::Chlorine,
+];
+
+/// The rock and the ore of the deep, as the ZORGs see it.
+const ZORG_ORES: [Elem; 11] = [
+    Elem::Stone,
+    Elem::Granite,
+    Elem::Iron,
+    Elem::Copper,
+    Elem::Gold,
+    Elem::Silver,
+    Elem::Crystal,
+    Elem::Gem,
+    Elem::Diamond,
+    Elem::Obsidian,
+    Elem::Crystal,
+];
+
+fn is_zorg_poison(elem: Elem) -> bool {
     matches!(
-        e,
+        elem,
         Elem::Acid | Elem::Poison | Elem::Tar | Elem::Mercury | Elem::Oil | Elem::Sulfur | Elem::Chlorine
     )
 }
 
 impl World {
 
-    pub fn carve_zorg_cave(&mut self, w: i32, h: i32) {
+    /// The cave of the ZORGs: a chamber in the deepest rock, with a
+    /// passage down to it, a larder of poison and its own ore.
+    pub fn carve_zorg_cave(&mut self, width: i32, height: i32) {
+        let floor_limit = height - ROCK_BELOW;
 
-        let floor_limit = h - ROCK_BELOW;
+        let cave_x = (width as f32 * (0.34 + self.rng.f32() * 0.32)) as i32;
 
-        let cx = (w as f32 * (0.34 + self.rng.f32() * 0.32)) as i32;
-
-        let surface = self.surface_y(cx);
+        let surface = self.surface_y(cave_x);
         let deepest = floor_limit - ZORG_CAVE_RY;
-        let cy = deepest.max(surface + MIN_DEPTH);
+        let cave_y = deepest.max(surface + MIN_DEPTH);
 
-        if cy - ZORG_CAVE_RY <= surface + 8 || cy + ZORG_CAVE_RY > floor_limit || cy <= 0 {
+        if cave_y - ZORG_CAVE_RY <= surface + 8 || cave_y + ZORG_CAVE_RY > floor_limit || cave_y <= 0 {
             return;
         }
 
         let plateau_half = ZORG_CAVE_RX * 72 / 100;
-        let plateau_y = cy + ZORG_CAVE_RY / 2;
-        for dx in -ZORG_CAVE_RX..=ZORG_CAVE_RX {
-            let t = dx as f32 / ZORG_CAVE_RX as f32;
+        let plateau_y = cave_y + ZORG_CAVE_RY / 2;
 
-            let wobble = 1.0 + 0.16 * (t * 9.0).sin() + 0.10 * (t * 15.0 + 1.7).cos();
-            let half = ((1.0 - t * t).max(0.0).sqrt() * wobble).clamp(0.0, 1.0);
-            let top = cy - (ZORG_CAVE_RY as f32 * half) as i32;
+        self.carve_zorg_chamber(width, height, cave_x, cave_y, plateau_y, plateau_half);
+        self.carve_zorg_passages(width, height, cave_x, cave_y, surface);
+        self.fill_zorg_larder(width, height, cave_x, plateau_y, plateau_half);
+        self.scatter_zorg_poison(width, height, cave_x, cave_y);
+        self.scatter_zorg_ores(width, height, cave_x, cave_y);
+        self.scatter_zorg_crystals(width, height, cave_x, cave_y);
+
+        self.zorg_cave = Some((cave_x, cave_y));
+        self.zorg_cave_floor = plateau_y;
+    }
+
+    /// The chamber itself: an oval of empty rock with a granite floor.
+    fn carve_zorg_chamber(
+        &mut self,
+        width: i32,
+        height: i32,
+        cave_x: i32,
+        cave_y: i32,
+        plateau_y: i32,
+        plateau_half: i32,
+    ) {
+        for dx in -ZORG_CAVE_RX..=ZORG_CAVE_RX {
+            let ratio = dx as f32 / ZORG_CAVE_RX as f32;
+
+            let wobble = 1.0 + 0.16 * (ratio * 9.0).sin() + 0.10 * (ratio * 15.0 + 1.7).cos();
+            let half = ((1.0 - ratio * ratio).max(0.0).sqrt() * wobble).clamp(0.0, 1.0);
+            let top = cave_y - (ZORG_CAVE_RY as f32 * half) as i32;
 
             let bottom = if dx.abs() <= plateau_half {
                 plateau_y
             } else {
-                cy + (ZORG_CAVE_RY as f32 * half) as i32
+                cave_y + (ZORG_CAVE_RY as f32 * half) as i32
             };
             if bottom < top {
                 continue;
             }
-            let x = cx + dx;
-            if x <= 1 || x >= w - 2 {
+            let cell_x = cave_x + dx;
+            if cell_x <= 1 || cell_x >= width - 2 {
                 continue;
             }
-            for y in top.max(1)..=bottom.min(h - 7) {
+            for cell_y in top.max(1)..=bottom.min(height - 7) {
 
-                let e = self.get(x, y);
-                if e == Elem::Void || e == Elem::Water {
+                let elem = self.get(cell_x, cell_y);
+                if elem == Elem::Void || elem == Elem::Water {
                     continue;
                 }
-                self.set_xy(x, y, Elem::Empty);
+                self.set_xy(cell_x, cell_y, Elem::Empty);
             }
 
             let below = bottom + 1;
-            if below < h - 6 {
-                let e = self.get(x, below);
-                if e == Elem::Empty || e == Elem::Void {
-                    self.set_xy(x, below, Elem::Granite);
+            if below < height - 6 {
+                let elem = self.get(cell_x, below);
+                if elem == Elem::Empty || elem == Elem::Void {
+                    self.set_xy(cell_x, below, Elem::Granite);
                 }
             }
         }
+    }
 
+    /// The passages that lead down to the chamber.
+    fn carve_zorg_passages(
+        &mut self,
+        width: i32,
+        height: i32,
+        cave_x: i32,
+        cave_y: i32,
+        surface: i32,
+    ) {
         let passage_limit = surface + MIN_DEPTH / 2;
-        for k in 0..2 {
-            let side = if k == 0 { -1.0 } else { 1.0 };
-            let sx = cx + (side * ZORG_CAVE_RX as f32 * 0.55) as i32;
-            let sy = cy - ZORG_CAVE_RY / 2;
-            let mut x = sx;
-            let mut y = sy;
+        for side_index in 0..2 {
+            let side = if side_index == 0 { -1.0 } else { 1.0 };
+            let start_x = cave_x + (side * ZORG_CAVE_RX as f32 * 0.55) as i32;
+            let start_y = cave_y - ZORG_CAVE_RY / 2;
+            let mut walk_x = start_x;
+            let mut walk_y = start_y;
             let mut angle = -std::f32::consts::FRAC_PI_2 + side * 0.5;
             let len = 30 + self.rng.range(20) as i32;
             for _ in 0..len {
                 angle += (self.rng.f32() - 0.5) * 0.8;
-                x += (angle.cos() * 2.0) as i32;
-                y += (angle.sin() * 2.0) as i32;
+                walk_x += (angle.cos() * 2.0) as i32;
+                walk_y += (angle.sin() * 2.0) as i32;
 
-                if y < passage_limit {
+                if walk_y < passage_limit {
                     break;
                 }
                 let radius = 1 + self.rng.range(2) as i32;
-                for py in (y - radius).max(1)..(y + radius).min(h - 8) {
-                    for px in (x - radius).max(1)..(x + radius).min(w - 2) {
-                        if px <= 1 || py <= 1 || px >= w - 2 || py >= h - 6 {
+                for py in (walk_y - radius).max(1)..(walk_y + radius).min(height - 8) {
+                    for px in (walk_x - radius).max(1)..(walk_x + radius).min(width - 2) {
+                        if px <= 1 || py <= 1 || px >= width - 2 || py >= height - 6 {
                             continue;
                         }
-                        let e = self.get(px, py);
-                        if e == Elem::Void {
+                        let elem = self.get(px, py);
+                        if elem == Elem::Void {
                             continue;
                         }
                         self.set_xy(px, py, Elem::Empty);
                     }
                 }
 
-                if y + 1 < h - 6 && self.get(x, y + 1) == Elem::Empty {
-                    self.set_xy(x, y + 1, Elem::Stone);
+                if walk_y + 1 < height - 6 && self.get(walk_x, walk_y + 1) == Elem::Empty {
+                    self.set_xy(walk_x, walk_y + 1, Elem::Stone);
                 }
             }
         }
+    }
 
-        let poisons = [
-            Elem::Acid,
-            Elem::Poison,
-            Elem::Tar,
-            Elem::Mercury,
-            Elem::Oil,
-            Elem::Sulfur,
-            Elem::Chlorine,
-        ];
+    /// The larder: the poison the ZORGs eat, on the plateau floor.
+    fn fill_zorg_larder(
+        &mut self,
+        width: i32,
+        height: i32,
+        cave_x: i32,
+        plateau_y: i32,
+        plateau_half: i32,
+    ) {
         for dx in -plateau_half..=plateau_half {
             for dy in 0..ZORG_LARDER_DEPTH {
-                let x = cx + dx;
-                let y = plateau_y - dy;
-                if x <= 1 || y <= 1 || x >= w - 2 || y >= h - 6 {
+                let cell_x = cave_x + dx;
+                let cell_y = plateau_y - dy;
+                if cell_x <= 1 || cell_y <= 1 || cell_x >= width - 2 || cell_y >= height - 6 {
                     continue;
                 }
-                if self.get(x, y) != Elem::Empty {
+                if self.get(cell_x, cell_y) != Elem::Empty {
                     continue;
                 }
-                let e = poisons[self.rng.range(poisons.len() as u32) as usize];
-                self.set_xy(x, y, e);
+                let elem = ZORG_POISONS[self.rng.range(ZORG_POISONS.len() as u32) as usize];
+                self.set_xy(cell_x, cell_y, elem);
             }
         }
+    }
 
+    /// The poison that is scattered over the floor of the cave.
+    fn scatter_zorg_poison(&mut self, width: i32, height: i32, cave_x: i32, cave_y: i32) {
         for _ in 0..60 {
             let dx = self.rng.range_i(-ZORG_CAVE_RX, ZORG_CAVE_RX + 1);
             let dy = self.rng.range_i(-ZORG_CAVE_RY, ZORG_CAVE_RY + 1);
-            let x = cx + dx;
-            let y = cy + dy;
-            if x <= 1 || y <= 1 || x >= w - 2 || y >= h - 6 {
+            let cell_x = cave_x + dx;
+            let cell_y = cave_y + dy;
+            if cell_x <= 1 || cell_y <= 1 || cell_x >= width - 2 || cell_y >= height - 6 {
                 continue;
             }
-            if self.get(x, y) != Elem::Empty {
+            if self.get(cell_x, cell_y) != Elem::Empty {
                 continue;
             }
 
-            if self.get(x, y + 1).is_solid() {
-                let e = poisons[self.rng.range(poisons.len() as u32) as usize];
-                self.set_xy(x, y, e);
+            if self.get(cell_x, cell_y + 1).is_solid() {
+                let elem = ZORG_POISONS[self.rng.range(ZORG_POISONS.len() as u32) as usize];
+                self.set_xy(cell_x, cell_y, elem);
             }
         }
+    }
 
-        let ores = [
-            Elem::Stone,
-            Elem::Granite,
-            Elem::Iron,
-            Elem::Copper,
-            Elem::Gold,
-            Elem::Silver,
-            Elem::Crystal,
-            Elem::Gem,
-            Elem::Diamond,
-            Elem::Obsidian,
-            Elem::Crystal,
-        ];
+    /// The ore that shows in the walls of the cave.
+    fn scatter_zorg_ores(&mut self, width: i32, height: i32, cave_x: i32, cave_y: i32) {
         for _ in 0..260 {
             let dx = self.rng.range_i(-ZORG_CAVE_RX - 2, ZORG_CAVE_RX + 3);
             let dy = self.rng.range_i(-ZORG_CAVE_RY - 2, ZORG_CAVE_RY + 3);
-            let x = cx + dx;
-            let y = cy + dy;
-            if x <= 1 || y <= 1 || x >= w - 2 || y >= h - 6 {
+            let cell_x = cave_x + dx;
+            let cell_y = cave_y + dy;
+            if cell_x <= 1 || cell_y <= 1 || cell_x >= width - 2 || cell_y >= height - 6 {
                 continue;
             }
-            let e = self.get(x, y);
-            if !e.is_solid() {
+            let elem = self.get(cell_x, cell_y);
+            if !elem.is_solid() {
                 continue;
             }
 
             let open_neighbour = DIRS8
                 .iter()
-                .any(|(dx, dy)| self.get(x + dx, y + dy) == Elem::Empty);
+                .any(|(dx, dy)| self.get(cell_x + dx, cell_y + dy) == Elem::Empty);
             if !open_neighbour {
                 continue;
             }
-            let o = ores[self.rng.range(ores.len() as u32) as usize];
-            self.set_xy(x, y, o);
+            let ore = ZORG_ORES[self.rng.range(ZORG_ORES.len() as u32) as usize];
+            self.set_xy(cell_x, cell_y, ore);
         }
+    }
 
+    /// The crystal that glitters in the cave.
+    fn scatter_zorg_crystals(&mut self, width: i32, height: i32, cave_x: i32, cave_y: i32) {
         for _ in 0..26 {
             let dx = self.rng.range_i(-ZORG_CAVE_RX, ZORG_CAVE_RX + 1);
             let dy = self.rng.range_i(-ZORG_CAVE_RY, ZORG_CAVE_RY + 1);
-            let x = cx + dx;
-            let y = cy + dy;
-            if x <= 1 || y <= 1 || x >= w - 2 || y >= h - 6 {
+            let cell_x = cave_x + dx;
+            let cell_y = cave_y + dy;
+            if cell_x <= 1 || cell_y <= 1 || cell_x >= width - 2 || cell_y >= height - 6 {
                 continue;
             }
-            if self.get(x, y) == Elem::Empty {
-                self.set_xy(x, y, Elem::Crystal);
+            if self.get(cell_x, cell_y) == Elem::Empty {
+                self.set_xy(cell_x, cell_y, Elem::Crystal);
             }
         }
-
-        self.zorg_cave = Some((cx, cy));
-        self.zorg_cave_floor = plateau_y;
     }
 
     #[must_use]

@@ -14,20 +14,20 @@ impl World {
 
     pub fn generate_volcano(&mut self, w: i32, h: i32) {
 
-        let vx = (w as f32 * 0.22) as i32;
-        let vy = self.surface_y(vx);
+        let vent_x = (w as f32 * 0.22) as i32;
+        let vent_y = self.surface_y(vent_x);
         let radius = 16 + self.rng.range(8) as i32;
 
         for dy in 0..(radius / 2 + 2) {
-            let r = radius - dy * 2;
-            for dx in -r..=r {
-                let x = vx + dx;
-                let y = vy - dy;
-                if x < 1 || x >= w - 1 || y < 1 {
+            let span = radius - dy * 2;
+            for dx in -span..=span {
+                let cell_x = vent_x + dx;
+                let cell_y = vent_y - dy;
+                if cell_x < 1 || cell_x >= w - 1 || cell_y < 1 {
                     continue;
                 }
-                if self.get(x, y) == Elem::Empty {
-                    let e = if dy < radius / 3 {
+                if self.get(cell_x, cell_y) == Elem::Empty {
+                    let elem = if dy < radius / 3 {
 
                         Elem::Obsidian
                     } else if self.rng.chance(0.3) {
@@ -35,44 +35,44 @@ impl World {
                     } else {
                         Elem::Stone
                     };
-                    self.set_xy(x, y, e);
+                    self.set_xy(cell_x, cell_y, elem);
                 }
             }
         }
 
         for dx in -4..=4 {
             for dy in -2..=2 {
-                let x = vx + dx;
-                let y = vy - radius / 2 + dy;
-                if x > 0 && x < w - 1 && y > 0 && y < h - 1 {
-                    let e = if dy >= 1 { Elem::Magma } else { Elem::Ash };
-                    self.set_xy(x, y, e);
+                let cell_x = vent_x + dx;
+                let cell_y = vent_y - radius / 2 + dy;
+                if cell_x > 0 && cell_x < w - 1 && cell_y > 0 && cell_y < h - 1 {
+                    let elem = if dy >= 1 { Elem::Magma } else { Elem::Ash };
+                    self.set_xy(cell_x, cell_y, elem);
                 }
             }
         }
 
-        let cy = vy + 60 + self.rng.range(40) as i32;
+        let cy = vent_y + 60 + self.rng.range(40) as i32;
         for dy in -8..=8 {
             for dx in -12..=12 {
-                let x = vx + dx;
-                let y = cy + dy;
-                if x > 1 && x < w - 1 && y > 0 && y < h - 4
+                let cell_x = vent_x + dx;
+                let cell_y = cy + dy;
+                if cell_x > 1 && cell_x < w - 1 && cell_y > 0 && cell_y < h - 4
                     && (dx * dx) as f32 / 100.0 + (dy * dy) as f32 / 64.0 <= 1.0 {
-                        self.set_xy(x, y, Elem::Magma);
+                        self.set_xy(cell_x, cell_y, Elem::Magma);
                     }
             }
         }
 
         let mut y = cy - 8;
-        while y > vy - radius / 2 {
-            let x = vx + self.rng.range_i(-2, 3);
+        while y > vent_y - radius / 2 {
+            let x = vent_x + self.rng.range_i(-2, 3);
             if x > 1 && x < w - 1 {
                 self.set_xy(x, y, Elem::Magma);
             }
             y -= 1;
         }
 
-        self.volcano = Some((vx, vy - radius / 2));
+        self.volcano = Some((vent_x, vent_y - radius / 2));
         self.volcano_state = Volcano::Sleeping;
         self.volcano_timer = 0;
     }

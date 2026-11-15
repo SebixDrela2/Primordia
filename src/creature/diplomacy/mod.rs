@@ -243,6 +243,12 @@ impl Diplomacy {
             .find(|r| r.a == lo && r.b == hi)
     }
 
+    /// The relation between the two species, creating it if it is not there yet.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the freshly pushed relation cannot be found again, which
+    /// would mean the relation list was changed underneath the push.
     #[must_use]
     pub fn get_mut(&mut self, a: u32, b: u32) -> &mut Relation {
         let (lo, hi) = (a.min(b), a.max(b));
@@ -250,7 +256,9 @@ impl Diplomacy {
             return &mut self.relations[pos];
         }
         self.relations.push(Relation::new(lo, hi));
-        self.relations.last_mut().unwrap()
+        self.relations
+            .last_mut()
+            .expect("a relation was just pushed")
     }
 
     #[must_use]

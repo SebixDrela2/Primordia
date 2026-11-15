@@ -31,6 +31,14 @@ pub enum Landmark {
 }
 
 impl Landmark {
+    /// The bit this landmark takes in a set of landmarks. A world can
+    /// hold several kinds at once, so the kinds are held as a set of
+    /// flags rather than as one state.
+    #[must_use]
+    pub fn bit(self) -> u16 {
+        1u16 << (self as u16)
+    }
+
     #[must_use]
     pub fn name(self) -> &'static str {
         match self {
@@ -243,238 +251,258 @@ impl World {
         }
     }
 
-    fn paint_ground(&mut self, px: i32, py: i32, _e: Elem) {
+    fn paint_ground(&mut self, px: i32, py: i32, e: Elem) {
         if py < self.surface_y(px) {
             return;
         }
         if self.get(px, py) != Elem::Empty {
             return;
         }
-        self.paint_ground(px, py, _e);
+        self.set_xy(px, py, e);
     }
 
     fn paint_landmark(&mut self, kind: Landmark, x: i32, y: i32) {
         let r = kind.radius() as i32;
         match kind {
-            Landmark::CrystalGrove => {
+            Landmark::CrystalGrove => self.paint_crystal_grove(x, r),
+            Landmark::HotSpring => self.paint_hot_spring(x),
+            Landmark::BoneField => self.paint_bone_field(x, y, r),
+            Landmark::FertileSoil => self.paint_fertile_soil(x, y, r),
+            Landmark::OldRuin => self.paint_old_ruin(x, y),
+            Landmark::FungalWarren => self.paint_fungal_warren(x, y),
+            Landmark::SaltFlat => self.paint_salt_flat(x, y),
+            Landmark::SunkenTemple => self.paint_sunken_temple(x, y),
+            Landmark::Undergrove => {}
+            Landmark::AmberField => self.paint_amber_field(x, y, r),
+            Landmark::WhisperingStone => self.paint_whispering_stone(x, y),
+            Landmark::IronWomb => self.paint_iron_womb(x, y),
+            Landmark::Stormspire => self.paint_stormspire(x, y, r),
+        }
+    }
 
-                for _ in 0..7 {
-                    let cx = x + self.rng.range_i(-r / 2, r / 2 + 1);
-                    let surf = self.surface_y(cx);
-                    let height = 2 + self.rng.range(4) as i32;
-                    for dy in 0..height {
-                        let py = surf - dy;
-                        if self.get(cx, py) == Elem::Empty
-                            || self.get(cx, py).is_solid()
-                        {
-                            self.set_xy(cx, py, Elem::Crystal);
-                        }
-                    }
+    /// The crystal spires that stand beside the grove.
+    fn paint_crystal_grove(&mut self, x: i32, r: i32) {
+        for _ in 0..7 {
+            let cx = x + self.rng.range_i(-r / 2, r / 2 + 1);
+            let surf = self.surface_y(cx);
+            let height = 2 + self.rng.range(4) as i32;
+            for dy in 0..height {
+                let py = surf - dy;
+                if self.get(cx, py) == Elem::Empty || self.get(cx, py).is_solid() {
+                    self.set_xy(cx, py, Elem::Crystal);
                 }
             }
-            Landmark::HotSpring => {
+        }
+    }
 
-                for dx in -6..=6 {
-                    let px = x + dx;
-                    let surf = self.surface_y(px);
-                    for dy in 0..4 {
-                        self.paint_ground(px, surf + dy, Elem::Water);
-                    }
-                }
-                for a in 0..16 {
-                    let ang = (a as f32 / 16.0) * std::f32::consts::TAU;
-                    let px = x + (ang.cos() * 7.0) as i32;
-                    let surf = self.surface_y(px);
-                    self.paint_ground(px, surf + (ang.sin() * 2.0) as i32, Elem::Stone);
+    /// The warm pool and the ring of stone around it.
+    fn paint_hot_spring(&mut self, x: i32) {
+        for dx in -6..=6 {
+            let px = x + dx;
+            let surf = self.surface_y(px);
+            for dy in 0..4 {
+                self.paint_ground(px, surf + dy, Elem::Water);
+            }
+        }
+        for a in 0..16 {
+            let ang = (a as f32 / 16.0) * std::f32::consts::TAU;
+            let px = x + (ang.cos() * 7.0) as i32;
+            let surf = self.surface_y(px);
+            self.paint_ground(px, surf + (ang.sin() * 2.0) as i32, Elem::Stone);
+        }
+    }
+
+    /// The old bones and the corpses that were never taken.
+    fn paint_bone_field(&mut self, x: i32, y: i32, r: i32) {
+        for _ in 0..26 {
+            let px = x + self.rng.range_i(-r, r + 1);
+            let py = y + self.rng.range_i(-2, 4);
+            if self.get(px, py) == Elem::Empty {
+                let e = if self.rng.chance(0.6) {
+                    Elem::Bone
+                } else {
+                    Elem::Corpse
+                };
+                self.paint_ground(px, py, e);
+            }
+        }
+    }
+
+    /// The rich soil that grows food.
+    fn paint_fertile_soil(&mut self, x: i32, y: i32, r: i32) {
+        for dy in -2..=2 {
+            for dx in -r..=r {
+                let px = x + dx;
+                let py = y + dy;
+                if self.get(px, py) == Elem::Empty {
+                    let e = if self.rng.chance(0.55) {
+                        Elem::Plant
+                    } else {
+                        Elem::Fertilizer
+                    };
+                    self.paint_ground(px, py, e);
                 }
             }
-            Landmark::BoneField => {
+        }
+    }
 
-                for _ in 0..26 {
-                    let px = x + self.rng.range_i(-r, r + 1);
-                    let py = y + self.rng.range_i(-2, 4);
-                    if self.get(px, py) == Elem::Empty {
-                        let e = if self.rng.chance(0.6) {
-                            Elem::Bone
-                        } else {
-                            Elem::Corpse
-                        };
-                        self.paint_ground(px, py, e);
-                    }
+    /// The old people's masonry.
+    fn paint_old_ruin(&mut self, x: i32, y: i32) {
+        for dy in -3..=3 {
+            for dx in -7..=7 {
+                let px = x + dx;
+                let py = y + dy;
+                if self.get(px, py) == Elem::Empty && self.rng.chance(0.45) {
+                    let e = match self.rng.range(4) {
+                        0 => Elem::Brick,
+                        1 => Elem::Concrete,
+                        2 => Elem::Road,
+                        _ => Elem::Stone,
+                    };
+                    self.paint_ground(px, py, e);
                 }
             }
-            Landmark::FertileSoil => {
+        }
+        let sx = self.surface_y(x);
+        if self.get(x, sx) == Elem::Empty {
+            self.set_xy(x, sx, Elem::Totem);
+        }
+    }
 
-                for dy in -2..=2 {
-                    for dx in -r..=r {
-                        let px = x + dx;
-                        let py = y + dy;
-                        if self.get(px, py) == Elem::Empty {
-                            let e = if self.rng.chance(0.55) {
-                                Elem::Plant
-                            } else {
-                                Elem::Fertilizer
-                            };
-                            self.paint_ground(px, py, e);
-                        }
-                    }
+    /// The fungal warren, where sickness breeds.
+    fn paint_fungal_warren(&mut self, x: i32, y: i32) {
+        for dy in -3..=2 {
+            for dx in -9..=9 {
+                let px = x + dx;
+                let py = y + dy;
+                if self.get(px, py) == Elem::Empty && self.rng.chance(0.4) {
+                    let e = match self.rng.range(4) {
+                        1 => Elem::Spore,
+                        2 => Elem::Moss,
+                        _ => Elem::Fungus,
+                    };
+                    self.paint_ground(px, py, e);
                 }
             }
-            Landmark::OldRuin => {
+        }
+        let sx = self.surface_y(x);
+        if self.get(x, sx) == Elem::Empty {
+            self.set_xy(x, sx, Elem::Fungus);
+        }
+    }
 
-                for dy in -3..=3 {
-                    for dx in -7..=7 {
-                        let px = x + dx;
-                        let py = y + dy;
-                        if self.get(px, py) == Elem::Empty && self.rng.chance(0.45) {
-                            let e = match self.rng.range(4) {
-                                0 => Elem::Brick,
-                                1 => Elem::Concrete,
-                                2 => Elem::Road,
-                                _ => Elem::Stone,
-                            };
-                            self.paint_ground(px, py, e);
-                        }
-                    }
-                }
-                let sx = self.surface_y(x);
-                if self.get(x, sx) == Elem::Empty {
-                    self.set_xy(x, sx, Elem::Totem);
+    /// The salt flat that burns the filth out of the air.
+    fn paint_salt_flat(&mut self, x: i32, y: i32) {
+        for dy in -1..=2 {
+            for dx in -13..=13 {
+                let px = x + dx;
+                let py = y + dy;
+                if self.get(px, py) == Elem::Empty {
+                    self.paint_ground(px, py, Elem::Salt);
                 }
             }
-            Landmark::FungalWarren => {
+        }
+    }
 
-                for dy in -3..=2 {
-                    for dx in -9..=9 {
-                        let px = x + dx;
-                        let py = y + dy;
-                        if self.get(px, py) == Elem::Empty && self.rng.chance(0.4) {
-                            let e = match self.rng.range(4) {
-                                1 => Elem::Spore,
-                                2 => Elem::Moss,
-                                _ => Elem::Fungus,
-                            };
-                            self.paint_ground(px, py, e);
-                        }
-                    }
-                }
-                let sx = self.surface_y(x);
-                if self.get(x, sx) == Elem::Empty {
-                    self.set_xy(x, sx, Elem::Fungus);
+    /// The drowned temple, with its runes.
+    fn paint_sunken_temple(&mut self, x: i32, y: i32) {
+        for dy in -2..=3 {
+            for dx in -8..=8 {
+                let px = x + dx;
+                let py = y + dy;
+                if self.get(px, py) == Elem::Empty && self.rng.chance(0.35) {
+                    let e = match self.rng.range(4) {
+                        0 => Elem::Brick,
+                        1 => Elem::Concrete,
+                        2 => Elem::Water,
+                        _ => Elem::Rune,
+                    };
+                    self.paint_ground(px, py, e);
                 }
             }
-            Landmark::SaltFlat => {
+        }
+        let sx = self.surface_y(x);
+        if self.get(x, sx) == Elem::Empty {
+            self.set_xy(x, sx, Elem::Totem);
+        }
+    }
 
-                for dy in -1..=2 {
-                    for dx in -13..=13 {
-                        let px = x + dx;
-                        let py = y + dy;
-                        if self.get(px, py) == Elem::Empty {
-                            self.paint_ground(px, py, Elem::Salt);
-                        }
-                    }
+    /// The amber in the deep stone.
+    fn paint_amber_field(&mut self, x: i32, y: i32, r: i32) {
+        for _ in 0..40 {
+            let px = x + self.rng.range_i(-r, r + 1);
+            let py = y + self.rng.range_i(-2, 4);
+            if self.get(px, py) == Elem::Empty {
+                let e = match self.rng.range(8) {
+                    0 => Elem::Gold,
+                    1 => Elem::Obsidian,
+                    2 => Elem::Crystal,
+                    _ => Elem::Stone,
+                };
+                self.paint_ground(px, py, e);
+            }
+        }
+    }
+
+    /// The whispering stone and the runes around it.
+    fn paint_whispering_stone(&mut self, x: i32, y: i32) {
+        for dy in -4..=1 {
+            for dx in -4..=4 {
+                let px = x + dx;
+                let py = y + dy;
+                if self.get(px, py) == Elem::Empty && self.rng.chance(0.3) {
+                    self.paint_ground(px, py, Elem::Rune);
                 }
             }
-            Landmark::SunkenTemple => {
+        }
+        let sx = self.surface_y(x);
+        for dy in 0..4 {
+            if self.get(x, sx - dy) == Elem::Empty || self.get(x, sx - dy).is_solid() {
+                self.set_xy(x, sx - dy, Elem::Crystal);
+            }
+        }
+    }
 
-                for dy in -2..=3 {
-                    for dx in -8..=8 {
-                        let px = x + dx;
-                        let py = y + dy;
-                        if self.get(px, py) == Elem::Empty && self.rng.chance(0.35) {
-                            let e = match self.rng.range(4) {
-                                0 => Elem::Brick,
-                                1 => Elem::Concrete,
-                                2 => Elem::Water,
-                                _ => Elem::Rune,
-                            };
-                            self.paint_ground(px, py, e);
-                        }
-                    }
-                }
-                let sx = self.surface_y(x);
-                if self.get(x, sx) == Elem::Empty {
-                    self.set_xy(x, sx, Elem::Totem);
+    /// The iron womb, where the rock gives up its metal.
+    fn paint_iron_womb(&mut self, x: i32, y: i32) {
+        for dy in -3..=3 {
+            for dx in -9..=9 {
+                let px = x + dx;
+                let py = y + dy;
+                if self.get(px, py) == Elem::Empty && self.rng.chance(0.5) {
+                    let e = match self.rng.range(6) {
+                        0 => Elem::Iron,
+                        1 => Elem::Copper,
+                        2 => Elem::Steel,
+                        3 => Elem::Gold,
+                        _ => Elem::Stone,
+                    };
+                    self.paint_ground(px, py, e);
                 }
             }
-            Landmark::Undergrove => {
+        }
+    }
 
+    /// The stormspire, and the storm that breaks around it.
+    fn paint_stormspire(&mut self, x: i32, y: i32, r: i32) {
+        for dy in -6..=1 {
+            let px = x;
+            let py = y + dy;
+            if self.get(px, py) == Elem::Empty || self.get(px, py).is_solid() {
+                self.set_xy(px, py, if dy % 2 == 0 { Elem::Glass } else { Elem::Obsidian });
             }
-            Landmark::AmberField => {
-
-                for _ in 0..40 {
-                    let px = x + self.rng.range_i(-r, r + 1);
-                    let py = y + self.rng.range_i(-2, 4);
-                    if self.get(px, py) == Elem::Empty {
-                        let e = match self.rng.range(8) {
-                            0 => Elem::Gold,
-                            1 => Elem::Obsidian,
-                            2 => Elem::Crystal,
-                            _ => Elem::Stone,
-                        };
-                        self.paint_ground(px, py, e);
-                    }
-                }
-            }
-            Landmark::WhisperingStone => {
-
-                for dy in -4..=1 {
-                    for dx in -4..=4 {
-                        let px = x + dx;
-                        let py = y + dy;
-                        if self.get(px, py) == Elem::Empty && self.rng.chance(0.3) {
-                            self.paint_ground(px, py, Elem::Rune);
-                        }
-                    }
-                }
-                let sx = self.surface_y(x);
-                for dy in 0..4 {
-                    if self.get(x, sx - dy) == Elem::Empty || self.get(x, sx - dy).is_solid() {
-                        self.set_xy(x, sx - dy, Elem::Crystal);
-                    }
-                }
-            }
-            Landmark::IronWomb => {
-
-                for dy in -3..=3 {
-                    for dx in -9..=9 {
-                        let px = x + dx;
-                        let py = y + dy;
-                        if self.get(px, py) == Elem::Empty && self.rng.chance(0.5) {
-                            let e = match self.rng.range(6) {
-                                0 => Elem::Iron,
-                                1 => Elem::Copper,
-                                2 => Elem::Steel,
-                                3 => Elem::Gold,
-                                _ => Elem::Stone,
-                            };
-                            self.paint_ground(px, py, e);
-                        }
-                    }
-                }
-            }
-            Landmark::Stormspire => {
-
-                for dy in -6..=1 {
-                    let px = x;
-                    let py = y + dy;
-                    if self.get(px, py) == Elem::Empty || self.get(px, py).is_solid() {
-                        self.set_xy(px, py, if dy % 2 == 0 { Elem::Glass } else { Elem::Obsidian });
-                    }
-                }
-                for _ in 0..34 {
-                    let px = x + self.rng.range_i(-r, r + 1);
-                    let py = y + self.rng.range_i(-1, 4);
-                    if self.get(px, py) == Elem::Empty {
-                        let e = match self.rng.range(5) {
-                            0 => Elem::Energy,
-                            1 => Elem::Ash,
-                            2 => Elem::Obsidian,
-                            _ => Elem::Stone,
-                        };
-                        self.paint_ground(px, py, e);
-                    }
-                }
+        }
+        for _ in 0..34 {
+            let px = x + self.rng.range_i(-r, r + 1);
+            let py = y + self.rng.range_i(-1, 4);
+            if self.get(px, py) == Elem::Empty {
+                let e = match self.rng.range(5) {
+                    0 => Elem::Energy,
+                    1 => Elem::Ash,
+                    2 => Elem::Obsidian,
+                    _ => Elem::Stone,
+                };
+                self.paint_ground(px, py, e);
             }
         }
     }
@@ -494,52 +522,31 @@ impl World {
             if !l.covers(x, y) {
                 continue;
             }
-            match l.kind {
-                Landmark::CrystalGrove => bonus.mana = 2.0,
-                Landmark::HotSpring => bonus.warmth = true,
-                Landmark::BoneField => bonus.hunting = true,
-                Landmark::FertileSoil => bonus.food = true,
-                Landmark::OldRuin => bonus.craft = true,
-                Landmark::FungalWarren => bonus.plague = true,
-                Landmark::SaltFlat => bonus.purity = true,
-                Landmark::SunkenTemple => bonus.lore = true,
-                Landmark::AmberField => bonus.stone = true,
-                Landmark::WhisperingStone => bonus.mind = true,
-                Landmark::IronWomb => bonus.metal = true,
-                Landmark::Stormspire => bonus.energy = true,
-                Landmark::Undergrove => bonus.air = true,
+            bonus.kinds |= l.kind.bit();
+            if l.kind == Landmark::CrystalGrove {
+                bonus.mana = 2.0;
             }
         }
         bonus
     }
 }
 
+/// What the landmarks around a creature give it. Each kind of landmark
+/// gives its own bonus and a world can hold several kinds at once, so
+/// the kinds are held as a set of flags and asked for by name.
 #[derive(Clone, Copy, Default)]
 pub struct LandmarkBonus {
-
+    /// The extra mana a crystal grove gives.
     pub mana: f32,
 
-    pub warmth: bool,
+    /// The kinds of landmark that are here.
+    kinds: u16,
+}
 
-    pub hunting: bool,
-
-    pub food: bool,
-
-    pub craft: bool,
-
-    pub plague: bool,
-
-    pub purity: bool,
-
-    pub lore: bool,
-
-    pub stone: bool,
-
-    pub mind: bool,
-
-    pub metal: bool,
-
-    pub energy: bool,
-
-    pub air: bool,
+impl LandmarkBonus {
+    /// Is a landmark of this kind beside the creature?
+    #[must_use]
+    pub fn has(&self, kind: Landmark) -> bool {
+        self.kinds & kind.bit() != 0
+    }
 }

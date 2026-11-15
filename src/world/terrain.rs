@@ -125,8 +125,8 @@ fn biome_of_column(x: i32, w: i32) -> Biome {
 }
 
 fn biome_tint_of_column(x: i32, w: i32) -> [f32; 3] {
-    let f = x as f32 / w as f32;
-    let v = (f * 5.0 + (f * 2.3).sin() * 0.7).sin() * 0.5 + 0.5;
+    let frac = x as f32 / w as f32;
+    let value = (frac * 5.0 + (frac * 2.3).sin() * 0.7).sin() * 0.5 + 0.5;
 
     let tints = [
         Biome::Tundra.tint(),
@@ -138,18 +138,18 @@ fn biome_tint_of_column(x: i32, w: i32) -> [f32; 3] {
         Biome::Mire.tint(),
         Biome::Desert.tint(),
     ];
-    if v <= POS[0] {
+    if value <= POS[0] {
         return tints[0];
     }
     for i in 0..7 {
-        if v <= POS[i + 1] {
-            let t = (v - POS[i]) / (POS[i + 1] - POS[i]);
-            let a = tints[i];
-            let b = tints[i + 1];
+        if value <= POS[i + 1] {
+            let blend = (value - POS[i]) / (POS[i + 1] - POS[i]);
+            let lower = tints[i];
+            let upper = tints[i + 1];
             return [
-                a[0] + (b[0] - a[0]) * t,
-                a[1] + (b[1] - a[1]) * t,
-                a[2] + (b[2] - a[2]) * t,
+                lower[0] + (upper[0] - lower[0]) * blend,
+                lower[1] + (upper[1] - lower[1]) * blend,
+                lower[2] + (upper[2] - lower[2]) * blend,
             ];
         }
     }

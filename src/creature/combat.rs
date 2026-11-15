@@ -200,8 +200,223 @@ impl CreatureSystem {
 }
 
 impl CreatureSystem {
-    pub fn resolve_attacks(&mut self, grid: &SpatialGrid, attackers: &[usize]) {
+    /// The nearest creature worth hitting.
+    fn nearest_prey(
+        &self,
+        grid: &SpatialGrid,
+        a: usize,
+        a_species: u32,
+        a_role: Role,
+        ax: f32,
+        ay: f32,
+    ) -> Option<(usize, f32)> {
+        let mut best: Option<(usize, f32)> = None;
+        grid.near(ax, ay, 16, |ji| {
+            let j = ji as usize;
+            if j == a {
+                return;
+            }
+            let other = &self.list[j];
+            if other.species == a_species {
+                if !self.list[a].is_mad() {
+                    return;
+                }
+                if self.list[a].traits & trait_bits::PACIFIC != 0 {
+                    return;
+                }
+            }
 
+            if self.diplomacy.are_allied(a_species, other.species) {
+                return;
+            }
+
+            let priority = 0.0;
+
+            let war_penalty = if self.diplomacy.at_war(a_species, other.species) {
+                0.0
+            } else {
+                25.0
+            };
+            let d = ((other.x - ax).powi(2) + (other.y - ay).powi(2)).sqrt() + priority + war_penalty;
+            let max_range = if a_role == Role::Soldier { 14.0 } else { 6.0 };
+            if d < max_range && best.is_none_or(|b| d < b.1) {
+                best = Some((j, d));
+            }
+        });
+        best
+    }
+
+    /// The trespasser on the ground the colony holds.
+    fn trespasser(
+        &self,
+        grid: &SpatialGrid,
+        a: usize,
+        a_species: u32,
+        ax: f32,
+        ay: f32,
+    ) -> Option<(usize, f32)> {
+        let (cx, cy, radius) = self.claim_of(a_species)?;
+        let mut trespass: Option<(usize, f32)> = None;
+        grid.near(ax, ay, 14, |ji| {
+            let j = ji as usize;
+            if j == a {
+                return;
+            }
+            let other = &self.list[j];
+            if other.species == a_species {
+                return;
+            }
+            if self.diplomacy.are_allied(a_species, other.species) {
+                return;
+            }
+            let inside = (other.x - cx).powi(2) + (other.y - cy).powi(2) < radius * radius;
+            if inside {
+                let d = ((other.x - ax).powi(2) + (other.y - ay).powi(2)).sqrt();
+                if d < 14.0 && trespass.is_none_or(|t| d < t.1) {
+                    trespass = Some((j, d));
+                }
+            }
+        });
+        trespass
+    }
+
+    /// The enemy of an ally, which a colony fights as its own.
+    fn guard_target(
+        &self,
+        grid: &SpatialGrid,
+        a: usize,
+        a_species: u32,
+        ax: f32,
+        ay: f32,
+    ) -> Option<(usize, f32)> {
+        let allies = self.diplomacy.allies_of(a_species);
+        if allies.is_empty() {
+            return None;
+        }
+        let mut guard: Option<(usize, f32)> = None;
+        grid.near(ax, ay, 26, |ji| {
+            let j = ji as usize;
+            if j == a {
+                return;
+            }
+            let other = &self.list[j];
+            if other.species == a_species {
+                return;
+            }
+
+            if !allies.iter().any(|al| self.diplomacy.at_war(*al, other.species)) {
+                return;
+            }
+            let d = ((other.x - ax).powi(2) + (other.y - ay).powi(2)).sqrt();
+            if d < 20.0 && guard.is_none_or(|g| d < g.1) {
+                guard = Some((j, d));
+            }
+        });
+        guard
+    }
+
+    /// How much the blow hurts.
+    fn attack_damage(&self, a: usize, a_species: u32, a_role: Role, j: usize) -> f32 {
+        let attacker = &self.list[a];
+        let mut dmg = if a_role == Role::Soldier { 45.0 } else { 25.0 };
+        dmg += match attacker.tool {
+            Tool::Sword => 35.0,
+            Tool::Pickaxe => 18.0,
+            Tool::Hammer => 22.0,
+            Tool::Drill => 28.0,
+            Tool::Spear => 20.0,
+            Tool::Staff => 15.0,
+            _ => 0.0,
+        };
+
+        if attacker.traits & trait_bits::FEROCIOUS != 0 {
+            dmg *= 1.35;
+        }
+
+        dmg *= attacker.culture_factor(Culture::Warfare);
+
+        dmg *= 0.8 + attacker.personality.aggression * 0.4;
+
+        if self.species_discoveries(a_species) & discovery_bits::SMITHING != 0 {
+            dmg *= 1.3;
+        }
+
+        if self.species_discoveries(a_species) & discovery_bits::SMELTING != 0 {
+            dmg *= 1.25;
+        }
+
+        if attacker.tool == Tool::Sunfire {
+            let target_is_zorg = self.list[j].faction == Faction::Zorg;
+            dmg *= sanctify::sunfire_damage(attacker.tech, target_is_zorg);
+        }
+        if attacker.active_spell == Spell::Fireball && attacker.spell_cd[1] == 0 {
+            dmg += 20.0;
+        }
+        dmg
+    }
+
+    /// The blow, and everything that comes of it.
+    fn land_attack(&mut self, a: usize, j: usize, a_species: u32, a_role: Role, hunter: bool) {
+        if self.list[j].health > 0.0 {
+            let dmg = self.attack_damage(a, a_species, a_role, j);
+            let dmg = self.list[j].damage_taken(dmg);
+            self.list[j].health -= dmg;
+
+            self.list[j].hurt_dir = crate::creature::senses::direction_of(
+                self.list[a].x - self.list[j].x,
+                self.list[a].y - self.list[j].y,
+            ) as i8;
+
+            self.list[a].energy = (self.list[a].energy - energy_cost::ATTACK).max(0.0);
+            self.events.push(SimEvent::Hit {
+                x: self.list[j].x,
+                y: self.list[j].y,
+                color: self.list[a].team_color,
+                damage: dmg,
+            });
+
+            if self.list[a].traits & trait_bits::VENOMOUS != 0 && self.list[j].disease == Disease::None
+            {
+                self.list[j].disease = Disease::Poison;
+                self.list[j].disease_timer = 260;
+            }
+
+            if self.list[a].faction == Faction::Zorg
+                && self.list[j].disease == Disease::None
+                && self.list[a].disease != Disease::None
+            {
+                let carried = self.list[a].disease;
+                let catch = self.list[j].catch_chance(carried);
+                if catch > 0.0 && self.rng.chance(0.6 * catch) {
+                    self.list[j].disease = carried;
+                    self.list[j].disease_timer = Plague::from(carried).duration();
+                    self.plagues_started += 1;
+                }
+            }
+            if self.list[j].health <= 0.0 {
+                self.list[a].kills += 1;
+
+                self.list[a].kill_dir = crate::creature::senses::direction_of(
+                    self.list[j].x - self.list[a].x,
+                    self.list[j].y - self.list[a].y,
+                ) as i8;
+                self.list[a].energy = (self.list[a].energy + 140.0).min(self.list[a].max_energy);
+
+                if hunter {
+                    self.list[a].energy =
+                        (self.list[a].energy + 160.0).min(self.list[a].max_energy);
+                    self.list[a].hunger = (self.list[a].hunger - 45.0).clamp(0.0, 100.0);
+                }
+
+                let victim_species = self.list[j].species;
+                self.adjust_trust(a_species, victim_species, -2.5);
+
+                self.predation.record_kill(victim_species, a_species);
+            }
+        }
+    }
+
+    pub fn resolve_attacks(&mut self, grid: &SpatialGrid, attackers: &[usize]) {
         let mut squad_targets: Vec<(u16, usize)> = Vec::new();
         for &a in attackers {
             let (ax, ay, a_species, a_role, a_squad) = {
@@ -210,70 +425,11 @@ impl CreatureSystem {
             };
 
             let hunter = self.list[a].knows(Culture::Hunting);
-            let mut best: Option<(usize, f32)> = None;
-            grid.near(ax, ay, 16, |ji| {
-                let j = ji as usize;
-                if j == a {
-                    return;
-                }
-                let other = &self.list[j];
-                if other.species == a_species {
-
-                    if !self.list[a].is_mad() {
-                        return;
-                    }
-                    if self.list[a].traits & trait_bits::PACIFIC != 0 {
-                        return;
-                    }
-                }
-
-                if self.diplomacy.are_allied(a_species, other.species) {
-                    return;
-                }
-
-                let priority = 0.0;
-
-                let war_penalty = if self.diplomacy.at_war(a_species, other.species) {
-                    0.0
-                } else {
-                    25.0
-                };
-                let d = ((other.x - ax).powi(2) + (other.y - ay).powi(2)).sqrt()
-                    + priority
-                    + war_penalty;
-                let max_range = if a_role == Role::Soldier { 14.0 } else { 6.0 };
-                if d < max_range && best.is_none_or(|b| d < b.1) {
-                    best = Some((j, d));
-                }
-            });
+            let mut best = self.nearest_prey(grid, a, a_species, a_role, ax, ay);
 
             if a_role == Role::Soldier {
-                if let Some((cx, cy, radius)) = self.claim_of(a_species) {
-                    let mut trespass: Option<(usize, f32)> = None;
-                    grid.near(ax, ay, 14, |ji| {
-                        let j = ji as usize;
-                        if j == a {
-                            return;
-                        }
-                        let other = &self.list[j];
-                        if other.species == a_species {
-                            return;
-                        }
-                        if self.diplomacy.are_allied(a_species, other.species) {
-                            return;
-                        }
-                        let inside =
-                            (other.x - cx).powi(2) + (other.y - cy).powi(2) < radius * radius;
-                        if inside {
-                            let d = ((other.x - ax).powi(2) + (other.y - ay).powi(2)).sqrt();
-                            if d < 14.0 && trespass.is_none_or(|t| d < t.1) {
-                                trespass = Some((j, d));
-                            }
-                        }
-                    });
-                    if let Some((j, d)) = trespass {
-                        best = Some((j, d - 12.0));
-                    }
+                if let Some((j, d)) = self.trespasser(grid, a, a_species, ax, ay) {
+                    best = Some((j, d - 12.0));
                 }
             }
 
@@ -290,126 +446,13 @@ impl CreatureSystem {
             }
 
             if best.is_none() {
-                let allies = self.diplomacy.allies_of(a_species);
-                if !allies.is_empty() {
-                    let mut guard: Option<(usize, f32)> = None;
-                    grid.near(ax, ay, 26, |ji| {
-                        let j = ji as usize;
-                        if j == a {
-                            return;
-                        }
-                        let other = &self.list[j];
-                        if other.species == a_species {
-                            return;
-                        }
-
-                        if !allies.iter().any(|al| self.diplomacy.at_war(*al, other.species)) {
-                            return;
-                        }
-                        let d = ((other.x - ax).powi(2) + (other.y - ay).powi(2)).sqrt();
-                        if d < 20.0 && guard.is_none_or(|g| d < g.1) {
-                            guard = Some((j, d));
-                        }
-                    });
-                    best = guard;
-                }
+                best = self.guard_target(grid, a, a_species, ax, ay);
             }
             if let Some((j, _)) = best {
                 if a_squad > 0 && !squad_targets.iter().any(|(sq, _)| *sq == a_squad) {
                     squad_targets.push((a_squad, j));
                 }
-                if self.list[j].health > 0.0 {
-                    let attacker = &self.list[a];
-                    let mut dmg = if a_role == Role::Soldier { 45.0 } else { 25.0 };
-                    dmg += match attacker.tool {
-                        Tool::Sword => 35.0,
-                        Tool::Pickaxe => 18.0,
-                        Tool::Hammer => 22.0,
-                        Tool::Drill => 28.0,
-                        Tool::Spear => 20.0,
-                        Tool::Staff => 15.0,
-                        _ => 0.0,
-                    };
-
-                    if attacker.traits & trait_bits::FEROCIOUS != 0 {
-                        dmg *= 1.35;
-                    }
-
-                    dmg *= attacker.culture_factor(Culture::Warfare);
-
-                    dmg *= 0.8 + attacker.personality.aggression * 0.4;
-
-                    if self.species_discoveries(a_species) & discovery_bits::SMITHING != 0 {
-                        dmg *= 1.3;
-                    }
-
-                    if self.species_discoveries(a_species) & discovery_bits::SMELTING != 0 {
-                        dmg *= 1.25;
-                    }
-
-                    if attacker.tool == Tool::Sunfire {
-                        let target_is_zorg = self.list[j].faction == Faction::Zorg;
-                        dmg *= sanctify::sunfire_damage(attacker.tech, target_is_zorg);
-                    }
-                    if attacker.active_spell == Spell::Fireball && attacker.spell_cd[1] == 0 { dmg += 20.0; }
-
-                    let dmg = self.list[j].damage_taken(dmg);
-                    self.list[j].health -= dmg;
-
-                    self.list[j].hurt_dir = crate::creature::senses::direction_of(
-                        self.list[a].x - self.list[j].x,
-                        self.list[a].y - self.list[j].y,
-                    ) as i8;
-
-                    self.list[a].energy =
-                        (self.list[a].energy - energy_cost::ATTACK).max(0.0);
-                    self.events.push(SimEvent::Hit {
-                        x: self.list[j].x,
-                        y: self.list[j].y,
-                        color: self.list[a].team_color,
-                        damage: dmg,
-                    });
-
-                    if self.list[a].traits & trait_bits::VENOMOUS != 0
-                        && self.list[j].disease == Disease::None
-                    {
-                        self.list[j].disease = Disease::Poison;
-                        self.list[j].disease_timer = 260;
-                    }
-
-                    if self.list[a].faction == Faction::Zorg
-                        && self.list[j].disease == Disease::None
-                        && self.list[a].disease != Disease::None
-                    {
-                        let carried = self.list[a].disease;
-                        let catch = self.list[j].catch_chance(carried);
-                        if catch > 0.0 && self.rng.chance(0.6 * catch) {
-                            self.list[j].disease = carried;
-                            self.list[j].disease_timer = Plague::from(carried).duration();
-                            self.plagues_started += 1;
-                        }
-                    }
-                    if self.list[j].health <= 0.0 {
-                        self.list[a].kills += 1;
-
-                        self.list[a].kill_dir = crate::creature::senses::direction_of(
-                            self.list[j].x - self.list[a].x,
-                            self.list[j].y - self.list[a].y,
-                        ) as i8;
-                        self.list[a].energy = (self.list[a].energy + 140.0).min(self.list[a].max_energy);
-
-                        if hunter {
-                            self.list[a].energy =
-                                (self.list[a].energy + 160.0).min(self.list[a].max_energy);
-                            self.list[a].hunger = (self.list[a].hunger - 45.0).clamp(0.0, 100.0);
-                        }
-
-                        let victim_species = self.list[j].species;
-                        self.adjust_trust(a_species, victim_species, -2.5);
-
-                        self.predation.record_kill(victim_species, a_species);
-                    }
-                }
+                self.land_attack(a, j, a_species, a_role, hunter);
             }
         }
     }
@@ -479,7 +522,7 @@ impl CreatureSystem {
             let cx = x + self.rng.range_i(-4, 5) as f32;
             let cy = y + self.rng.range_i(-4, 5) as f32;
             if world.is_blocked(cx.round() as i32, cy.round() as i32) { continue; }
-            if self.spawn(world, cx, cy, CreatureGenesis::Child(&child)) {
+            if self.spawn(world, cx, cy, &CreatureGenesis::Child(&child)) {
                 self.events.push(SimEvent::Birth {
                     x: cx,
                     y: cy,
@@ -496,7 +539,7 @@ impl CreatureSystem {
 }
 
 impl CreatureSystem {
-    pub fn apply_status(&mut self, spell_targets: Vec<(usize, usize, f32)>, disease_targets: Vec<usize>, heal_targets: Vec<(u32, f32, f32)>) {
+    pub fn apply_status(&mut self, spell_targets: Vec<(usize, usize, f32)>, disease_targets: &[usize], heal_targets: Vec<(u32, f32, f32)>) {
 
         for (caster_idx, target_idx, damage) in spell_targets {
             if let Some(target) = self.list.get_mut(target_idx) {
@@ -509,7 +552,7 @@ impl CreatureSystem {
                 }
             }
         }
-        for &target_idx in &disease_targets {
+        for &target_idx in disease_targets {
             if let Some(target) = self.list.get_mut(target_idx) {
                 target.disease = Disease::Curse;
                 target.disease_timer = 300;

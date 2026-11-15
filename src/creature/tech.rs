@@ -69,9 +69,8 @@ pub fn tier_blurb(tier: u8) -> &'static str {
 }
 
 #[must_use]
-pub fn tech_tree() -> Vec<TechEntry> {
+fn tier_one_entries() -> Vec<TechEntry> {
     vec![
-
         TechEntry {
             kind: TechKind::Tool(Tool::Pickaxe),
             tier: 1,
@@ -100,7 +99,12 @@ pub fn tech_tree() -> Vec<TechEntry> {
             effect: "hunger grows 15% slower",
             cost: "crafting",
         },
+    ]
+}
 
+#[must_use]
+fn tier_two_entries() -> Vec<TechEntry> {
+    vec![
         TechEntry {
             kind: TechKind::Tool(Tool::Sword),
             tier: 2,
@@ -129,7 +133,12 @@ pub fn tech_tree() -> Vec<TechEntry> {
             effect: "a bow from wood alone, and it flies 25% further",
             cost: "crafting and warfare",
         },
+    ]
+}
 
+#[must_use]
+fn tier_three_entries() -> Vec<TechEntry> {
+    vec![
         TechEntry {
             kind: TechKind::Tool(Tool::Bow),
             tier: 3,
@@ -158,7 +167,12 @@ pub fn tech_tree() -> Vec<TechEntry> {
             effect: "buildings stand 40% longer",
             cost: "crafting and building",
         },
+    ]
+}
 
+#[must_use]
+fn tier_four_entries() -> Vec<TechEntry> {
+    vec![
         TechEntry {
             kind: TechKind::Tool(Tool::Cart),
             tier: 4,
@@ -187,7 +201,12 @@ pub fn tech_tree() -> Vec<TechEntry> {
             effect: "+20% sight",
             cost: "crafting and warfare",
         },
+    ]
+}
 
+#[must_use]
+fn tier_five_entries() -> Vec<TechEntry> {
+    vec![
         TechEntry {
             kind: TechKind::Craft(Consumable::Salve),
             tier: 5,
@@ -216,14 +235,23 @@ pub fn tech_tree() -> Vec<TechEntry> {
             effect: "wounds mend 40% faster",
             cost: "ritual and crafting",
         },
-        TechEntry {
-            kind: TechKind::Discovery(Discovery::Cognition),
-            tier: 1,
-            name: "Cognition",
-            effect: "every mind grows: bigger brains, more to think with",
-            cost: "crafting",
-        },
+    ]
+}
 
+#[must_use]
+fn cognition_entry() -> TechEntry {
+    TechEntry {
+        kind: TechKind::Discovery(Discovery::Cognition),
+        tier: 1,
+        name: "Cognition",
+        effect: "every mind grows: bigger brains, more to think with",
+        cost: "crafting",
+    }
+}
+
+#[must_use]
+fn tier_six_entries() -> Vec<TechEntry> {
+    vec![
         TechEntry {
             kind: TechKind::Tool(Tool::Drill),
             tier: 6,
@@ -259,7 +287,12 @@ pub fn tech_tree() -> Vec<TechEntry> {
             effect: "+25% melee damage",
             cost: "crafting and mining",
         },
+    ]
+}
 
+#[must_use]
+fn tier_seven_entries() -> Vec<TechEntry> {
+    vec![
         TechEntry {
             kind: TechKind::Tool(Tool::Staff),
             tier: 7,
@@ -295,7 +328,12 @@ pub fn tech_tree() -> Vec<TechEntry> {
             effect: "the colony moves 15% faster",
             cost: "warfare and crafting",
         },
+    ]
+}
 
+#[must_use]
+fn tier_eight_entries() -> Vec<TechEntry> {
+    vec![
         TechEntry {
             kind: TechKind::Tool(Tool::Sunfire),
             tier: 8,
@@ -331,7 +369,12 @@ pub fn tech_tree() -> Vec<TechEntry> {
             effect: "the sickness of the deep is resisted",
             cost: "ritual and crafting",
         },
+    ]
+}
 
+#[must_use]
+fn tier_nine_entries() -> Vec<TechEntry> {
+    vec![
         TechEntry {
             kind: TechKind::Craft(Consumable::Bomb),
             tier: 9,
@@ -374,7 +417,12 @@ pub fn tech_tree() -> Vec<TechEntry> {
             effect: "+40% mana",
             cost: "sanctuary and astronomy",
         },
+    ]
+}
 
+#[must_use]
+fn tier_ten_entries() -> Vec<TechEntry> {
+    vec![
         TechEntry {
             kind: TechKind::Tool(Tool::Boat),
             tier: 10,
@@ -417,14 +465,36 @@ pub fn tech_tree() -> Vec<TechEntry> {
             effect: "the deep is closed: it breeds far more slowly",
             cost: "sanctification and building",
         },
-        TechEntry {
-            kind: TechKind::Discovery(Discovery::GrandCognition),
-            tier: 3,
-            name: "Grand Cognition",
-            effect: "the minds grow again, and learn from what works",
-            cost: "cognition and mining",
-        },
     ]
+}
+
+#[must_use]
+fn grand_cognition_entry() -> TechEntry {
+    TechEntry {
+        kind: TechKind::Discovery(Discovery::GrandCognition),
+        tier: 3,
+        name: "Grand Cognition",
+        effect: "the minds grow again, and learn from what works",
+        cost: "cognition and mining",
+    }
+}
+
+#[must_use]
+pub fn tech_tree() -> Vec<TechEntry> {
+    let mut tree = Vec::new();
+    tree.extend(tier_one_entries());
+    tree.extend(tier_two_entries());
+    tree.extend(tier_three_entries());
+    tree.extend(tier_four_entries());
+    tree.extend(tier_five_entries());
+    tree.push(cognition_entry());
+    tree.extend(tier_six_entries());
+    tree.extend(tier_seven_entries());
+    tree.extend(tier_eight_entries());
+    tree.extend(tier_nine_entries());
+    tree.extend(tier_ten_entries());
+    tree.push(grand_cognition_entry());
+    tree
 }
 
 #[must_use]

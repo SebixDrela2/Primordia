@@ -57,19 +57,19 @@ impl World {
                 attempts += 1;
                 let cx = step * vault_idx + step / 2 + self.rng.range_i(-step / 4, step / 4);
                 let angle = self.rng.f32() * std::f32::consts::PI * 2.0;
-                let r = self.rng.range(radius as u32) as f32;
-                let dx = angle.cos() * r;
-                let dy = angle.sin() * r;
-                let x = (cx as f32 + dx) as i32;
+                let spread = self.rng.range(radius as u32) as f32;
+                let offset_x = angle.cos() * spread;
+                let offset_y = angle.sin() * spread;
+                let cell_x = (cx as f32 + offset_x) as i32;
 
-                let surf = self.surface_y(x);
+                let surf = self.surface_y(cell_x);
                 let depth = 8 + (vault_idx.rem_euclid(7)) * 12 + self.rng.range(6) as i32;
                 let _ = cy_min;
-                let y = surf + depth + dy as i32;
-                if x > 1 && x < w - 1 && y > 1 && y < h - 5 {
-                    let cur = self.get(x, y);
+                let cell_y = surf + depth + offset_y as i32;
+                if cell_x > 1 && cell_x < w - 1 && cell_y > 1 && cell_y < h - 5 {
+                    let cur = self.get(cell_x, cell_y);
                     if matches!(cur, Elem::Empty | Elem::Stone | Elem::Sand) {
-                        self.set_xy(x, y, elem);
+                        self.set_xy(cell_x, cell_y, elem);
                         placed += 1;
                     }
                 }
