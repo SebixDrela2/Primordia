@@ -1,4 +1,4 @@
-use super::*;
+use super::{World, Census, Elem};
 
 impl World {
     #[must_use]

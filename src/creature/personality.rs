@@ -1,4 +1,4 @@
-use super::*;
+use super::Rng;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Personality {

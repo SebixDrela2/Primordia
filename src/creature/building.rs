@@ -1,4 +1,4 @@
-use super::*;
+use super::{World, Creature, Structure, SimEvent, Faction, MAX_STRUCTURES, Culture, Stage, energy_cost, Discovery, Role, MAX_FARMS, MAX_TOWERS, structure_kind, Buildable, Elem, trait_bits, BASE_RADIUS, DIRS8};
 
 pub fn act_build(
     world: &mut World,
@@ -220,7 +220,7 @@ pub fn act_build(
                         }
                         if chosen == Buildable::Farm {
 
-                            c.inventory[6] = c.inventory[6].saturating_sub((4 as f32 * discount) as u16);
+                            c.inventory[6] = c.inventory[6].saturating_sub((4_f32 * discount) as u16);
 
                             structures.push(Structure {
                                 x: place_x as f32,
@@ -239,7 +239,7 @@ pub fn act_build(
                                 .iter()
                                 .filter(|s| s.species == c.species && s.kind == 1)
                                 .count();
-                            c.inventory[6] = c.inventory[6].saturating_sub((8 as f32 * discount) as u16);
+                            c.inventory[6] = c.inventory[6].saturating_sub((8_f32 * discount) as u16);
                             if mine < 6 {
                                 structures.push(Structure {
                                     x: place_x as f32,
@@ -254,7 +254,7 @@ pub fn act_build(
                             }
                         } else if chosen == Buildable::Temple {
 
-                            c.inventory[4] = c.inventory[4].saturating_sub((2 as f32 * discount) as u16);
+                            c.inventory[4] = c.inventory[4].saturating_sub((2_f32 * discount) as u16);
                             structures.push(Structure {
                                 x: place_x as f32,
                                 y: place_y as f32,

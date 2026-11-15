@@ -1,4 +1,4 @@
-use super::*;
+use super::{CreatureSystem, World, Role, SpatialGrid, Creature, Projectile, INPUTS, Stage, Faction, DiplomaticAction, Culture, FearTable, CRISIS_TICKS, grow_and_learn, diplomatic_sense, trait_bits, Disease, Plague, Discovery, Mood, discovery_bits, structure_kind, STAMINA_REGEN, Elem, MANA_REGEN, zorg_carried_disease, scan_percept, write_percept, write_body, write_kin, outputs, OUTPUTS, find_diplomatic_partner, desired_action, act_steer, act_move, zorg_filth, act_eat, act_mine, act_build, act_craft, Tool, act_combat, switch_spell, MountKind, SimEvent, Treaty, energy_cost, strongest_direction, DIRS4, REPRO_SOFT_CAP, ZORG_POP_CAP, Bomb, cast_spell_effects};
 
 impl CreatureSystem {
     pub fn step(&mut self, world: &mut World) {
@@ -34,13 +34,13 @@ impl CreatureSystem {
                     anchors[idx].push((c.squad_id, c.x, c.y));
                 }
             }
-            for c in self.list.iter_mut() {
+            for c in &mut self.list {
                 if c.role != Role::Soldier || c.squad_id != 0 {
                     continue;
                 }
                 let mut joined = false;
                 let idx = (c.species as usize).min(anchors.len() - 1);
-                for (sid, ax, ay) in anchors[idx].iter() {
+                for (sid, ax, ay) in &anchors[idx] {
                     let d = (ax - c.x).powi(2) + (ay - c.y).powi(2);
                     if d < 400.0 {
                         c.squad_id = *sid;
@@ -176,8 +176,7 @@ impl CreatureSystem {
             let start = succession
                 .iter()
                 .find(|(sp, _)| *sp == species)
-                .map(|(_, s)| *s)
-                .unwrap_or(tick);
+                .map_or(tick, |(_, s)| *s);
             if tick.saturating_sub(start) < CRISIS_TICKS {
                 let age = tick.saturating_sub(start) as f32;
                 (0.004 + age * 0.000012).min(0.05)
@@ -323,7 +322,7 @@ impl CreatureSystem {
                 let mut near_granary = false;
                 
                 let sidx = (c.species as usize).min(structures_by_species.len() - 1);
-                for &si in structures_by_species[sidx].iter() {
+                for &si in &structures_by_species[sidx] {
                     let s = &self.structures[si];
                     let d2 = (s.x - c.x).powi(2) + (s.y - c.y).powi(2);
                     match s.kind {
@@ -347,11 +346,10 @@ impl CreatureSystem {
                                 near_granary = true;
                             }
                         }
-                        structure_kind::BEACON => {
-                            if d2 < 2500.0 {
+                        structure_kind::BEACON
+                            if d2 < 2500.0 => {
                                 
                             }
-                        }
                         _ => {}
                     }
                 }
@@ -427,7 +425,7 @@ impl CreatureSystem {
                 }
 
                 let crepuscular = c.traits & trait_bits::CREPUSCULAR != 0;
-                let hour = (self.day_night * 24.0) as f32;
+                let hour = self.day_night * 24.0;
 
                 let daylight = if crepuscular {
                     let dawn = (hour - 6.0).abs().min(12.0);
@@ -601,7 +599,7 @@ impl CreatureSystem {
                         let partner_species = agents[partner_idx].3;
                         let action = desired_action(
                             &self.diplomacy,
-                            &out,
+                            out,
                             c.species,
                             partner_species,
                         );
@@ -612,7 +610,7 @@ impl CreatureSystem {
                 let volcano = world.volcano().map(|(vx, vy)| (vx as f32, vy as f32));
                 let (steer_x, steer_y, speed_mult_extra) = act_steer(
                     c,
-                    &out,
+                    out,
                     &agents,
                     &grid,
                     &centroids,
@@ -676,13 +674,13 @@ impl CreatureSystem {
                     }
                 }
 
-                ate_something = act_eat(world, c, &out, &self.diplomacy);
-                act_mine(world, c, &out, company);
+                ate_something = act_eat(world, c, out, &self.diplomacy);
+                act_mine(world, c, out, company);
 
                 let (built, built_count) = act_build(
                     world,
                     c,
-                    &out,
+                    out,
                     &mut self.structures,
                     &mut self.events,
                     company,
@@ -702,7 +700,7 @@ impl CreatureSystem {
 
                 act_craft(
                     c,
-                    &out,
+                    out,
                     &mut self.events,
                     near_workshop,
                     place.craft,
@@ -725,7 +723,7 @@ impl CreatureSystem {
                 let shots_before = shots.len();
                 wants_attack = act_combat(
                     c,
-                    &out,
+                    out,
                     &grid,
                     &agents,
                     &mut shots,
@@ -824,11 +822,7 @@ impl CreatureSystem {
 
                 let spent = c.stamina < c.max_stamina * 0.2
                     || c.energy < c.max_energy * 0.15;
-                if (out[10] > 0.05 && c.stamina < c.max_stamina * 0.5) || spent {
-                    c.resting = true;
-                } else {
-                    c.resting = false;
-                }
+                c.resting = (out[10] > 0.05 && c.stamina < c.max_stamina * 0.5) || spent;
 
                 {
                     let disc = discoveries_by_species
@@ -911,10 +905,9 @@ impl CreatureSystem {
                         push(2, learn * 0.5);
                     }
 
-                    if !targets.is_empty() {
-                    if n > 0 {
+                    if !targets.is_empty()
+                    && n > 0 {
                         c.net.learn(&targets[..n], learn);
-                    }
                     }
                     }
 
@@ -952,8 +945,8 @@ impl CreatureSystem {
                         let tx = gx + dx;
                         let ty = gy + dy;
                         let e = world.get(tx, ty);
-                        if e == Elem::Wall || e == Elem::Stone {
-                            if c.tool == Tool::Pickaxe || c.tool == Tool::Drill {
+                        if (e == Elem::Wall || e == Elem::Stone)
+                            && (c.tool == Tool::Pickaxe || c.tool == Tool::Drill) {
                                 world.mine_budget -= 1;
                                 world.set_xy(tx, ty, Elem::Empty);
                                 c.tool_durability = c.tool_durability.saturating_sub(5);
@@ -961,7 +954,6 @@ impl CreatureSystem {
                                 c.inventory[0] = (c.inventory[0].saturating_add(2)).min(255);
                                 break;
                             }
-                        }
                     }
                 }
 
@@ -995,7 +987,7 @@ impl CreatureSystem {
 
                 let zorg_cap =
                     (30.0 + hardship * (ZORG_POP_CAP - 30) as f32) as u32;
-                let zorg_room = zorg_pop + litter as u32 <= zorg_cap;
+                let zorg_room = zorg_pop + litter <= zorg_cap;
                 if can_reproduce
                     && (nn_wants_reproduce || exploratory_reproduce)
                     && c.energy > 340.0
@@ -1009,7 +1001,7 @@ impl CreatureSystem {
                     let cost = c.brood_cost() * fertile;
                     if c.energy > cost {
                         if c.faction == Faction::Zorg {
-                            zorg_pop += litter as u32;
+                            zorg_pop += litter;
                         }
                         c.energy -= cost;
                         c.hunger = (c.hunger + 15.0).clamp(0.0, 100.0);
@@ -1031,7 +1023,7 @@ impl CreatureSystem {
                         let dx = a.1 - c.x;
                         let dy = a.2 - c.y;
                         let d = (dx * dx + dy * dy).sqrt();
-                        if d < 16.0 && target.map_or(true, |t| d < t.2) {
+                        if d < 16.0 && target.is_none_or(|t| d < t.2) {
                             target = Some((dx, dy, d));
                         }
                     });
@@ -1129,7 +1121,7 @@ impl CreatureSystem {
 
                 if c.energy <= 0.0
                     || c.health <= 0.0
-                    || c.age > lifespan + c.id.wrapping_mul(2654_435_761) % 1400
+                    || c.age > lifespan + c.id.wrapping_mul(2_654_435_761) % 1400
                 {
                     died = true;
                 }
@@ -1292,7 +1284,7 @@ impl CreatureSystem {
                     continue;
                 }
                 let d = (c.x - bx).abs() + (c.y - by).abs();
-                if best.map_or(true, |(bd, _)| d < bd) {
+                if best.is_none_or(|(bd, _)| d < bd) {
                     best = Some((d, i));
                 }
             }

@@ -38,7 +38,7 @@ impl LightField {
     }
 
     pub fn clear(&mut self) {
-        for c in self.buf.iter_mut() {
+        for c in &mut self.buf {
             *c = [0.0; 3];
         }
     }
@@ -131,12 +131,18 @@ impl LightField {
     }
 
     pub fn finalize(&mut self) {
-        for c in self.buf.iter_mut() {
+        for c in &mut self.buf {
 
             let lr = c[0].max(c[1] * 0.85).max(c[2] * 0.6);
             let lg = c[1].max(c[0] * 0.45);
             let lb = c[2].max(c[0] * 0.25);
             *c = [lr * 62.0, lg * 62.0, lb * 62.0];
         }
+    }
+}
+
+impl Default for LightField {
+    fn default() -> Self {
+        Self::new()
     }
 }

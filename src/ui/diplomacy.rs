@@ -19,7 +19,7 @@ pub fn draw_diplomacy_panel(c: &CreatureSystem, x: f32, y: f32) {
 
     let s = &d.stats;
     draw_text(
-        &format!(
+        format!(
             "alliances {}   wars {}   treaties {}",
             s.alliances, s.wars, s.treaties
         ),
@@ -29,7 +29,7 @@ pub fn draw_diplomacy_panel(c: &CreatureSystem, x: f32, y: f32) {
         Color::new(0.8, 0.86, 0.92, 0.85),
     );
     draw_text(
-        &format!(
+        format!(
             "envoys {}   talks {}   truces {}",
             s.envoys, s.negotiations, s.truces
         ),
@@ -78,7 +78,7 @@ pub fn draw_diplomacy_panel(c: &CreatureSystem, x: f32, y: f32) {
     }
 
     let mut shown = 0;
-    for (_, r) in rows.iter() {
+    for (_, r) in &rows {
         if shown >= 5 || yy > y + h - 150.0 {
             break;
         }
@@ -154,7 +154,7 @@ pub fn draw_diplomacy_panel(c: &CreatureSystem, x: f32, y: f32) {
         } else {
             Color::new(0.9, 0.35, 0.32, 0.9)
         };
-        let len = (t.abs() as f32) * bar_w * 0.5;
+        let len = t.abs() * bar_w * 0.5;
         if t >= 0.0 {
             draw_rectangle(mid, bar_y, len, 5.0, trust_col);
         } else {

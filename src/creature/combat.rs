@@ -1,4 +1,4 @@
-use super::*;
+use super::{CreatureSystem, World, Projectile, Structure, Elem, SimEvent, segment_distance, SpatialGrid, Culture, trait_bits, Role, Tool, discovery_bits, Faction, sanctify, Spell, energy_cost, Disease, Plague, Mood, Creature, MAX_POP, CreatureGenesis};
 
 impl CreatureSystem {
     pub fn resolve_turrets(&mut self, world: &mut World, shots: &mut Vec<Projectile>) {
@@ -32,7 +32,7 @@ impl CreatureSystem {
             }
         }
 
-        for s in self.structures.iter_mut() {
+        for s in &mut self.structures {
             if !s.armed { continue; }
             if s.cooldown > 0 {
                 s.cooldown -= 1;
@@ -46,7 +46,7 @@ impl CreatureSystem {
                 let dx = other.x - s.x;
                 let dy = other.y - s.y;
                 let d = (dx * dx + dy * dy).sqrt();
-                if d < 48.0 && target.map_or(true, |t| d < t.2) {
+                if d < 48.0 && target.is_none_or(|t| d < t.2) {
                     target = Some((dx, dy, d));
                 }
             }
@@ -242,7 +242,7 @@ impl CreatureSystem {
                     + priority
                     + war_penalty;
                 let max_range = if a_role == Role::Soldier { 14.0 } else { 6.0 };
-                if d < max_range && best.map_or(true, |b| d < b.1) {
+                if d < max_range && best.is_none_or(|b| d < b.1) {
                     best = Some((j, d));
                 }
             });
@@ -266,7 +266,7 @@ impl CreatureSystem {
                             (other.x - cx).powi(2) + (other.y - cy).powi(2) < radius * radius;
                         if inside {
                             let d = ((other.x - ax).powi(2) + (other.y - ay).powi(2)).sqrt();
-                            if d < 14.0 && trespass.map_or(true, |t| d < t.1) {
+                            if d < 14.0 && trespass.is_none_or(|t| d < t.1) {
                                 trespass = Some((j, d));
                             }
                         }
@@ -307,7 +307,7 @@ impl CreatureSystem {
                             return;
                         }
                         let d = ((other.x - ax).powi(2) + (other.y - ay).powi(2)).sqrt();
-                        if d < 20.0 && guard.map_or(true, |g| d < g.1) {
+                        if d < 20.0 && guard.is_none_or(|g| d < g.1) {
                             guard = Some((j, d));
                         }
                     });
@@ -442,7 +442,7 @@ impl CreatureSystem {
             }
 
             if let Some(partner_id) = bond {
-                for c in self.list.iter_mut() {
+                for c in &mut self.list {
                     if c.id == partner_id && c.health > 0.0 {
                         c.mood = Mood::Depressed;
                         c.mood_timer = 900;

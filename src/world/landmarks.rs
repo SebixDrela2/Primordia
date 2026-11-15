@@ -1,4 +1,4 @@
-use super::*;
+use super::{World, Elem, DIRS8};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Landmark {
@@ -247,14 +247,14 @@ impl World {
         }
     }
 
-    fn paint_ground(&mut self, px: i32, py: i32, e: Elem) {
+    fn paint_ground(&mut self, px: i32, py: i32, _e: Elem) {
         if py < self.surface_y(px) {
             return;
         }
         if self.get(px, py) != Elem::Empty {
             return;
         }
-        self.paint_ground(px, py, e);
+        self.paint_ground(px, py, _e);
     }
 
     fn paint_landmark(&mut self, kind: Landmark, x: i32, y: i32) {

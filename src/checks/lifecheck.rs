@@ -34,43 +34,40 @@ pub fn run(args: &[String]) -> i32 {
 
     println!("--- the ZORG cave ---");
     let cave = world.zorg_cave_center();
-    match cave {
-        Some((cx, cy)) => {
-            let surface = world.surface_y(cx);
-            println!(
-                "  the cave is at ({}, {}), {} below the surface",
-                cx, cy,
-                cy - surface
-            );
-            if cy <= surface + 8 {
-                println!("FAIL: the ZORG cave is not below the surface");
-                failures += 1;
-            }
-            if cy >= world.h as i32 - 12 {
-                println!("FAIL: the ZORG cave is in the bedrock");
-                failures += 1;
-            }
-
-            let mut outside = 0;
-            for c in &creatures.list {
-                if c.faction != crate::creature::Faction::Zorg {
-                    continue;
-                }
-                if !world.in_zorg_cave(c.x.round() as i32, c.y.round() as i32) {
-                    outside += 1;
-                }
-            }
-            if outside > 0 {
-                println!("FAIL: {} ZORGs did not spawn in the cave", outside);
-                failures += 1;
-            } else {
-                println!("  all founding ZORGs spawned in it");
-            }
-        }
-        None => {
-            println!("FAIL: the world has no ZORG cave");
+    if let Some((cx, cy)) = cave {
+        let surface = world.surface_y(cx);
+        println!(
+            "  the cave is at ({}, {}), {} below the surface",
+            cx, cy,
+            cy - surface
+        );
+        if cy <= surface + 8 {
+            println!("FAIL: the ZORG cave is not below the surface");
             failures += 1;
         }
+        if cy >= world.h as i32 - 12 {
+            println!("FAIL: the ZORG cave is in the bedrock");
+            failures += 1;
+        }
+
+        let mut outside = 0;
+        for c in &creatures.list {
+            if c.faction != crate::creature::Faction::Zorg {
+                continue;
+            }
+            if !world.in_zorg_cave(c.x.round() as i32, c.y.round() as i32) {
+                outside += 1;
+            }
+        }
+        if outside > 0 {
+            println!("FAIL: {} ZORGs did not spawn in the cave", outside);
+            failures += 1;
+        } else {
+            println!("  all founding ZORGs spawned in it");
+        }
+    } else {
+        println!("FAIL: the world has no ZORG cave");
+        failures += 1;
     }
 
     for i in 0..steps {
@@ -206,12 +203,11 @@ pub fn run(args: &[String]) -> i32 {
         }
 
         for r in &creatures.diplomacy.relations {
-            if r.a == first || r.b == first {
-                if r.has(crate::creature::Treaty::Alliance) {
+            if (r.a == first || r.b == first)
+                && r.has(crate::creature::Treaty::Alliance) {
                     println!("FAIL: a ZORG is allied with a species");
                     failures += 1;
                 }
-            }
         }
     }
 
@@ -282,7 +278,7 @@ pub fn run(args: &[String]) -> i32 {
             .sum::<u32>(),
         creatures.discoveries.len()
     );
-    for (sp, bits) in creatures.discoveries.iter() {
+    for (sp, bits) in &creatures.discoveries {
         let names: Vec<&str> = crate::creature::discovery_list(*bits)
             .iter()
             .map(|d| d.name())
@@ -395,7 +391,7 @@ pub fn run(args: &[String]) -> i32 {
         failures += 1;
     }
 
-    for (prey, predator, fear) in creatures.predation.entries().iter() {
+    for (prey, predator, fear) in creatures.predation.entries() {
         if !(0.0..=100.0).contains(fear) {
             println!("FAIL: fear out of range: {}", fear);
             failures += 1;

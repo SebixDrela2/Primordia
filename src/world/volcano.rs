@@ -1,4 +1,4 @@
-use super::*;
+use super::{World, Elem};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Volcano {
@@ -56,11 +56,10 @@ impl World {
             for dx in -12..=12 {
                 let x = vx + dx;
                 let y = cy + dy;
-                if x > 1 && x < w - 1 && y > 0 && y < h - 4 {
-                    if (dx * dx) as f32 / 100.0 + (dy * dy) as f32 / 64.0 <= 1.0 {
+                if x > 1 && x < w - 1 && y > 0 && y < h - 4
+                    && (dx * dx) as f32 / 100.0 + (dy * dy) as f32 / 64.0 <= 1.0 {
                         self.set_xy(x, y, Elem::Magma);
                     }
-                }
             }
         }
 
@@ -100,12 +99,11 @@ impl World {
             let dy = -(self.rng.range(16) as i32) - 6;
             let x = vx + dx;
             let y = vy + dy;
-            if x > 0 && x < self.w as i32 && y > 0 {
-                if self.get(x, y) == Elem::Empty {
+            if x > 0 && x < self.w as i32 && y > 0
+                && self.get(x, y) == Elem::Empty {
                     let e = if self.rng.chance(0.25) { Elem::Fire } else { Elem::Lava };
                     self.set_xy(x, y, e);
                 }
-            }
         }
 
         for dx in -10..=10 {

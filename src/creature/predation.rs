@@ -1,12 +1,11 @@
-use super::*;
+use super::CreatureSystem;
 
 #[must_use]
 pub fn fear_in(entries: &[(u32, u32, Fear)], prey: u32, predator: u32) -> Fear {
     entries
         .iter()
         .find(|(p, q, _)| *p == prey && *q == predator)
-        .map(|(_, _, f)| *f)
-        .unwrap_or(0.0)
+        .map_or(0.0, |(_, _, f)| *f)
 }
 
 #[must_use]
@@ -31,7 +30,7 @@ impl FearTable {
         let stride = species.max(1);
         let mut cells = vec![0.0f32; stride * stride];
         let mut totals = vec![0.0f32; stride];
-        for (p, q, f) in entries.iter() {
+        for (p, q, f) in entries {
             let (pi, qi) = (*p as usize, *q as usize);
             if pi >= stride || qi >= stride {
                 continue;
@@ -47,6 +46,7 @@ impl FearTable {
     }
 
     #[inline]
+    #[must_use]
     pub fn fear_of(&self, prey: u32, predator: u32) -> Fear {
         let (pi, qi) = (prey as usize, predator as usize);
         if pi >= self.stride || qi >= self.stride {
@@ -56,6 +56,7 @@ impl FearTable {
     }
 
     #[inline]
+    #[must_use]
     pub fn total_of(&self, prey: u32) -> Fear {
         let pi = prey as usize;
         if pi >= self.stride {
@@ -80,8 +81,7 @@ impl PredationMemory {
         self.entries
             .iter()
             .find(|(p, q, _)| *p == prey && *q == predator)
-            .map(|(_, _, f)| *f)
-            .unwrap_or(0.0)
+            .map_or(0.0, |(_, _, f)| *f)
     }
 
     pub fn record_kill(&mut self, prey: u32, predator: u32) {
@@ -112,7 +112,7 @@ impl PredationMemory {
     }
 
     pub fn decay(&mut self) {
-        for e in self.entries.iter_mut() {
+        for e in &mut self.entries {
             e.2 = (e.2 - 0.05).max(0.0);
         }
         self.entries.retain(|(_, _, f)| *f > 0.5);

@@ -434,12 +434,12 @@ pub struct RevivalGenome {
     pub personality: Personality,
 }
 
-use actions::*;
+use actions::{act_steer, act_move, act_eat, act_mine, act_craft, act_combat};
 pub use brain::*;
-use building::*;
+use building::act_build;
 pub use diplomacy::*;
 pub use enums::*;
-use growth::*;
+use growth::grow_and_learn;
 pub use heritage::*;
 pub use names::*;
 pub use personality::*;

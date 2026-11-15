@@ -1,4 +1,4 @@
-use super::*;
+use super::{Creature, SpatialGrid, DiplomaticSense, FearTable, outputs, DIRS8, Faction, zorg_steer, World, MountKind, MOUNT_SPEED_BONUS, energy_cost, Elem, Tool, trait_bits, zorg_feed_on_rock, zorg_act_eat, Discovery, Culture, Role, Stage, SimEvent, discovery_bits, tool_gate, Projectile, Diplomacy, Treaty};
 
 pub fn act_steer(
     c: &Creature,
@@ -61,10 +61,10 @@ pub fn act_steer(
 
                     let fright = fear.fear_of(c.species, ospecies) * 0.22;
                     let run = flee_range + fright;
-                    if d < run && flee_target.map_or(true, |t| d < t.2) {
+                    if d < run && flee_target.is_none_or(|t| d < t.2) {
                         flee_target = Some((dx, dy, d));
                     }
-                    if d < hunt_range && prey.map_or(true, |t| d < t.2) {
+                    if d < hunt_range && prey.is_none_or(|t| d < t.2) {
                         prey = Some((dx, dy, d));
                     }
                 });
@@ -94,7 +94,7 @@ pub fn act_steer(
                         let dx = ox - c.x;
                         let dy = oy - c.y;
                         let d = (dx * dx + dy * dy).sqrt();
-                        if d < 40.0 && best.map_or(true, |t| d < t.2) {
+                        if d < 40.0 && best.is_none_or(|t| d < t.2) {
                             best = Some((dx, dy, d));
                         }
                     });
@@ -137,14 +137,14 @@ pub fn act_move(world: &mut World, c: &mut Creature, behaviour_speed: f32) {
 
                 if height > 1.0 {
                     let below = world.get(c.x.round() as i32, c.y.round() as i32 + 1);
-                    if !below.is_solid() {
+                    if below.is_solid() {
+                        c.air_time = 0;
+                    } else {
                         c.air_time = c.air_time.saturating_add(1);
                         let hover = 0.02
                             * (1.0 + height / 20.0)
                             * (1.0 + c.air_time as f32 / 300.0);
                         c.energy = (c.energy - hover).max(0.0);
-                    } else {
-                        c.air_time = 0;
                     }
                 } else {
                     c.air_time = 0;
@@ -253,7 +253,7 @@ pub fn act_eat(
                     }
 
                     if c.thirst > 40.0 && out[13] > 0.05 {
-                        for (dx, dy) in DIRS8.iter() {
+                        for (dx, dy) in &DIRS8 {
                             let wx = gx + dx;
                             let wy = gy + dy;
                             if world.get(wx, wy) == Elem::Water {
@@ -448,9 +448,8 @@ pub fn act_mine(world: &mut World, c: &mut Creature, out: &[f32], company: f32) 
                     let gx = c.x.round() as i32;
                     let gy = c.y.round() as i32;
 
-                    let (mx, my) = match desired_neighbour(world, gx, gy, out) {
-                        Some(p) => p,
-                        None => return,
+                    let Some((mx, my)) = desired_neighbour(world, gx, gy, out) else {
+                        return;
                     };
                     {
                         world.mine_budget -= 1;
@@ -605,7 +604,7 @@ pub fn act_craft(
 
                     else if c.tool == Tool::None
                         && c.tech_level >= 1
-                        && (knows_ranged || (c.inventory[6] >= 3 && c.inventory[6] >= 2))
+                        && (knows_ranged || c.inventory[6] >= 3)
                     {
                         c.inventory[6] = c.inventory[6].saturating_sub(if knows_ranged { 3 } else { 5 });
                         c.tool = Tool::Bow;
@@ -754,24 +753,23 @@ pub fn act_combat(
                         return;
                     }
                     let d = ((a.1 - c.x).powi(2) + (a.2 - c.y).powi(2)).sqrt();
-                    if nearest_foreign.map_or(true, |(_, bd)| d < bd) {
+                    if nearest_foreign.is_none_or(|(_, bd)| d < bd) {
                         nearest_foreign = Some((a.3, d));
                     }
                 });
 
-                let truce = nearest_foreign.map_or(false, |(sp, _)| {
+                let truce = nearest_foreign.is_some_and(|(sp, _)| {
                     diplomacy.has_treaty(c.species, sp, Treaty::Ceasefire)
                         && !diplomacy.at_war(c.species, sp)
                 });
 
                 let bold = c.personality.aggression;
                 let attack_threshold = 0.45 - (bold - 0.5) * 0.3;
-                if out[4] > attack_threshold && !truce && c.stage.can_fight() {
+                if out[4] > attack_threshold && !truce && c.stage.can_fight()
 
-                    if c.traits & trait_bits::PEACEFUL == 0 {
+                    && c.traits & trait_bits::PEACEFUL == 0 {
                         wants_attack = true;
                     }
-                }
 
                 if c.is_mad() {
                     wants_attack = true;
@@ -842,7 +840,7 @@ pub fn act_combat(
                         let dx = a.1 - c.x;
                         let dy = a.2 - c.y;
                         let d = (dx * dx + dy * dy).sqrt();
-                        if d < ranged_range && target.map_or(true, |t| d < t.2) {
+                        if d < ranged_range && target.is_none_or(|t| d < t.2) {
                             target = Some((dx, dy, d));
                         }
                     });

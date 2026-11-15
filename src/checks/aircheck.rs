@@ -139,7 +139,7 @@ fn fire_lifetime(with_air: bool) -> u32 {
             w.set_xy(x, y, Elem::Empty);
         }
     }
-    for y in y0 - 1..y1 + 1 {
+    for y in (y0 - 1)..=y1 {
         w.set_xy(x0 - 1, y, Elem::Stone);
         w.set_xy(x1, y, Elem::Stone);
     }
@@ -196,7 +196,7 @@ fn stale_cost(fresh: bool) -> f32 {
             w.set_xy(x, y, Elem::Empty);
         }
     }
-    for y in y0 - 1..y1 + 1 {
+    for y in (y0 - 1)..=y1 {
         w.set_xy(x0 - 1, y, Elem::Stone);
         w.set_xy(x1, y, Elem::Stone);
     }
@@ -217,14 +217,14 @@ fn stale_cost(fresh: bool) -> f32 {
     let mut creatures = CreatureSystem::new(4242);
     creatures.populate(&w, 8);
 
-    for c in creatures.list.iter_mut() {
+    for c in &mut creatures.list {
         c.tool = crate::creature::Tool::None;
         c.tool_durability = 0;
         c.known_spells = 0;
         c.active_spell = crate::creature::Spell::None;
     }
 
-    for c in creatures.list.iter_mut() {
+    for c in &mut creatures.list {
         c.x = 30.0;
         c.y = (y1 - 1) as f32;
     }
@@ -233,14 +233,14 @@ fn stale_cost(fresh: bool) -> f32 {
         creatures.step(&mut w);
     }
 
-    for c in creatures.list.iter_mut() {
+    for c in &mut creatures.list {
         c.energy = c.max_energy * 0.6;
         c.stamina = 0.0;
     }
     let before: f32 = creatures.list.iter().map(|c| c.stamina).sum();
     for _ in 0..60 {
 
-        for c in creatures.list.iter_mut() {
+        for c in &mut creatures.list {
             c.x = 30.0;
             c.y = (y1 - 1) as f32;
 
@@ -262,7 +262,7 @@ fn stale_cost(fresh: bool) -> f32 {
         }
         creatures.step(&mut w);
 
-        for c in creatures.list.iter_mut() {
+        for c in &mut creatures.list {
             c.stamina = c.stamina.min(c.max_stamina * 0.5);
         }
     }

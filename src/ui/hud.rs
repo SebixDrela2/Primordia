@@ -113,14 +113,14 @@ pub fn draw_telemetry(t: &Telemetry, x: f32, y: f32) {
     let sp_now = t.species.last().copied().unwrap_or(0.0);
     draw_text("ECOLOGY", x + 12.0, y + 20.0, 14.0, Color::new(0.13, 0.83, 0.93, 0.9));
     draw_text(
-        &format!("pop {:.0}", pop_now),
+        format!("pop {:.0}", pop_now),
         x + 96.0,
         y + 20.0,
         12.0,
         Color::new(0.35, 0.9, 1.0, 0.9),
     );
     draw_text(
-        &format!("species {:.0}", sp_now),
+        format!("species {:.0}", sp_now),
         x + 184.0,
         y + 20.0,
         12.0,
@@ -220,7 +220,7 @@ pub fn dominant_lineage(creatures: &CreatureSystem) -> (Option<u32>, Vec<&'stati
         .list
         .iter()
         .find(|c| c.species == sp)
-        .map(|c| trait_list(c.traits).into_iter().map(|t| t.name()).collect())
+        .map(|c| trait_list(c.traits).into_iter().map(crate::creature::Trait::name).collect())
         .unwrap_or_default();
     (Some(sp), traits)
 }
@@ -442,5 +442,11 @@ pub fn draw_hud(world: &World, creatures: &CreatureSystem, cam_x: f32, cam_y: f3
         let hint = "(press P to resume)";
         let hd = measure_text(hint, None, 15, 1.0);
         draw_text(hint, (screen_width() - hd.width) / 2.0, y + 22.0, 15.0, Color::new(0.7, 0.78, 0.85, 0.85));
+    }
+}
+
+impl Default for Telemetry {
+    fn default() -> Self {
+        Self::new()
     }
 }

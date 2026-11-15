@@ -1,4 +1,4 @@
-use super::*;
+use super::{CreatureSystem, Creature, trait_bits, MAX_AGE, Role, Discovery, discovery_bits, CARRY_CAP, MAX_SPEED};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Stage {

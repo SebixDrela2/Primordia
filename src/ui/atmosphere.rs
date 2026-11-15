@@ -88,7 +88,7 @@ pub fn draw_atmosphere(
             continue;
         }
 
-        let size = (0.9 + hz * 1.6) * scale_x.min(2.0).max(0.6);
+        let size = (0.9 + hz * 1.6) * scale_x.clamp(0.6, 2.0);
         let (r, g, b, a) = match kind {
             Mote::Dust => {
                 let fade = 0.10 + 0.22 * hz;
@@ -96,7 +96,7 @@ pub fn draw_atmosphere(
             }
             Mote::Ember => {
 
-                let t = ((time * 0.7 + hz * 5.0) % 1.0) as f32;
+                let t = (time * 0.7 + hz * 5.0) % 1.0;
                 (1.0, 0.55 - t * 0.3, 0.18 - t * 0.15, (0.75 - t * 0.6) * (0.4 + hz * 0.6))
             }
             Mote::Spore => (0.62, 0.42, 0.85, 0.30 + 0.25 * hz),

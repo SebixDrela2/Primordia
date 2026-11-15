@@ -40,7 +40,7 @@ pub fn draw_tech_tree(creatures: &CreatureSystem, ui: &mut crate::ui::knowledge:
     );
 
     draw_text(
-        &format!("the world stands at tier {} of {}", tier, TECH_TIERS),
+        format!("the world stands at tier {} of {}", tier, TECH_TIERS),
         x + w - 280.0,
         y + 36.0,
         16.0,
@@ -87,7 +87,7 @@ pub fn draw_tech_tree(creatures: &CreatureSystem, ui: &mut crate::ui::knowledge:
         };
         if yy >= view_top {
             draw_text(
-                &format!(
+                format!(
                     "{:>2}. {:<14} {}",
                     t,
                     creature::tier_name(t),
@@ -119,14 +119,14 @@ pub fn draw_tech_tree(creatures: &CreatureSystem, ui: &mut crate::ui::knowledge:
             };
             if yy >= view_top {
                 draw_text(
-                    &format!("   [{}] {:<14} {}", mark, e.name, kind),
+                    format!("   [{}] {:<14} {}", mark, e.name, kind),
                     x + 32.0,
                     yy,
                     15.0,
                     col,
                 );
                 draw_text(
-                    &format!("{}  ({})", e.effect, e.cost),
+                    format!("{}  ({})", e.effect, e.cost),
                     x + 268.0,
                     yy,
                     14.0,
@@ -194,7 +194,7 @@ pub fn draw_tech_panel(creatures: &CreatureSystem) {
         Color::new(0.55, 0.8, 0.95, 0.9),
     );
     draw_text(
-        &format!("tier {} of {}", tier, TECH_TIERS),
+        format!("tier {} of {}", tier, TECH_TIERS),
         x + 62.0,
         y + 20.0,
         13.0,
@@ -208,7 +208,7 @@ pub fn draw_tech_panel(creatures: &CreatureSystem) {
         .count();
     let total = Discovery::all().len();
     draw_text(
-        &format!(
+        format!(
             "{} of {} known   ({}/{} of tier {})",
             known.len(),
             total,
@@ -245,21 +245,21 @@ pub fn draw_tech_panel(creatures: &CreatureSystem) {
     let mut yy = y + 76.0;
     if let Some((d, sp)) = creatures.latest_discovery() {
         draw_text(
-            &format!("LATEST  {}", d.name()),
+            format!("LATEST  {}", d.name()),
             x + 12.0,
             yy,
             12.0,
             Color::new(0.6, 0.95, 0.85, 0.95),
         );
         draw_text(
-            &format!("  {}", d.effect()),
+            format!("  {}", d.effect()),
             x + 12.0,
             yy + 14.0,
             11.0,
             Color::new(0.6, 0.68, 0.75, 0.8),
         );
         draw_text(
-            &format!("  the {}", creature::species_name_for(sp)),
+            format!("  the {}", creature::species_name_for(sp)),
             x + 190.0,
             yy,
             11.0,
@@ -279,14 +279,14 @@ pub fn draw_tech_panel(creatures: &CreatureSystem) {
 
     if let Some(d) = creatures.greatest_discovery() {
         draw_text(
-            &format!("GREATEST  {}", d.name()),
+            format!("GREATEST  {}", d.name()),
             x + 12.0,
             yy,
             12.0,
             Color::new(0.95, 0.8, 0.4, 0.95),
         );
         draw_text(
-            &format!("  {}", d.effect()),
+            format!("  {}", d.effect()),
             x + 12.0,
             yy + 14.0,
             11.0,

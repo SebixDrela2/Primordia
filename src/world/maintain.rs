@@ -1,4 +1,4 @@
-use super::*;
+use super::{World, Elem, Volcano, Weather};
 
 impl World {
     pub fn maintain(&mut self) {
@@ -104,7 +104,7 @@ impl World {
 
                 let period = if self.weather == Weather::Storm { 15 } else { 30 };
                 let want = if self.weather == Weather::Storm { 3 } else { 2 };
-                if frame % period == 0 {
+                if frame.is_multiple_of(period) {
                     let mut added = 0;
                     let mut attempts = 0;
                     while added < want && attempts < 40 {
@@ -433,7 +433,7 @@ impl World {
             }
         }
 
-        for m in self.meteor_events.iter_mut() {
+        for m in &mut self.meteor_events {
             m.2 = m.2.saturating_sub(1);
         }
         self.meteor_events.retain(|m| m.2 > 0);

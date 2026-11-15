@@ -1,4 +1,4 @@
-use super::*;
+use super::{World, Elem, Volcano, Weather, Rng, Census, Behavior};
 
 impl World {
     #[must_use]
@@ -108,6 +108,7 @@ impl World {
     }
 
     #[inline]
+    #[must_use]
     pub fn idx_xy(&self, x: i32, y: i32) -> Option<usize> {
         if x < 0 || y < 0 || x >= self.w as i32 || y >= self.h as i32 {
             None
@@ -117,6 +118,7 @@ impl World {
     }
 
     #[inline]
+    #[must_use]
     pub fn get(&self, x: i32, y: i32) -> Elem {
         match self.idx_xy(x, y) {
             Some(i) => Elem::from_u8(self.kind[i]),
@@ -165,6 +167,7 @@ impl World {
     }
 
     #[inline]
+    #[must_use]
     pub fn can_move_into(&self, mover: Elem, target: Elem) -> bool {
         if target == Elem::Empty {
             return true;

@@ -1,4 +1,4 @@
-use super::*;
+use super::{CreatureSystem, CreatureStats, Spell, MountKind, Stage, Disease, Role, Tool};
 
 impl CreatureSystem {
     pub fn update_stats(&mut self) {
@@ -57,7 +57,7 @@ impl CreatureSystem {
         let mut tech_crystal = 0;
         let mut disease_count = 0;
         let mut spell_count = 0u32;
-        let _trade_count = 0u32;
+        let _ = 0u32;
         let mut mount_count = 0u32;
         let mut hunger_sum = 0.0;
         let mut thirst_sum = 0.0;

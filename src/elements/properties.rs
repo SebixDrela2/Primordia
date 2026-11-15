@@ -1,4 +1,4 @@
-use super::*;
+use super::{Elem, Behavior};
 
 impl Elem {
     #[must_use]
@@ -312,7 +312,7 @@ impl Elem {
             Elem::Temple | Elem::Tower => 0.0,
             Elem::Bridge | Elem::Road => 0.0,
             Elem::Wall | Elem::Door => 0.0,
-                                                Elem::Tar | _ => 0.0,
+                                                _ => 0.0,
         }
     }
 

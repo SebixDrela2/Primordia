@@ -1,4 +1,4 @@
-use super::*;
+use super::{World, Elem, DIRS8, DIRS4, FARM_WATER_RADIUS};
 
 const PLANT_SPREAD: f32 = 0.003;
 
@@ -161,7 +161,6 @@ impl World {
             let up = self.get(x, y - 1);
             if up == Elem::Empty {
                 self.set_xy(x, y - 1, Elem::Oxygen);
-                return;
             }
         }
     }

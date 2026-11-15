@@ -1,4 +1,4 @@
-use super::*;
+use super::{Culture, CreatureSystem, Treaty, World, ZORG_SPECIES, SimEvent, MAX_ARCH, species_name_for};
 
 pub mod discovery_bits {
 
@@ -453,8 +453,7 @@ pub mod activity {
     #[must_use]
     pub fn for_tier(tier: u8) -> u32 {
         match tier {
-            0 | 1 => CRAFT,
-            2 => CRAFT,
+            0..=2 => CRAFT,
             3 => BUILD,
             4 => TRADE,
             5 => EAT,
@@ -474,8 +473,7 @@ impl CreatureSystem {
         self.discoveries
             .iter()
             .find(|(id, _)| *id == species)
-            .map(|(_, d)| *d)
-            .unwrap_or(0)
+            .map_or(0, |(_, d)| *d)
     }
 
     #[must_use]
@@ -483,8 +481,7 @@ impl CreatureSystem {
         self.activity
             .iter()
             .find(|(sp, _)| *sp == species)
-            .map(|(_, a)| *a)
-            .unwrap_or(0)
+            .map_or(0, |(_, a)| *a)
     }
 
     #[must_use]
@@ -497,8 +494,7 @@ impl CreatureSystem {
         self.deepest
             .iter()
             .find(|(sp, _)| *sp == species)
-            .map(|(_, d)| *d)
-            .unwrap_or(0)
+            .map_or(0, |(_, d)| *d)
     }
 
     pub fn note_discovery(&mut self, species: u32, bit: u32) {
@@ -512,7 +508,7 @@ impl CreatureSystem {
     #[must_use]
     pub fn tech_tier(&self) -> u8 {
         let mut all = 0u32;
-        for (_, d) in self.discoveries.iter() {
+        for (_, d) in &self.discoveries {
             all |= *d;
         }
         let mut tier = 0;
@@ -535,7 +531,7 @@ impl CreatureSystem {
         for d in Discovery::all() {
 
             let mut holders = Vec::new();
-            for (sp, bits) in self.discoveries.iter() {
+            for (sp, bits) in &self.discoveries {
                 if bits & d.bit() != 0 {
                     holders.push(*sp);
                 }
@@ -550,7 +546,7 @@ impl CreatureSystem {
     #[must_use]
     pub fn greatest_discovery(&self) -> Option<Discovery> {
         let mut best: Option<Discovery> = None;
-        for (_, bits) in self.discoveries.iter() {
+        for (_, bits) in &self.discoveries {
             for d in Discovery::all() {
                 if bits & d.bit() != 0 {
                     best = match best {
@@ -569,7 +565,7 @@ impl CreatureSystem {
     }
 
     pub fn share_discoveries(&mut self) {
-        if self.tick % 240 != 0 {
+        if !self.tick.is_multiple_of(240) {
             return;
         }
         let mut pairs: Vec<(u32, u32)> = Vec::new();
@@ -617,18 +613,15 @@ impl CreatureSystem {
     }
 
     pub fn check_discoveries(&mut self, world: &World) {
-        if self.tick % 300 != 0 {
+        if !self.tick.is_multiple_of(300) {
             return;
         }
 
         let mut species: Vec<(u32, u32, u16, u32, bool)> = Vec::new();
         for c in &self.list {
-            let entry = match species.iter_mut().find(|(id, _, _, _, _)| *id == c.species) {
-                Some(e) => e,
-                None => {
-                    species.push((c.species, 0, 0, 0, false));
-                    species.last_mut().unwrap()
-                }
+            let entry = if let Some(e) = species.iter_mut().find(|(id, _, _, _, _)| *id == c.species) { e } else {
+                species.push((c.species, 0, 0, 0, false));
+                species.last_mut().unwrap()
             };
             entry.1 = entry.1.max(c.generation);
             entry.2 |= c.culture;
@@ -710,7 +703,7 @@ impl CreatureSystem {
             _ => return,
         };
         let rng = &mut self.rng;
-        for c in self.list.iter_mut() {
+        for c in &mut self.list {
             if c.species == species && c.net.arch < target {
                 let _ = c.net.grow_to(target, rng);
             }
@@ -727,12 +720,12 @@ impl CreatureSystem {
     pub fn refresh_tech(&mut self) {
 
         let mut known: Vec<u32> = vec![0; self.next_species as usize + 8];
-        for (sp, d) in self.discoveries.iter() {
+        for (sp, d) in &self.discoveries {
             if (*sp as usize) < known.len() {
                 known[*sp as usize] = *d;
             }
         }
-        for c in self.list.iter_mut() {
+        for c in &mut self.list {
             let k = known.get(c.species as usize).copied().unwrap_or(0);
             if c.tech != k {
                 c.tech = k;
@@ -743,7 +736,7 @@ impl CreatureSystem {
     #[must_use]
     pub fn best_deep_mining(&self) -> u32 {
         let mut best = 0;
-        for (_, d) in self.discoveries.iter() {
+        for (_, d) in &self.discoveries {
             if d & discovery_bits::DEEPMINING != 0 {
                 best = best.max(1);
             }

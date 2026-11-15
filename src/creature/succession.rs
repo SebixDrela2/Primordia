@@ -1,4 +1,4 @@
-use super::*;
+use super::{CreatureSystem, Role};
 
 pub const CRISIS_TICKS: u64 = 600;
 

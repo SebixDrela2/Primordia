@@ -183,7 +183,7 @@ pub fn run(args: &[String]) -> i32 {
 }
 
 fn test_instinct() -> bool {
-    let mut rng = crate::rng::Rng::new(0xC0FFEE);
+    let mut rng = crate::rng::Rng::new(0x00C0_FFEE);
     let net = crate::creature::Net::random(&crate::creature::brain_sizes_for(0), &mut rng);
     let mut net = net;
     let mut act = Vec::new();
@@ -224,14 +224,13 @@ fn test_learning() -> bool {
     let want = 3usize;
 
     let mut input = vec![0.0f32; crate::creature::INPUTS];
-    let mut net_ok = true;
 
     let mut desire_before = 0.0f32;
     let mut desire_after = 0.0f32;
 
     for round in 0..600 {
 
-        input.iter_mut().for_each(|v| *v = 0.0);
+        input.fill(0.0);
         let base = want * DIR_CHANNELS;
         input[base + sight::NEAR] = 0.5;
         input[base + sight::GREEN] = 0.8;
@@ -247,15 +246,11 @@ fn test_learning() -> bool {
         }
 
         net.credit_desire(want, 0.5, 0.05);
-        net_learn_ok(&mut net);
-        net_ok = net_ok && true;
     }
 
     println!("  desire for the smelt direction: {:.3} -> {:.3}", desire_before, desire_after);
-    net_ok && desire_after > desire_before + 0.1
+    desire_after > desire_before + 0.1
 }
-
-fn net_learn_ok(_net: &mut crate::creature::Net) {}
 
 trait NetExt {
     fn out_cache_or(&self, act: &[f32], idx: usize) -> f32;

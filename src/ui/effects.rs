@@ -217,7 +217,7 @@ pub fn apply_event(effects: &mut Effects, ev: SimEvent) {
 
                     effects.ring(x, y, [255, 214, 120], 18.0, 0.9);
                     effects.ring(x, y, color, 11.0, 0.7);
-                    effects.text(x, y, [255, 226, 150], label.clone());
+                    effects.text(x, y, [255, 226, 150], label);
                 }
                 SimEvent::War { x, y, color } => {
 
@@ -246,4 +246,10 @@ pub fn apply_event(effects: &mut Effects, ev: SimEvent) {
                     effects.text(x, y, [255, 240, 190], "DISCOVERY".to_string());
                 }
             }
+}
+
+impl Default for Effects {
+    fn default() -> Self {
+        Self::new()
+    }
 }

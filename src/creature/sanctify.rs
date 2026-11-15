@@ -1,4 +1,4 @@
-use super::*;
+use super::{discovery_bits, Elem, CreatureSystem, World, SpatialGrid, structure_kind, Faction, Role, SimEvent};
 
 pub const SUNFIRE_VS_ZORG: f32 = 2.6;
 
@@ -40,12 +40,12 @@ pub fn is_corruption(e: Elem) -> bool {
 impl CreatureSystem {
 
     pub fn run_wards(&mut self, world: &mut World, grid: &SpatialGrid) {
-        if self.tick % 5 != 0 {
+        if !self.tick.is_multiple_of(5) {
             return;
         }
 
         let mut radius = WARD_RADIUS;
-        for (_, d) in self.discoveries.iter() {
+        for (_, d) in &self.discoveries {
             if *d & discovery_bits::WARDCRAFT != 0 {
                 radius *= 1.5;
             }
@@ -60,7 +60,7 @@ impl CreatureSystem {
             return;
         }
 
-        for (wx, wy, species) in wards.iter() {
+        for (wx, wy, species) in &wards {
 
             let mut near: Vec<usize> = Vec::new();
             grid.near(*wx, *wy, radius as usize, |idx| near.push(idx as usize));
@@ -81,7 +81,7 @@ impl CreatureSystem {
                 self.list[j].health -= burn;
             }
 
-            for c in self.list.iter_mut() {
+            for c in &mut self.list {
                 if c.species == *species && c.role == Role::Queen {
                     c.health = (c.health + 0.01).min(c.max_health());
                 }
@@ -89,7 +89,7 @@ impl CreatureSystem {
         }
 
         if self.tick.is_multiple_of(20) {
-            for (wx, wy, _) in wards.iter() {
+            for (wx, wy, _) in &wards {
                 let r = radius as i32;
                 let cx = *wx as i32;
                 let cy = *wy as i32;
@@ -109,7 +109,7 @@ impl CreatureSystem {
         }
 
         if !world.zorg_cave_sealed {
-            for (wx, wy, _) in wards.iter() {
+            for (wx, wy, _) in &wards {
                 let surf = world.surface_y(*wx as i32);
                 if (*wy as i32) - surf < WARD_DEPTH {
                     continue;

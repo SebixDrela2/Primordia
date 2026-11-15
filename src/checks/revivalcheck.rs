@@ -34,7 +34,7 @@ pub fn run(args: &[String]) -> i32 {
             None => counts.push((c.species, 1)),
         }
     }
-    counts.sort_by(|a, b| b.1.cmp(&a.1));
+    counts.sort_by_key(|b| std::cmp::Reverse(b.1));
     let Some(&(species, _)) = counts.first() else {
         println!("FAIL: no player species is left to carry anything");
         std::process::exit(1);
@@ -45,7 +45,7 @@ pub fn run(args: &[String]) -> i32 {
     let discoveries = crate::creature::discovery_bits::COGNITION
         | crate::creature::discovery_bits::HUSBANDRY
         | crate::creature::discovery_bits::POTTERY;
-    for c in creatures.list.iter_mut() {
+    for c in &mut creatures.list {
         if c.species == species {
             c.culture |= culture;
         }

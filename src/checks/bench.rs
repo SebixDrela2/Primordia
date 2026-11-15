@@ -28,8 +28,7 @@ pub fn run(args: &[String]) -> i32 {
         .unwrap_or(3600);
     let out = args
         .next()
-        .map(|s| s.as_str())
-        .unwrap_or("snapshot.png")
+        .map_or("snapshot.png", |s| s.as_str())
         .to_string();
 
     let seed = get_random_seed();
@@ -198,7 +197,7 @@ pub fn run(args: &[String]) -> i32 {
     let spells_used: usize = spells_seen.iter().skip(1).filter(|&&b| b).count();
     let mounts_used: usize = mounts_seen.iter().skip(1).filter(|&&b| b).count();
 
-    println!("");
+    println!();
     println!("=== SYSTEM USAGE (exercised during bench) ===");
     println!("tools used: {}/14", tools_used);
     for (i, name) in tool_names.iter().enumerate().skip(1) {
@@ -246,13 +245,13 @@ pub fn run(args: &[String]) -> i32 {
         }
     }
     deltas.sort_by_key(|d| d.1);
-    println!("");
+    println!();
     println!("=== BIGGEST ELEMENT DELTAS (end - seed) ===");
     for (name, d) in deltas.iter().take(12) {
         println!("  {:>12}: {:+}", name, d);
     }
 
-    println!("");
+    println!();
     println!("=== ELEMENTS PRESENT IN WORLD (end of bench) ===");
     let mut present: Vec<(&str, u32)> = Vec::new();
     for e in 1..=Elem::MAX {
@@ -262,7 +261,7 @@ pub fn run(args: &[String]) -> i32 {
             present.push((elem.name(), cnt));
         }
     }
-    present.sort_by(|a, b| b.1.cmp(&a.1));
+    present.sort_by_key(|b| std::cmp::Reverse(b.1));
     for (name, cnt) in present.iter().take(40) {
         println!("  {:>12}: {}", name, cnt);
     }
@@ -280,7 +279,7 @@ pub fn run(args: &[String]) -> i32 {
         println!("missing elements: {:?}", missing);
     }
 
-    let mut buf = vec![0u8; (W * H * 4) as usize];
+    let mut buf = vec![0u8; W * H * 4];
     let mut renderer = crate::render::Renderer::new();
     renderer.render_world(&world, &creatures, &mut buf, 0.0, 0.25, 0, world.weather);
 

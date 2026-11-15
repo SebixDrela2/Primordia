@@ -1,4 +1,4 @@
-use super::*;
+use super::{Creature, gene_distance, CreatureSystem, SpatialGrid, REPRO_SOFT_CAP, Faction, trait_bits, ZORG_POP_CAP, Role};
 
 pub const IDEAL_MATE_DISTANCE: f32 = 0.35;
 
@@ -76,7 +76,7 @@ impl CreatureSystem {
                     }
 
                     let score = fit - d * 0.01;
-                    if best.map_or(true, |(_, bs)| score > bs) {
+                    if best.is_none_or(|(_, bs)| score > bs) {
                         best = Some((j, score));
                     }
                 });

@@ -3,7 +3,7 @@ pub struct Rng(u64);
 impl Rng {
     #[must_use]
     pub fn new(seed: u64) -> Self {
-        Rng(seed.wrapping_mul(6364_136_223_846_793_005).wrapping_add(1442_695_040_888_963_407) | 1)
+        Rng(seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407) | 1)
     }
 
     #[inline]

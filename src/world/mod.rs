@@ -24,10 +24,7 @@ pub use landmarks::*;
 pub mod counters {
     use std::sync::atomic::AtomicU32;
 
-    pub static MEALS: [AtomicU32; 256] = {
-            const Z: AtomicU32 = AtomicU32::new(0);
-        [Z; 256]
-    };
+    pub static MEALS: [AtomicU32; 256] = [const { AtomicU32::new(0) }; 256];
 
     pub static CORPSE_REFUSED: AtomicU32 = AtomicU32::new(0);
 

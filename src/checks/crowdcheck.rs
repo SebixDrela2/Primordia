@@ -12,7 +12,7 @@ pub fn run(args: &[String]) -> i32 {
     let seed: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(12345);
     let mut world = World::new(W, H, seed);
     world.seed();
-    let mut creatures = CreatureSystem::new(seed ^ 0xDEADBEEF);
+    let mut creatures = CreatureSystem::new(seed ^ 0xDEAD_BEEF);
     creatures.populate(&world, 64);
 
     for _ in 1..=steps {

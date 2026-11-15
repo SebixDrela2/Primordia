@@ -1,4 +1,4 @@
-use super::*;
+use super::{World, Elem};
 
 impl World {
     pub fn place_rare_vaults(&mut self, w: i32, h: i32) {

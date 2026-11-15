@@ -54,7 +54,7 @@ pub fn run(_args: &[String]) -> i32 {
     for i in 0..40 {
         renderer.render_world(&w, &cs, &mut full, i as f32 * 0.016, 0.3, 0, crate::world::Weather::Clear);
     }
-    let world_render_ms = t.elapsed().as_secs_f64() * 1000.0 / 40 as f64;
+    let world_render_ms = t.elapsed().as_secs_f64() * 1000.0 / 40_f64;
 
     println!(
         "pop {} | world {:.3} ms | creature {:.3} ms | render region {:.3} ms | render world {:.3} ms",

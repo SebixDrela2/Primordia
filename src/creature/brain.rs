@@ -1,4 +1,4 @@
-use super::*;
+use super::Rng;
 
 #[must_use]
 pub fn segment_distance(px: f32, py: f32, ax: f32, ay: f32, bx: f32, by: f32) -> f32 {
@@ -49,6 +49,7 @@ pub mod activation {
     }
 
     #[inline]
+    #[must_use]
     pub fn apply(a: u8, x: f32) -> f32 {
         match a {
             TANH => x / (1.0 + x.abs()),
@@ -230,13 +231,12 @@ impl MindView {
     pub fn layer_peak(&self, layer: usize) -> f32 {
         self.layer_acts
             .get(layer)
-            .map(|l| l.iter().fold(0.0f32, |a, b| a.max(b.abs())))
-            .unwrap_or(0.0)
+            .map_or(0.0, |l| l.iter().fold(0.0f32, |a, b| a.max(b.abs())))
     }
 
     #[must_use]
     pub fn layer_weight(&self, layer: usize, from: usize, to: usize) -> f32 {
-        let _in_n = self.sizes[layer];
+        let _ = self.sizes[layer];
         let out_n = self.sizes[layer + 1];
         self.layers
             .get(layer)
@@ -387,14 +387,14 @@ impl Net {
     pub fn clone_net(&self) -> Net {
         Net {
             sizes: self.sizes.clone(),
-            w: self.w.iter().map(|r| r.clone()).collect(),
-            b: self.b.iter().map(|r| r.clone()).collect(),
+            w: self.w.clone(),
+            b: self.b.clone(),
 
             memory: self.memory.clone(),
             arch: self.arch,
             activation: self.activation,
-            learn_in: self.learn_in.iter().map(|r| r.clone()).collect(),
-            learn_out: self.learn_out.iter().map(|r| r.clone()).collect(),
+            learn_in: self.learn_in.clone(),
+            learn_out: self.learn_out.clone(),
             learn_pre: self.learn_pre.clone(),
             traces: self.traces.clone(),
             skip: self.skip.clone(),
@@ -426,9 +426,7 @@ impl Net {
             next.clear();
             next.resize(out_n, 0.0);
 
-            for o in 0..out_n {
-                next[o] = bs[o];
-            }
+            next[..out_n].copy_from_slice(&bs[..out_n]);
             for j in 0..in_n {
                 let a = act[j];
                 if a == 0.0 {
@@ -444,7 +442,7 @@ impl Net {
             if layer == last {
 
                 self.learn_pre.clear();
-                self.learn_pre.extend_from_slice(&next);
+                self.learn_pre.extend_from_slice(next);
                 for v in next.iter_mut() {
                     *v /= 1.0 + v.abs();
                 }
@@ -495,7 +493,7 @@ impl Net {
             }
         }
 
-        let hidden: &[f32] = if next.is_empty() { &[] } else { &next };
+        let hidden: &[f32] = if next.is_empty() { &[] } else { next };
         for i in 0..MEMORY {
             let src = if hidden.is_empty() {
                 0.0
@@ -566,7 +564,7 @@ impl Net {
 
     #[must_use]
     pub fn weight_count(&self) -> usize {
-        self.w.iter().map(|r| r.len()).sum()
+        self.w.iter().map(std::vec::Vec::len).sum()
     }
 
     pub fn mutate(&mut self, rng: &mut Rng, rate: f32, strength: f32) {
@@ -674,7 +672,7 @@ impl Net {
         for ti in (0..n).rev() {
             let age = (n - 1 - ti) as f32;
             let strength = TRACE_DECAY.powf(age);
-            for (out, amount) in targets.iter() {
+            for (out, amount) in targets {
                 self.apply_target(&traces[ti], *out, *amount * strength, lr, false);
             }
         }
@@ -706,8 +704,7 @@ impl Net {
                     if x == 0.0 {
                         continue;
                     }
-                    for o in 0..out_n {
-                        let d = delta[o];
+                    for (o, &d) in delta.iter().enumerate().take(out_n) {
                         if d == 0.0 {
                             continue;
                         }
@@ -732,9 +729,9 @@ impl Net {
                 }
             }
 
-            for j in 0..in_n {
+            for (j, d) in in_delta.iter_mut().enumerate().take(in_n) {
                 let y = y_out.get(j).copied().unwrap_or(0.0);
-                in_delta[j] *= activation_deriv(self.activation, y);
+                *d *= activation_deriv(self.activation, y);
             }
             delta = in_delta;
         }
@@ -765,7 +762,7 @@ impl Net {
             out_weights: self
                 .w
                 .last()
-                .map(|l| l.clone())
+                .cloned()
                 .unwrap_or_default(),
 
             hidden: self.sizes[self.sizes.len() - 2],

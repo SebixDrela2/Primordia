@@ -1,4 +1,4 @@
-use super::*;
+use super::{World, Elem};
 
 impl World {
     pub fn place_element_museum(&mut self, w: i32, h: i32) {
@@ -242,11 +242,10 @@ impl World {
             for i in 0..len {
                 let x = cx + (dx_f * i as f32) as i32;
                 let y = cy + (dy_f * i as f32) as i32;
-                if x > 2 && x < w - 2 && y > 2 && y < h - 5 {
-                    if self.get(x, y) == Elem::Stone && self.rng.chance(0.3) {
+                if x > 2 && x < w - 2 && y > 2 && y < h - 5
+                    && self.get(x, y) == Elem::Stone && self.rng.chance(0.3) {
                         self.set_xy(x, y, Elem::Tin);
                     }
-                }
             }
         }
 
@@ -260,11 +259,10 @@ impl World {
             for i in 0..len {
                 let x = cx + (dx_f * i as f32) as i32;
                 let y = cy + (dy_f * i as f32) as i32;
-                if x > 2 && x < w - 2 && y > 2 && y < h - 5 {
-                    if self.get(x, y) == Elem::Stone && self.rng.chance(0.25) {
+                if x > 2 && x < w - 2 && y > 2 && y < h - 5
+                    && self.get(x, y) == Elem::Stone && self.rng.chance(0.25) {
                         self.set_xy(x, y, Elem::Bronze);
                     }
-                }
             }
         }
 
@@ -278,11 +276,10 @@ impl World {
             for i in 0..len {
                 let x = cx + (dx_f * i as f32) as i32;
                 let y = cy + (dy_f * i as f32) as i32;
-                if x > 2 && x < w - 2 && y > 2 && y < h - 5 {
-                    if self.get(x, y) == Elem::Stone && self.rng.chance(0.35) {
+                if x > 2 && x < w - 2 && y > 2 && y < h - 5
+                    && self.get(x, y) == Elem::Stone && self.rng.chance(0.35) {
                         self.set_xy(x, y, Elem::Iron);
                     }
-                }
             }
         }
 
@@ -296,11 +293,10 @@ impl World {
             for i in 0..len {
                 let x = cx + (dx_f * i as f32) as i32;
                 let y = cy + (dy_f * i as f32) as i32;
-                if x > 2 && x < w - 2 && y > 2 && y < h - 5 {
-                    if self.get(x, y) == Elem::Stone && self.rng.chance(0.2) {
+                if x > 2 && x < w - 2 && y > 2 && y < h - 5
+                    && self.get(x, y) == Elem::Stone && self.rng.chance(0.2) {
                         self.set_xy(x, y, Elem::Steel);
                     }
-                }
             }
         }
 
@@ -314,11 +310,10 @@ impl World {
             for i in 0..len {
                 let x = cx + (dx_f * i as f32) as i32;
                 let y = cy + (dy_f * i as f32) as i32;
-                if x > 2 && x < w - 2 && y > 2 && y < h - 5 {
-                    if self.get(x, y) == Elem::Stone && self.rng.chance(0.3) {
+                if x > 2 && x < w - 2 && y > 2 && y < h - 5
+                    && self.get(x, y) == Elem::Stone && self.rng.chance(0.3) {
                         self.set_xy(x, y, Elem::Silver);
                     }
-                }
             }
         }
 
@@ -332,11 +327,10 @@ impl World {
             for i in 0..len {
                 let x = cx + (dx_f * i as f32) as i32;
                 let y = cy + (dy_f * i as f32) as i32;
-                if x > 2 && x < w - 2 && y > 2 && y < h - 5 {
-                    if self.get(x, y) == Elem::Stone && self.rng.chance(0.5) {
+                if x > 2 && x < w - 2 && y > 2 && y < h - 5
+                    && self.get(x, y) == Elem::Stone && self.rng.chance(0.5) {
                         self.set_xy(x, y, Elem::Ash);
                     }
-                }
             }
         }
 
@@ -344,22 +338,20 @@ impl World {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
             let cy = sy + 1 + self.rng.range(5) as i32;
-            if self.get(cx, cy) == Elem::Empty && self.has_water_near(cx, cy, 2) {
-                if self.rng.chance(0.3) {
+            if self.get(cx, cy) == Elem::Empty && self.has_water_near(cx, cy, 2)
+                && self.rng.chance(0.3) {
                     self.set_xy(cx, cy, Elem::Fungus);
                 }
-            }
         }
 
         for _ in 0..30 {
             let cx = self.rng.range(w as u32) as i32;
             let sy = self.surface_y(cx);
             let cy = sy + 1 + self.rng.range(4) as i32;
-            if self.get(cx, cy) == Elem::Empty && self.has_water_near(cx, cy, 2) {
-                if self.rng.chance(0.2) {
+            if self.get(cx, cy) == Elem::Empty && self.has_water_near(cx, cy, 2)
+                && self.rng.chance(0.2) {
                     self.set_xy(cx, cy, Elem::Moss);
                 }
-            }
         }
 
         for _ in 0..15 {
@@ -417,11 +409,10 @@ impl World {
                     if dx*dx + dy*dy <= radius*radius && self.rng.chance(0.7) {
                         let x = cx + dx;
                         let y = cy + dy;
-                        if x > 2 && x < w - 2 && y > 2 && y < h - 5 {
-                            if self.get(x, y) == Elem::Stone {
+                        if x > 2 && x < w - 2 && y > 2 && y < h - 5
+                            && self.get(x, y) == Elem::Stone {
                                 self.set_xy(x, y, Elem::Magma);
                             }
-                        }
                     }
                 }
             }
@@ -436,11 +427,10 @@ impl World {
                     if dx*dx + dy*dy <= radius*radius && self.rng.chance(0.5) {
                         let x = cx + dx;
                         let y = cy + dy;
-                        if x > 2 && x < w - 2 && y > 2 && y < h - 5 {
-                            if self.rng.chance(0.5) {
+                        if x > 2 && x < w - 2 && y > 2 && y < h - 5
+                            && self.rng.chance(0.5) {
                                 self.set_xy(x, y, Elem::Void);
                             }
-                        }
                     }
                 }
             }
@@ -484,15 +474,15 @@ impl World {
 
         for _ in 0..8 {
             let cx = self.rng.range(w as u32) as i32;
-            let cy = (self.rng.range((h as u32 / 2) as u32) as i32) + h / 4;
+            let cy = (self.rng.range(h as u32 / 2) as i32) + h / 4;
             let width = (6 + self.rng.range(8)) as i32;
             let height = (4 + self.rng.range(4)) as i32;
             for dy in 0..height {
                 for dx in -width/2..=width/2 {
                     let x = cx + dx;
                     let y = cy + dy;
-                    if x > 2 && x < w - 2 && y > 2 && y < h - 5 {
-                        if self.get(x, y) == Elem::Empty && self.rng.chance(0.4) {
+                    if x > 2 && x < w - 2 && y > 2 && y < h - 5
+                        && self.get(x, y) == Elem::Empty && self.rng.chance(0.4) {
                             match self.rng.range(4) {
                                 0 => self.set_xy(x, y, Elem::Brick),
                                 1 => self.set_xy(x, y, Elem::Concrete),
@@ -500,7 +490,6 @@ impl World {
                                 _ => self.set_xy(x, y, Elem::Wall),
                             }
                         }
-                    }
                 }
             }
         }
@@ -515,15 +504,14 @@ impl World {
             for i in 0..len {
                 let x = cx + (dx_f * i as f32) as i32;
                 let y = cy + (dy_f * i as f32) as i32;
-                if x > 2 && x < w - 2 && y > 2 && y < h - 5 {
-                    if self.get(x, y) == Elem::Empty && self.rng.chance(0.3) {
+                if x > 2 && x < w - 2 && y > 2 && y < h - 5
+                    && self.get(x, y) == Elem::Empty && self.rng.chance(0.3) {
                         match self.rng.range(3) {
                             0 => self.set_xy(x, y, Elem::Wire),
                             1 => self.set_xy(x, y, Elem::Circuit),
                             _ => self.set_xy(x, y, Elem::Machine),
                         }
                     }
-                }
             }
         }
 

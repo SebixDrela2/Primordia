@@ -11,8 +11,7 @@ const RUN: u64 = 6000;
 #[must_use]
 pub fn run(_args: &[String]) -> i32 {
     let seed: u64 = std::env::args()
-        .skip(1)
-        .next()
+        .nth(1)
         .and_then(|s| s.parse().ok())
         .unwrap_or(0x11FE_5678_9ABC_0001);
 

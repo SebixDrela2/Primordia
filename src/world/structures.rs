@@ -1,4 +1,4 @@
-use super::*;
+use super::{World, Elem, DIRS8};
 
 impl World {
     pub fn generate_underground_structures(&mut self, w: i32, h: i32) {
@@ -12,8 +12,8 @@ impl World {
                 for dx in -width/2..=width/2 {
                     let x = cx + dx;
                     let y = cy + dy;
-                    if x > 2 && x < w - 2 && y > 2 && y < h - 5 {
-                        if self.rng.chance(0.4) {
+                    if x > 2 && x < w - 2 && y > 2 && y < h - 5
+                        && self.rng.chance(0.4) {
                             match self.rng.range(4) {
                                 0 => self.set_xy(x, y, Elem::Brick),
                                 1 => self.set_xy(x, y, Elem::Concrete),
@@ -21,7 +21,6 @@ impl World {
                                 _ => self.set_xy(x, y, Elem::Wall),
                             }
                         }
-                    }
                 }
             }
         }
@@ -48,7 +47,7 @@ impl World {
             let x1 = self.rng.range((w / 3) as u32) as i32 + w / 6;
             let x2 = self.rng.range((w / 3) as u32) as i32 + 2 * w / 3;
 
-            let y = self.surface_y((x1 + x2) / 2) + 12 + self.rng.range(40) as i32;
+            let y = self.surface_y(i32::midpoint(x1, x2)) + 12 + self.rng.range(40) as i32;
             let start = x1.min(x2);
             let end = x1.max(x2);
             for x in start..=end {
@@ -118,8 +117,8 @@ impl World {
             for dy in 0..height {
                 let y = surface - dy;
                 let x = cx;
-                if y > 2 && y < h - 5 {
-                    if self.rng.chance(0.8) {
+                if y > 2 && y < h - 5
+                    && self.rng.chance(0.8) {
                         match self.rng.range(4) {
                             0 => self.set_xy(x, y, Elem::Tower),
                             1 => self.set_xy(x, y, Elem::Brick),
@@ -127,7 +126,6 @@ impl World {
                             _ => self.set_xy(x, y, Elem::Wall),
                         }
                     }
-                }
             }
 
             if self.get(cx, surface - height) == Elem::Empty {
@@ -168,11 +166,10 @@ impl World {
                 for dx in -2..=2 {
                     let px = x + dx;
                     let py = surface - dy;
-                    if px > 2 && px < w - 2 && py > 2 && py < h - 5 {
-                        if self.get(px, py) == Elem::Empty && self.rng.chance(0.5) {
+                    if px > 2 && px < w - 2 && py > 2 && py < h - 5
+                        && self.get(px, py) == Elem::Empty && self.rng.chance(0.5) {
                             self.set_xy(px, py, Elem::Oil);
                         }
-                    }
                 }
             }
         }
@@ -187,8 +184,8 @@ impl World {
                     if dx * dx + dy * dy <= radius * radius && self.rng.chance(0.3) {
                         let x = cx + dx;
                         let y = cy + dy;
-                        if x > 2 && x < w - 2 && y > 2 && y < h - 5 {
-                            if self.get(x, y) == Elem::Empty {
+                        if x > 2 && x < w - 2 && y > 2 && y < h - 5
+                            && self.get(x, y) == Elem::Empty {
                                 match self.rng.range(4) {
                                     0 => self.set_xy(x, y, Elem::Fungus),
                                     1 => self.set_xy(x, y, Elem::Spore),
@@ -196,7 +193,6 @@ impl World {
                                     _ => self.set_xy(x, y, Elem::Plant),
                                 }
                             }
-                        }
                     }
                 }
             }

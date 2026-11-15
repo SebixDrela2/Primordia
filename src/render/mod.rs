@@ -96,9 +96,6 @@ impl Renderer {
         let w = world.w;
         let h = world.h;
 
-        const SCALE: i32 = light::LIGHT_SCALE as i32;
-
-        const MARGIN: i32 = 3;
         let gx0 = x0.div_euclid(SCALE) - MARGIN;
         let gy0 = y0.div_euclid(SCALE) - MARGIN;
         let gx1 = (x0 + rw).div_euclid(SCALE) + MARGIN;
@@ -138,8 +135,6 @@ impl Renderer {
         self.light.blur(2);
         self.light.finalize();
 
-        const GSX: f32 = 30.0;
-        const GSY: f32 = 13.0;
         let gw = (w as f32 / GSX) as usize + 2;
         let gh = (h as f32 / GSY) as usize + 2;
         if self.cloud_row.len() != gw * gh {
@@ -175,8 +170,6 @@ impl Renderer {
             self.cloud_shadow.clear();
             self.cloud_shadow.resize(rw as usize, 1.0);
         }
-        const CSX: f32 = 30.0;
-        const CSY: f32 = 13.0;
         let cgw = (w as f32 / CSX) as usize + 2;
         let cgh = (h as f32 / CSY) as usize + 2;
         for i in 0..rw as usize {
@@ -283,8 +276,6 @@ impl Renderer {
             Weather::Sandstorm => 0.22,
         };
         let shaft_light = day * (1.0 - weather_dim * 1.4).max(0.0);
-        const SSX: f32 = 30.0;
-        const SSY: f32 = 13.0;
         for i in 0..rw as usize {
             let x = (x0 + i as i32).clamp(0, w as i32 - 1);
 
@@ -369,7 +360,7 @@ fn paint(
     let day = 0.5 - 0.5 * (day_night * std::f32::consts::TAU).cos();
     let mut light_level = 0.34 + 0.66 * day;
 
-    let (weather_dim, weather_sky, weather_haze) = match weather {
+    let (weather_dim, _weather_sky, weather_haze) = match weather {
         Weather::Clear => (0.0, [1.0, 1.0, 1.0], 0.0),
         Weather::Rain => (0.14, [0.78, 0.82, 0.90], 0.18),
         Weather::Storm => (0.30, [0.62, 0.66, 0.76], 0.26),
@@ -404,12 +395,6 @@ fn paint(
         _ => (0.85, 0.92, 1.0),
     };
 
-    let _sky_mul = [
-        sr * weather_sky[0],
-        sg * weather_sky[1],
-        sb * weather_sky[2],
-    ];
-
     let season_r = 0.96 + 0.04 * sr;
     let season_g = 0.96 + 0.04 * sg;
     let season_b = 0.96 + 0.04 * sb;
@@ -432,8 +417,6 @@ fn paint(
     let sun_y = (h as f32 * (0.62 - 0.55 * sun_height)) as i32;
     let is_day = day > 0.25;
 
-    const GSX: f32 = 30.0;
-    const GSY: f32 = 13.0;
     let gw = (w as f32 / GSX) as usize + 2;
     let gh = (h as f32 / GSY) as usize + 2;
 
@@ -457,9 +440,9 @@ fn paint(
 
         let glow_row = (ry as usize / bloom::STEP).min(bloom.h.saturating_sub(1));
 
-        let kind_row = &kind[row_base..row_base + w as usize];
-        let col_row = &col[row_base..row_base + w as usize];
-        let heat_row = &heat[row_base..row_base + w as usize];
+        let kind_row = &kind[row_base..row_base + w];
+        let col_row = &col[row_base..row_base + w];
+        let heat_row = &heat[row_base..row_base + w];
 
         let row_band = ((y as f32 * 0.28).sin() * 0.5 + 0.5)
             * ((y as f32 * 0.11).sin() * 0.5 + 0.5);
@@ -906,3 +889,12 @@ fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
 fn clamp_u8(v: f32) -> u8 {
     v.clamp(0.0, 255.0) as u8
 }
+
+const SCALE: i32 = light::LIGHT_SCALE as i32;
+const MARGIN: i32 = 3;
+const GSX: f32 = 30.0;
+const GSY: f32 = 13.0;
+const CSX: f32 = 30.0;
+const CSY: f32 = 13.0;
+const SSX: f32 = 30.0;
+const SSY: f32 = 13.0;

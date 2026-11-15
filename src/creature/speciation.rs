@@ -1,4 +1,4 @@
-use super::*;
+use super::{CreatureSystem, ZORG_SPECIES, Role, species_team_color, decode_traits, Affinity, SimEvent};
 
 pub const MIN_SPLIT_POP: usize = 14;
 
@@ -40,7 +40,7 @@ impl Migration {
 impl CreatureSystem {
 
     pub fn maybe_speciate(&mut self, pressure: f32) {
-        if self.tick % 120 != 0 {
+        if !self.tick.is_multiple_of(120) {
             return;
         }
         let species: Vec<u32> = {
@@ -93,7 +93,7 @@ impl CreatureSystem {
         }
         let mut chosen: Vec<u32> = Vec::new();
         let mut ids: Vec<u32> = Vec::new();
-        for &i in members.iter() {
+        for &i in &members {
             ids.push(self.list[i].id);
         }
 
@@ -107,7 +107,7 @@ impl CreatureSystem {
             return None;
         }
 
-        for c in self.list.iter_mut() {
+        for c in &mut self.list {
             if chosen.contains(&c.id) {
                 c.migrating = true;
             }
@@ -117,8 +117,7 @@ impl CreatureSystem {
             .list
             .iter()
             .find(|c| c.species == species && c.role == Role::Queen)
-            .map(|c| (c.base_x, c.base_y))
-            .unwrap_or((0.0, 0.0));
+            .map_or((0.0, 0.0), |c| (c.base_x, c.base_y));
         let migration = Migration {
             species,
             members: chosen,
@@ -163,14 +162,14 @@ impl CreatureSystem {
 
             let new_species = self.new_species_id();
             let mut first = true;
-            for c in self.list.iter_mut() {
+            for c in &mut self.list {
                 if c.species != species || !c.migrating {
                     continue;
                 }
                 c.species = new_species;
                 c.team_color = species_team_color(&mut self.rng, new_species);
 
-                for gi in c.genes.iter_mut() {
+                for gi in &mut c.genes {
                     *gi = (*gi + (self.rng.f32() * 2.0 - 1.0) * 0.10).clamp(0.0, 1.0);
                 }
                 c.traits = decode_traits(&c.genes);

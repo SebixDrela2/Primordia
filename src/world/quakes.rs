@@ -1,4 +1,4 @@
-use super::*;
+use super::{World, Elem};
 
 impl World {
 

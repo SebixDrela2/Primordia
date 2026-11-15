@@ -1,4 +1,4 @@
-use super::*;
+use super::{CreatureSystem, Rng, CreatureStats, PredationMemory, Diplomacy, World, Role, in_crisis, Elem, ZORG_START, RevivalGenome, Faction, MAX_POP, CreatureGenesis, ZORG_MIN, ZORG_POP_CAP, discovery_bits, Net, brain_sizes, ZORG_COLOR, ZORG_SPECIES, species_team_color, decode_traits, trait_bits, Personality, Affinity, immunity_from_genes, zorg_carried_disease, Disease, Plague, Creature, OUTPUTS, Percept, generate_name, Tool, Belief, Mood, Spell, MountKind, Stage, culture_bits, gene_distance};
 
 impl CreatureSystem {
     #[must_use]
@@ -53,8 +53,7 @@ impl CreatureSystem {
         self.culture_pool
             .iter()
             .find(|(id, _)| *id == species)
-            .map(|(_, c)| *c)
-            .unwrap_or(0)
+            .map_or(0, |(_, c)| *c)
     }
 
     pub fn note_culture(&mut self, species: u32, bit: u16) {
@@ -141,8 +140,7 @@ impl CreatureSystem {
             let buildings = builders
                 .iter()
                 .find(|(bid, _)| *bid == id)
-                .map(|(_, n)| *n)
-                .unwrap_or(1);
+                .map_or(1, |(_, n)| *n);
             let radius = (18.0 + buildings as f32 * 4.0).min(46.0);
             self.claims.push((id, cx, cy, radius));
         }
@@ -225,6 +223,7 @@ impl CreatureSystem {
             })
     }
 
+    #[must_use]
     pub fn pick_revival_genome(
         won: bool,
         champion: Option<RevivalGenome>,
@@ -331,13 +330,13 @@ impl CreatureSystem {
     }
 
     pub fn reseed_the_deep(&mut self, world: &World) {
-        if self.tick % 120 != 0 {
+        if !self.tick.is_multiple_of(120) {
             return;
         }
 
         let mut floor = ZORG_MIN + (world.hardship() * (ZORG_POP_CAP / 2) as f32) as u32;
         let mut slow = false;
-        for (_, d) in self.discoveries.iter() {
+        for (_, d) in &self.discoveries {
             if *d & discovery_bits::DOMINION != 0 {
                 slow = true;
             }
@@ -379,7 +378,7 @@ impl CreatureSystem {
             CreatureGenesis::Zorg => {
 
                 let mut g = [0.0f32; 32];
-                for gi in g.iter_mut() {
+                for gi in &mut g {
                     *gi = rng.f32();
                 }
 
@@ -399,7 +398,7 @@ impl CreatureSystem {
             }
             CreatureGenesis::Random => {
                 let mut g = [0.0f32; 32];
-                for gi in g.iter_mut() {
+                for gi in &mut g {
                     *gi = rng.f32();
                 }
 
@@ -425,7 +424,7 @@ impl CreatureSystem {
                     let _ = net.mutate_shape(&mut rng);
                 }
 
-                for s in net.skip.iter_mut() {
+                for s in &mut net.skip {
                     *s += (rng.f32() * 2.0 - 1.0) * 0.04;
                     *s = s.clamp(-1.5, 1.5);
                 }
@@ -435,7 +434,7 @@ impl CreatureSystem {
                 let species = parent.species;
                 let size = (parent.size + rng.f32() * 0.3 - 0.15).clamp(1.0, 2.4);
                 let mut g = parent.genes;
-                for gi in g.iter_mut() {
+                for gi in &mut g {
                     *gi = (*gi + (rng.f32() * 2.0 - 1.0) * 0.08).clamp(0.0, 1.0);
                 }
                 (
@@ -457,7 +456,7 @@ impl CreatureSystem {
                 let color = species_team_color(&mut rng, species);
                 let size = (base.size + rng.f32() * 0.4 - 0.2).clamp(1.0, 2.4);
                 let mut g = base.genes;
-                for gi in g.iter_mut() {
+                for gi in &mut g {
                     *gi = (*gi + (rng.f32() * 2.0 - 1.0) * 0.12).clamp(0.0, 1.0);
                 }
                 (
@@ -609,14 +608,13 @@ impl CreatureSystem {
 
             self.list.iter()
                 .find(|c| c.species == species && c.role == Role::Queen)
-                .map(|q| (q.x, q.y))
-                .unwrap_or((x, y))
+                .map_or((x, y), |q| (q.x, q.y))
         };
 
         let initial_spells = match role {
             Role::Shaman => self.rng.range(2) + 1,
-            Role::Priest => if self.rng.chance(0.5) { 1 } else { 0 },
-            _ => if self.rng.chance(0.08) { 1 } else { 0 },
+            Role::Priest => u32::from(self.rng.chance(0.5)),
+            _ => u32::from(self.rng.chance(0.08)),
         };
 
         let traits = decode_traits(&genes);
@@ -652,7 +650,7 @@ impl CreatureSystem {
             starting_inv[4] = self.rng.range(3) as u16;
         }
 
-        let _immunity = immunity_from_genes(&genes);
+        let _ = immunity_from_genes(&genes);
 
         let carried = if is_zorg {
             zorg_carried_disease(self.rng.range(5))
@@ -780,16 +778,14 @@ impl Creature {
     pub fn child_blueprint(&self) -> Creature {
 
         let mut child_genes = self.genes;
-        for i in 0..32 {
-
+        for (i, g) in child_genes.iter_mut().enumerate() {
             let mut seed = self.id.wrapping_mul(i as u32 + 1).wrapping_add(self.age);
             seed ^= seed >> 13;
             seed ^= seed << 17;
             seed ^= seed >> 5;
             let rand_val = (seed as f32 / u32::MAX as f32) * 2.0 - 1.0;
-            if (seed % 20) == 0 {
-
-                child_genes[i] = (child_genes[i] + rand_val * 0.1).clamp(0.0, 1.0);
+            if seed.is_multiple_of(20) {
+                *g = (*g + rand_val * 0.1).clamp(0.0, 1.0);
             }
         }
 
@@ -836,7 +832,7 @@ impl Creature {
             size: self.size,
             last_x: self.x,
             last_y: self.y,
-            name: generate_name(&mut Rng::new(self.id.wrapping_mul(0x9E3779B9) as u64), self.role, self.species),
+            name: generate_name(&mut Rng::new(self.id.wrapping_mul(0x9E37_79B9) as u64), self.role, self.species),
             team_color: self.team_color,
             role: self.role,
             base_x: self.base_x,

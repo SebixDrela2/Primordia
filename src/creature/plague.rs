@@ -1,4 +1,4 @@
-use super::*;
+use super::{Creature, Disease, Faction, CreatureSystem, World, SimEvent, SpatialGrid, discovery_bits};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Plague {
@@ -234,7 +234,7 @@ impl From<Disease> for Plague {
 impl CreatureSystem {
 
     pub fn maybe_outbreak(&mut self, world: &World) {
-        if self.tick % 400 != 0 || self.list.len() <= 20 {
+        if !self.tick.is_multiple_of(400) || self.list.len() <= 20 {
             return;
         }
         let sick = self
@@ -276,14 +276,7 @@ impl CreatureSystem {
         if self.list[victim].disease != Disease::None {
             return;
         }
-        const OPTIONS: [Disease; 5] = [
-            Disease::Flu,
-            Disease::Plague,
-            Disease::Infection,
-            Disease::Parasite,
-            Disease::Madness,
-        ];
-        let pick = OPTIONS[self.rng.range(OPTIONS.len() as u32) as usize];
+        let pick = DISEASE_OPTIONS[self.rng.range(DISEASE_OPTIONS.len() as u32) as usize];
         self.list[victim].disease = pick;
         self.list[victim].disease_timer = Plague::from(pick).duration();
         self.plagues_started += 1;
@@ -295,7 +288,7 @@ impl CreatureSystem {
     }
 
     pub fn spread_diseases(&mut self, grid: &SpatialGrid) {
-        if self.tick % 3 != 0 {
+        if !self.tick.is_multiple_of(3) {
             return;
         }
 
@@ -359,7 +352,7 @@ impl CreatureSystem {
     }
 
     pub fn spread_zorg_plague(&mut self, grid: &SpatialGrid) {
-        if self.tick % 10 != 0 {
+        if !self.tick.is_multiple_of(10) {
             return;
         }
 
@@ -375,7 +368,7 @@ impl CreatureSystem {
         let mut infected: Vec<(usize, Disease)> = Vec::new();
 
         let mut purge = 1.0f32;
-        for (_, d) in self.discoveries.iter() {
+        for (_, d) in &self.discoveries {
             if *d & discovery_bits::PURGE != 0 {
                 purge *= 0.5;
             }
@@ -385,7 +378,7 @@ impl CreatureSystem {
         for (sx, sy, disease) in carriers {
             near.clear();
             grid.near(sx, sy, 9, |idx| near.push(idx as usize));
-            for &j in near.iter() {
+            for &j in &near {
                 if j >= self.list.len() {
                     continue;
                 }
@@ -418,3 +411,11 @@ impl CreatureSystem {
         }
     }
 }
+
+const DISEASE_OPTIONS: [Disease; 5] = [
+    Disease::Flu,
+    Disease::Plague,
+    Disease::Infection,
+    Disease::Parasite,
+    Disease::Madness,
+];

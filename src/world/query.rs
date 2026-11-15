@@ -1,4 +1,4 @@
-use super::*;
+use super::{World, Elem, FARM_WATER_RADIUS};
 
 impl World {
 
@@ -136,11 +136,10 @@ impl World {
                     continue;
                 }
                 let k = self.kind[sy as usize * self.w + sx as usize];
-                if k != Elem::Empty as u8 && self.food_table[k as usize] {
-                    if best.map_or(true, |b| d2 < b.2) {
+                if k != Elem::Empty as u8 && self.food_table[k as usize]
+                    && best.is_none_or(|b| d2 < b.2) {
                         best = Some((sx, sy, d2));
                     }
-                }
             }
         }
         best.map(|b| (b.0, b.1))
@@ -174,7 +173,7 @@ impl World {
 
                 let better = match best {
                     None => true,
-                    Some((_, _, n, d)) => nutrition > n || (nutrition == n && d2 < d),
+                    Some((_, _, n, d)) => nutrition > n || ((nutrition - n).abs() < 1e-6 && d2 < d),
                 };
                 if better {
                     best = Some((sx, sy, nutrition, d2));
@@ -210,7 +209,7 @@ impl World {
                     continue;
                 }
                 if self.get(x + dx, y + dy) == Elem::Water
-                    && best.map_or(true, |b| d2 < b.2)
+                    && best.is_none_or(|b| d2 < b.2)
                 {
                     best = Some((x + dx, y + dy, d2));
                 }
@@ -235,11 +234,10 @@ impl World {
                     continue;
                 }
                 let k = self.kind[sy as usize * self.w + sx as usize];
-                if k != Elem::Empty as u8 && self.gatherable[k as usize] {
-                    if best.map_or(true, |b| d2 < b.2) {
+                if k != Elem::Empty as u8 && self.gatherable[k as usize]
+                    && best.is_none_or(|b| d2 < b.2) {
                         best = Some((sx, sy, d2));
                     }
-                }
             }
         }
         best.map(|b| (b.0, b.1))

@@ -59,7 +59,7 @@ impl UiState {
 
 pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx: f32, my: f32) {
     match &ui.hover {
-        HoverTarget::None => return,
+        HoverTarget::None => (),
         HoverTarget::Element { x, y, elem } => {
             let e = *elem;
             let name = e.name();
@@ -70,7 +70,7 @@ pub fn draw_tooltip(_world: &World, creatures: &CreatureSystem, ui: &UiState, mx
             let nut = e.nutrition();
 
             let mut lines: Vec<String> = Vec::new();
-            lines.push(format!("{}", name));
+            lines.push(name.to_string());
             lines.push(format!("[{}]  pos=({},{})", category, x, y));
             lines.push(format!("density={}  toxicity={:.0}  nutrition={:.1}", density, tox, nut));
             if e.is_hazardous() {
@@ -341,7 +341,7 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
         ("SALVE", "craft and use healing salves on allies"),
     ];
     let mut ay = y + 96.0;
-    for (name, desc) in abilities.iter() {
+    for (name, desc) in &abilities {
         draw_text(name, x + 24.0, ay, 12.0, Color::new(0.55, 0.9, 1.0, 0.9));
         draw_text(desc, x + 90.0, ay, 12.0, Color::new(0.62, 0.68, 0.75, 0.8));
         ay += 17.0;
@@ -375,7 +375,7 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
                     occupants.push((c.species, n));
                 }
             }
-            occupants.sort_by(|a, b| b.1.cmp(&a.1));
+            occupants.sort_by_key(|b| std::cmp::Reverse(b.1));
             let holders: Vec<String> = occupants
                 .iter()
                 .take(3)
@@ -384,7 +384,7 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
                 })
                 .collect();
             draw_text(
-                &format!("{}: {}", l.kind.name(), l.kind.blurb()),
+                format!("{}: {}", l.kind.name(), l.kind.blurb()),
                 x + 24.0,
                 yy + 8.0,
                 12.0,
@@ -392,7 +392,7 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
             );
             if !holders.is_empty() {
                 draw_text(
-                    &format!("held by {}", holders.join(", ")),
+                    format!("held by {}", holders.join(", ")),
                     x + 40.0,
                     yy + 22.0,
                     11.0,
@@ -444,14 +444,14 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
                     ),
                 );
                 draw_text(
-                    &format!("the {}", crate::creature::species_name_for(*sp)),
+                    format!("the {}", crate::creature::species_name_for(*sp)),
                     x + 40.0,
                     yy + 8.0,
                     13.0,
                     Color::new(0.9, 0.95, 1.0, 0.95),
                 );
                 draw_text(
-                    &format!(
+                    format!(
                         "{} members  {}",
                         n,
                         trait_list(*traits)
@@ -471,9 +471,7 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
                     .map(|cu| cu.name())
                     .collect();
 
-                let hunting = culture_list(*culture)
-                    .iter()
-                    .any(|cu| *cu == creature::Culture::Hunting);
+                let hunting = culture_list(*culture).contains(&creature::Culture::Hunting);
 
                 let found: Vec<&str> = creature::discovery_list(
                     creatures.species_discoveries(*sp),
@@ -500,7 +498,7 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
                 );
                 if !found.is_empty() {
                     draw_text(
-                        &format!("knows: {}", found.join(", ")),
+                        format!("knows: {}", found.join(", ")),
                         x + 40.0,
                         yy + 38.0,
                         11.0,
@@ -586,7 +584,7 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
                 swatch_color[0] as f32 / 255.0, swatch_color[1] as f32 / 255.0, swatch_color[2] as f32 / 255.0, 0.9,
             ));
             draw_text(name_str, x + 40.0, yy + 8.0, 13.0, Color::new(0.9, 0.95, 1.0, 0.95));
-            draw_text(&format!("species {}  gen {}  role {}  energy {:.0}", c.species, c.generation, role_str, c.energy),
+            draw_text(format!("species {}  gen {}  role {}  energy {:.0}", c.species, c.generation, role_str, c.energy),
                 x + 40.0, yy + 20.0, 11.0, Color::new(0.65, 0.7, 0.75, 0.8));
             yy += 34.0;
         }
@@ -594,5 +592,11 @@ pub fn draw_knowledge_window(world: &World, creatures: &CreatureSystem, ui: &UiS
 
     if ui.discovered_elements.is_empty() && ui.discovered_creatures.is_empty() {
         draw_text("Hover over anything in the world to record it here.", x + 24.0, yy, 14.0, Color::new(0.6, 0.65, 0.7, 0.7));
+    }
+}
+
+impl Default for UiState {
+    fn default() -> Self {
+        Self::new()
     }
 }

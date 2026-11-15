@@ -1,4 +1,4 @@
-use super::*;
+use super::{World, Elem, DIRS4, DIRS8};
 
 impl World {
     #[must_use]
@@ -22,11 +22,10 @@ impl World {
                         if t == Elem::Chlorine {
                             self.set_xy(x + dx, y + dy, Elem::Poison);
                         }
-                        if t == Elem::Lava || t == Elem::Magma {
-                            if self.rng.chance(0.3) {
+                        if (t == Elem::Lava || t == Elem::Magma)
+                            && self.rng.chance(0.3) {
                                 self.set_xy(x + dx, y + dy, Elem::Obsidian);
                             }
-                        }
                     }
                 }
 
@@ -66,11 +65,10 @@ impl World {
                                 self.set_xy(x + dx, y + dy, Elem::Magma);
                             }
                         }
-                        Elem::Stone | Elem::Brick | Elem::Concrete => {
-                            if self.rng.chance(0.0005) {
+                        Elem::Stone | Elem::Brick | Elem::Concrete
+                            if self.rng.chance(0.0005) => {
                                 self.set_xy(x + dx, y + dy, Elem::Magma);
                             }
-                        }
                         _ => {}
                     }
                 }
@@ -83,11 +81,10 @@ impl World {
                             self.set_xy(x + dx, y + dy, Elem::Steam);
                             return true;
                         }
-                        Elem::Stone => {
-                            if self.rng.chance(0.0005) {
+                        Elem::Stone
+                            if self.rng.chance(0.0005) => {
                                 self.set_xy(x + dx, y + dy, Elem::Magma);
                             }
-                        }
                         _ => {}
                     }
                 }
@@ -200,11 +197,10 @@ impl World {
 
                 for (dx, dy) in DIRS4 {
                     let t = self.get(x + dx, y + dy);
-                    if matches!(t, Elem::Gold | Elem::Copper | Elem::Silver) {
-                        if self.rng.chance(0.05) {
+                    if matches!(t, Elem::Gold | Elem::Copper | Elem::Silver)
+                        && self.rng.chance(0.05) {
                             self.set_xy(x + dx, y + dy, Elem::Metal);
                         }
-                    }
                 }
             }
             Elem::Plasma => {

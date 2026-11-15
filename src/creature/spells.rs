@@ -1,4 +1,4 @@
-use super::*;
+use super::{Rng, Creature, World, SpatialGrid, energy_cost, Spell, DIRS4, Elem};
 
 pub fn cast_spell_effects(
     rng: &mut Rng,

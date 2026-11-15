@@ -37,7 +37,7 @@ impl Bloom {
             self.tmp.clear();
             self.tmp.resize(w * h * 3, 0.0);
         } else {
-            for v in self.buf.iter_mut() {
+            for v in &mut self.buf {
                 *v = 0.0;
             }
         }
@@ -67,6 +67,7 @@ impl Bloom {
     }
 
     #[inline]
+    #[must_use]
     pub fn at(&self, row: usize, col: usize) -> [f32; 3] {
         let d = (row * self.w + col) * 3;
         [self.buf[d], self.buf[d + 1], self.buf[d + 2]]
@@ -107,5 +108,11 @@ fn blur_box(src: &[f32], dst: &mut [f32], w: usize, h: usize, horizontal: bool) 
                 dst[d + 2] = 0.0;
             }
         }
+    }
+}
+
+impl Default for Bloom {
+    fn default() -> Self {
+        Self::new()
     }
 }

@@ -1,4 +1,4 @@
-use super::*;
+use super::{CreatureSystem, Tool, Role, RelationState, Mood, Treaty, ZORG_SPECIES, species_name_for, Creature, SpatialGrid, diplomacy_reach, Diplomacy, DiplomaticAction, outputs, SimEvent, negotiation_rate, DIPLO_COST, trait_bits};
 
 impl CreatureSystem {
 
@@ -65,7 +65,7 @@ impl CreatureSystem {
             tick,
         );
 
-        for c in self.list.iter_mut() {
+        for c in &mut self.list {
             if c.species == a || c.species == b {
                 c.mood = Mood::Angry;
                 c.mood_timer = 600;
@@ -170,11 +170,10 @@ impl CreatureSystem {
         self.list
             .iter()
             .find(|c| c.species == species)
-            .map(|c| {
+            .map_or_else(|| format!("species {}", species), |c| {
                 let end = c.name.iter().position(|&b| b == 0).unwrap_or(c.name.len());
                 String::from_utf8_lossy(&c.name[..end]).to_string()
             })
-            .unwrap_or_else(|| format!("species {}", species))
     }
 
     #[must_use]
@@ -183,6 +182,7 @@ impl CreatureSystem {
     }
 }
 
+#[must_use]
 pub fn find_diplomatic_partner(
     c: &Creature,
     grid: &SpatialGrid,
@@ -199,13 +199,14 @@ pub fn find_diplomatic_partner(
         let dx = a.1 - c.x;
         let dy = a.2 - c.y;
         let d2 = dx * dx + dy * dy;
-        if d2 <= reach2 && best.map_or(true, |(_, bd)| d2 < bd) {
+        if d2 <= reach2 && best.is_none_or(|(_, bd)| d2 < bd) {
             best = Some((idx as usize, d2));
         }
     });
     best.map(|(i, _)| i)
 }
 
+#[must_use]
 pub fn desired_action(
     diplomacy: &Diplomacy,
     out: &[f32],
@@ -515,7 +516,7 @@ impl CreatureSystem {
                 let (overlord, vassal) = if overlord_is_a { (a, b) } else { (b, a) };
                 let amount = 40.0;
                 let mut paid = false;
-                for c in self.list.iter_mut() {
+                for c in &mut self.list {
                     if c.species == vassal && c.energy > 120.0 {
                         c.energy -= amount;
                         paid = true;
@@ -523,7 +524,7 @@ impl CreatureSystem {
                     }
                 }
                 if paid {
-                    for c in self.list.iter_mut() {
+                    for c in &mut self.list {
                         if c.species == overlord {
                             c.energy = (c.energy + amount).min(c.max_energy);
                             break;
@@ -549,7 +550,7 @@ impl CreatureSystem {
             }
 
             let mut claims: Vec<(u32, f32, f32, f32)> = Vec::new();
-            for (id, _hx, _hy) in homes.iter() {
+            for (id, _hx, _hy) in &homes {
                 if let Some((cx, cy, radius)) = self.claim_of(*id) {
                     claims.push((*id, cx, cy, radius));
                 }
@@ -576,7 +577,7 @@ impl CreatureSystem {
             }
 
             let mut exhausted: Vec<(u32, u32)> = Vec::new();
-            for r in self.diplomacy.relations.iter_mut() {
+            for r in &mut self.diplomacy.relations {
                 if r.state == RelationState::War {
 
                     r.war_weariness = (r.war_weariness + 0.03).min(1.0);
@@ -598,7 +599,7 @@ impl CreatureSystem {
                     };
                     r.trust += (anchor - r.trust) * 0.02;
 
-                    for (owner, intruder, count) in trespass.iter() {
+                    for (owner, intruder, count) in &trespass {
                         let pair = (*owner == r.a && *intruder == r.b)
                             || (*owner == r.b && *intruder == r.a);
                         if pair && !r.has(Treaty::Alliance) {

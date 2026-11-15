@@ -1,4 +1,4 @@
-use super::*;
+use super::{Elem, DIRS8, World, Creature, MAX_AGE, Disease, species_color};
 use crate::elements::Look;
 
 pub mod sight {
@@ -95,7 +95,7 @@ impl SpatialGrid {
     }
 
     pub fn clear(&mut self) {
-        for b in self.buckets.iter_mut() {
+        for b in &mut self.buckets {
             b.clear();
         }
     }
@@ -118,7 +118,7 @@ impl SpatialGrid {
         let x1 = (gx + r + 1).min(self.gw);
         for by in y0..y1 {
             for bx in x0..x1 {
-                for &i in self.buckets[by * self.gw + bx].iter() {
+                for &i in &self.buckets[by * self.gw + bx] {
                     f(i);
                 }
             }
@@ -265,6 +265,7 @@ pub fn direction_of(dx: f32, dy: f32) -> usize {
     best
 }
 
+#[must_use]
 pub fn scan_percept(
     world: &World,
     cx: i32,
@@ -288,6 +289,7 @@ const KIN_FALLOFF: f32 = 40.0;
 
 const SMELL_STEP: i32 = 2;
 
+#[must_use]
 pub fn scan_percept_with(
     world: &World,
     cx: i32,
@@ -390,7 +392,7 @@ pub fn scan_percept_with(
             let dx = a.1 - cx as f32;
             let dy = a.2 - cy as f32;
             let d = (dx * dx + dy * dy).sqrt();
-            if d < 0.5 || d > KIN_RANGE {
+            if !(0.5..=KIN_RANGE).contains(&d) {
                 return;
             }
             let dir = direction_of(dx, dy);
@@ -598,5 +600,11 @@ pub fn write_percept(p: &Percept, input: &mut [f32]) {
         for c in 0..DIR_CHANNELS {
             input[b + c] = dir[c];
         }
+    }
+}
+
+impl Default for ElemTables {
+    fn default() -> Self {
+        Self::new()
     }
 }

@@ -213,13 +213,13 @@ fn layout(x: f32, y: f32, w: f32, h: f32, mind: &MindView) -> Layout {
         .max()
         .unwrap_or(1)
         .max(mind.outputs);
-    let step = (height / tallest as f32).min(22.0).max(4.0);
+    let step = (height / tallest as f32).clamp(4.0, 22.0);
 
     let dir_ch = DIR_CHANNELS;
     let mut inputs: Vec<InputColumn> = Vec::new();
     let mut cols: Vec<(usize, usize, &'static str)> = Vec::new();
-    for d in 0..DIRS {
-        cols.push((d * dir_ch, dir_ch, DIR_SHORT[d]));
+    for (d, name) in DIR_SHORT.iter().enumerate().take(DIRS) {
+        cols.push((d * dir_ch, dir_ch, name));
     }
     cols.push((
         senses::BODY_BASE,
@@ -270,7 +270,7 @@ fn draw_subject(s: &Subject, x: f32, y: f32, w: f32, h: f32) {
         1.0,
     );
     draw_text(
-        &format!(
+        format!(
             "{}   species {}   generation {}   fitness {:.2}",
             s.name, s.species, s.generation, s.fitness
         ),
@@ -280,7 +280,7 @@ fn draw_subject(s: &Subject, x: f32, y: f32, w: f32, h: f32) {
         col,
     );
     draw_text(
-        &format!(
+        format!(
             "tier {} mind   {} hidden units   {} decisions   {} firing with   {} senses in",
             s.mind.arch,
             s.mind.hidden_layers.iter().sum::<usize>(),
@@ -463,7 +463,7 @@ fn draw_inputs(s: &Subject, lay: &Layout) {
                 .copied()
                 .unwrap_or(0.0);
             let base = if col.count == DIR_CHANNELS {
-                let kind = if k < senses::sight::CHANNELS { 0 } else { 1 };
+                let kind = usize::from(k >= senses::sight::CHANNELS);
                 let ch = if kind == 0 {
                     k
                 } else {
@@ -502,7 +502,7 @@ fn draw_hidden(s: &Subject, lay: &Layout) {
     for (c, count) in s.mind.hidden_layers.iter().enumerate() {
         let cx = lay.hidden[c];
         draw_text(
-            &format!("layer {}", c + 1),
+            format!("layer {}", c + 1),
             cx - 20.0,
             lay.top - 10.0,
             9.0,
@@ -557,7 +557,7 @@ fn draw_outputs(s: &Subject, lay: &Layout) {
                 Color::new(0.8, 0.88, 0.95, 0.95),
             );
             draw_text(
-                &format!("{:+.2}", d),
+                format!("{:+.2}", d),
                 cx + 104.0,
                 lay.top + o as f32 * lay.step + 3.0,
                 10.0,

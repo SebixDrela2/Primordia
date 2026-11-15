@@ -1,4 +1,4 @@
-use super::*;
+use super::{Rng, Role, ZORG_SPECIES, ZORG_COLOR};
 
 #[must_use]
 pub fn generate_name(rng: &mut Rng, role: Role, species: u32) -> [u8; 10] {
@@ -84,7 +84,7 @@ pub fn species_team_color(_rng: &mut Rng, species: u32) -> [u8; 3] {
 
 #[must_use]
 pub fn species_color(species: u32) -> [u8; 3] {
-    let mut rng = Rng::new(species.wrapping_mul(0x9E3779B9) as u64 | 1);
+    let mut rng = Rng::new(species.wrapping_mul(0x9E37_79B9) as u64 | 1);
     species_team_color(&mut rng, species)
 }
 

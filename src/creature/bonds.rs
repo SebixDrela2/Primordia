@@ -1,4 +1,4 @@
-use super::*;
+use super::{Creature, CreatureSystem, SpatialGrid};
 
 pub const BOND_RANGE: f32 = 12.0;
 
@@ -26,7 +26,7 @@ impl CreatureSystem {
 
     pub fn form_bonds(&mut self, grid: &SpatialGrid) {
 
-        if self.tick % 24 != 0 {
+        if !self.tick.is_multiple_of(24) {
             return;
         }
         let mut pairs: Vec<(u32, u32)> = Vec::new();
@@ -61,21 +61,19 @@ impl CreatureSystem {
 
         for (a, b) in pairs {
             let mut bonded = false;
-            for c in self.list.iter_mut() {
-                if c.id == a {
-                    if c.bond.is_none() {
+            for c in &mut self.list {
+                if c.id == a
+                    && c.bond.is_none() {
                         c.bond = Some(b);
                         bonded = true;
                     }
-                }
             }
             if bonded {
-                for c in self.list.iter_mut() {
-                    if c.id == b {
-                        if c.bond.is_none() {
+                for c in &mut self.list {
+                    if c.id == b
+                        && c.bond.is_none() {
                             c.bond = Some(a);
                         }
-                    }
                 }
             }
         }

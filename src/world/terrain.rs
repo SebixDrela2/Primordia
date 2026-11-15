@@ -1,4 +1,4 @@
-use super::*;
+use super::{World, Elem, Biome};
 
 impl World {
     #[must_use]
@@ -104,7 +104,7 @@ impl World {
 fn biome_of_column(x: i32, w: i32) -> Biome {
     let f = x as f32 / w as f32;
 
-    let v = ((f * 5.0 + (f * 2.3).sin() * 0.7).sin() * 0.5 + 0.5) as f32;
+    let v = (f * 5.0 + (f * 2.3).sin() * 0.7).sin() * 0.5 + 0.5;
     if v < 0.13 {
         Biome::Tundra
     } else if v < 0.25 {
@@ -126,9 +126,8 @@ fn biome_of_column(x: i32, w: i32) -> Biome {
 
 fn biome_tint_of_column(x: i32, w: i32) -> [f32; 3] {
     let f = x as f32 / w as f32;
-    let v = ((f * 5.0 + (f * 2.3).sin() * 0.7).sin() * 0.5 + 0.5) as f32;
+    let v = (f * 5.0 + (f * 2.3).sin() * 0.7).sin() * 0.5 + 0.5;
 
-    const POS: [f32; 8] = [0.07, 0.19, 0.31, 0.44, 0.57, 0.70, 0.84, 0.95];
     let tints = [
         Biome::Tundra.tint(),
         Biome::Ashland.tint(),
@@ -156,3 +155,5 @@ fn biome_tint_of_column(x: i32, w: i32) -> [f32; 3] {
     }
     tints[4]
 }
+
+const POS: [f32; 8] = [0.07, 0.19, 0.31, 0.44, 0.57, 0.70, 0.84, 0.95];

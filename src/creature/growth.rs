@@ -1,4 +1,4 @@
-use super::*;
+use super::{Creature, SpatialGrid, Stage, culture_bits};
 
 pub fn grow_and_learn(
     c: &mut Creature,

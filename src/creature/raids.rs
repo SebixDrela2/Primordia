@@ -1,10 +1,10 @@
-use super::*;
+use super::{CreatureSystem, World, Elem, CARRY_CAP};
 use crate::creature::diplomacy::RelationState;
 
 impl CreatureSystem {
 
     pub fn raid_structures(&mut self, world: &mut World) {
-        if self.tick % 40 != 0 || self.structures.is_empty() {
+        if !self.tick.is_multiple_of(40) || self.structures.is_empty() {
             return;
         }
 
@@ -20,7 +20,7 @@ impl CreatureSystem {
 
         let mut targets: Vec<(usize, u32)> = Vec::new();
         for (i, s) in self.structures.iter().enumerate() {
-            for (a, b) in wars.iter() {
+            for (a, b) in &wars {
                 let enemy = if *a == s.species {
                     *b
                 } else if *b == s.species {
@@ -66,7 +66,7 @@ impl CreatureSystem {
                 }
             }
 
-            for c in self.list.iter_mut() {
+            for c in &mut self.list {
                 if c.species == enemy {
                     c.carried = (c.carried + 25.0).min(CARRY_CAP);
                     c.energy = (c.energy + 30.0).min(c.max_energy);

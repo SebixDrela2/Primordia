@@ -1,4 +1,4 @@
-use super::*;
+use super::{World, Elem, Behavior};
 
 impl World {
     pub fn step(&mut self) {

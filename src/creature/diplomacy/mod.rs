@@ -2,7 +2,7 @@ mod negotiation;
 
 pub use negotiation::*;
 
-use super::*;
+use super::{CreatureSystem, Tool, Role, Mood, ZORG_SPECIES, species_name_for, Creature, SpatialGrid, outputs, SimEvent, trait_bits};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RelationState {
@@ -259,7 +259,7 @@ impl Diplomacy {
         if a == ZORG_SPECIES || b == ZORG_SPECIES {
             return false;
         }
-        self.get(a, b).map_or(false, |r| r.has(Treaty::Alliance))
+        self.get(a, b).is_some_and(|r| r.has(Treaty::Alliance))
     }
 
     #[must_use]
@@ -268,12 +268,12 @@ impl Diplomacy {
         if a == ZORG_SPECIES || b == ZORG_SPECIES {
             return a != b;
         }
-        self.get(a, b).map_or(false, |r| r.state == RelationState::War)
+        self.get(a, b).is_some_and(|r| r.state == RelationState::War)
     }
 
     #[must_use]
     pub fn has_treaty(&self, a: u32, b: u32, t: Treaty) -> bool {
-        self.get(a, b).map_or(false, |r| r.has(t))
+        self.get(a, b).is_some_and(|r| r.has(t))
     }
 
     #[must_use]
@@ -384,6 +384,7 @@ pub fn diplomacy_reach(role: Role) -> f32 {
     }
 }
 
+#[must_use]
 pub fn diplomatic_sense(
     diplomacy: &Diplomacy,
     c: &Creature,
@@ -404,7 +405,7 @@ pub fn diplomatic_sense(
             continue;
         }
         let d = ((sx - c.x).powi(2) + (sy - c.y).powi(2)).sqrt();
-        if best.map_or(true, |(_, bd)| d < bd) {
+        if best.is_none_or(|(_, bd)| d < bd) {
             best = Some((*sp, d));
         }
     }
@@ -434,14 +435,12 @@ pub fn diplomatic_sense(
     let my_pop = pops
         .iter()
         .find(|(s, _)| *s == c.species)
-        .map(|(_, n)| *n)
-        .unwrap_or(1)
+        .map_or(1, |(_, n)| *n)
         .max(1);
     let their_pop = pops
         .iter()
         .find(|(s, _)| *s == partner)
-        .map(|(_, n)| *n)
-        .unwrap_or(1)
+        .map_or(1, |(_, n)| *n)
         .max(1);
     ds.balance = my_pop as f32 / their_pop as f32;
     ds

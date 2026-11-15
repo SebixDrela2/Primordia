@@ -1,4 +1,4 @@
-use super::*;
+use super::{Elem, World, DIRS8};
 
 pub const ZORG_CAVE_RX: i32 = 32;
 

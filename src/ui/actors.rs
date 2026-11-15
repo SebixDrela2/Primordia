@@ -123,8 +123,7 @@ pub fn draw_actors(
                 }
                 let radius = creatures
                     .claim_of(c.species)
-                    .map(|(_, _, r)| r)
-                    .unwrap_or(18.0);
+                    .map_or(18.0, |(_, _, r)| r);
                 claims.push((c.base_x, c.base_y, radius, c.team_color));
             }
             let scale_x = scr_w / view_w;

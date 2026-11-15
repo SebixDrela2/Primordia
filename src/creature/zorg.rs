@@ -1,4 +1,4 @@
-use super::*;
+use super::{Elem, CreatureSystem, Creature, World, Disease};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Faction {
@@ -128,9 +128,7 @@ pub const ZORG_MIN: u32 = 6;
 #[must_use]
 pub fn zorg_filth(roll: u32) -> Elem {
     match roll % 8 {
-        0 => Elem::Virus,
-        1 => Elem::Virus,
-        2 => Elem::Virus,
+        0..=2 => Elem::Virus,
         3 => Elem::Bacteria,
         4 => Elem::Bacteria,
         5 => Elem::Chlorine,
@@ -152,7 +150,7 @@ pub fn zorg_carried_disease(roll: u32) -> Disease {
 
 #[must_use]
 pub fn zorg_food(e: Elem) -> bool {
-    use Elem::*;
+    use Elem::{Stone, Granite, Obsidian, Sand, Salt, Sulfur, Ash, Dust, Mud, Metal, Copper, Tin, Bronze, Iron, Steel, Gold, Silver, Rust, Crystal, Gem, Diamond, Acid, Poison, Tar, Mercury, Chlorine, Oil, Corpse, Meat, Bone};
     matches!(
         e,
         Stone
@@ -190,7 +188,7 @@ pub fn zorg_food(e: Elem) -> bool {
 
 #[must_use]
 pub fn zorg_nutrition(e: Elem) -> f32 {
-    use Elem::*;
+    use Elem::{Acid, Poison, Tar, Mercury, Chlorine, Oil, Sulfur, Rust, Gold, Silver, Crystal, Gem, Diamond, Iron, Steel, Bronze, Copper, Tin, Metal, Bone, Corpse, Meat, Granite, Obsidian, Stone, Sand, Salt, Ash, Dust, Mud};
     match e {
         Acid => 55.0,
         Poison => 45.0,

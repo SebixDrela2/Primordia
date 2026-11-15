@@ -1,4 +1,4 @@
-use super::*;
+use super::{Tool, Discovery};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TechKind {
