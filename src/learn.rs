@@ -82,7 +82,17 @@ fn read_ask(args: &[String]) -> Ask {
 const SAVE_EVERY: u64 = 50_000;
 
 /// Write a mind out to the file.
-fn write_model(genome: &RevivalGenome, session: &Session, ask: &Ask, note: &str) {
+///
+/// The generation of the model is the number of generations of
+/// learning it has been through, and not the generation of the
+/// creature it came from.
+fn write_model(
+    genome: &RevivalGenome,
+    session: &Session,
+    ask: &Ask,
+    generation: u64,
+    note: &str,
+) {
     let mut model = Model::from_net(
         &genome.net,
         genome.genes,
@@ -93,7 +103,7 @@ fn write_model(genome: &RevivalGenome, session: &Session, ask: &Ask, note: &str)
     );
     model.fitness = genome.fitness;
     model.revival = session.revival;
-    model.generation = genome.generation;
+    model.generation = generation as u32;
     if let Err(err) = model.save(&ask.file) {
         eprintln!("cannot write {}: {err}", ask.file);
         return;
@@ -110,7 +120,7 @@ fn write_model(genome: &RevivalGenome, session: &Session, ask: &Ask, note: &str)
 /// the colony, which is what the revival carries on with. It is written
 /// out when that lineage becomes another one, so the file always holds
 /// the mind that is alive right now.
-fn keep_the_best(session: &Session, ask: &Ask, seen: &mut u64) {
+fn keep_the_best(session: &Session, ask: &Ask, seen: &mut u64, generation: u64) {
     if session.champion_version == *seen {
         return;
     }
@@ -123,12 +133,12 @@ fn keep_the_best(session: &Session, ask: &Ask, seen: &mut u64) {
     let Some(genome) = genome else {
         return;
     };
-    write_model(genome, session, ask, "the mind that survives");
+    write_model(genome, session, ask, generation, "the mind that survives");
 }
 
 /// Write the best of the colony out every so many ticks, so that the
 /// work of a long run is not lost when nobody wins.
-fn keep_it_safe(session: &Session, ask: &Ask, last: &mut u64) {
+fn keep_it_safe(session: &Session, ask: &Ask, last: &mut u64, generation: u64) {
     let tick = session.creatures.tick;
     if tick < *last {
         // A new run: the clock starts again.
@@ -143,7 +153,7 @@ fn keep_it_safe(session: &Session, ask: &Ask, last: &mut u64) {
     let Some(genome) = session.creatures.champion_overall() else {
         return;
     };
-    write_model(&genome, session, ask, "the best of the colony");
+    write_model(&genome, session, ask, generation, "the best of the colony");
 }
 /// The learner. It ends the process when it is done.
 #[must_use]
@@ -196,10 +206,10 @@ pub fn run(args: &[String]) -> i32 {
                     .fold(0.0f32, f32::max)
             );
         }
-        keep_the_best(&session, &ask, &mut seen);
+        keep_the_best(&session, &ask, &mut seen, generation);
         // And every so many ticks the best of the colony is written
         // out, so that a long run without a winner is not wasted.
-        keep_it_safe(&session, &ask, &mut last_save);
+        keep_it_safe(&session, &ask, &mut last_save, generation);
 
         let Some(outcome) = session.check_victory() else {
             continue;

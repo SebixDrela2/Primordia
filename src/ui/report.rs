@@ -27,6 +27,8 @@ pub struct Story {
     pub births: u32,
     pub deaths: u32,
     pub ticks: u64,
+    /// How many breeding generations the animals of the colony are on.
+    pub colony_generation: u32,
 }
 
 impl Story {
@@ -44,6 +46,7 @@ impl Story {
             births: 0,
             deaths: 0,
             ticks: 0,
+            colony_generation: 0,
         }
     }
 
@@ -97,10 +100,13 @@ pub fn draw_panel(story: &Story, model: &Model, _width: f32, height: f32) {
         Color::new(0.3, 0.48, 0.66, 0.7),
     );
 
-    // What the model is.
+    // What the model is. The generation of the model is the number of
+    // generations of learning it has been through; the generation of
+    // the colony is how many breeding generations the animals are on,
+    // and it goes up as they breed.
     draw_text(
         format!(
-            "the model: generation {}, {} weights",
+            "the model: generation {} of learning, {} weights",
             model.generation,
             model.weight_count()
         ),
@@ -111,11 +117,18 @@ pub fn draw_panel(story: &Story, model: &Model, _width: f32, height: f32) {
     );
     draw_text(
         format!(
-            "the colony: {} alive, the best {:.3}, {} eaten, {} built",
-            story.pop, story.best, story.eats, story.builds
+            "the colony: generation {}, {} alive, the best {:.3}",
+            story.colony_generation, story.pop, story.best
         ),
         x + 10.0,
         y + 26.0,
+        12.0,
+        Color::new(0.65, 0.8, 0.95, 0.95),
+    );
+    draw_text(
+        format!("{} eaten, {} built, and they do not learn", story.eats, story.builds),
+        x + 10.0,
+        y + 42.0,
         12.0,
         Color::new(0.65, 0.8, 0.95, 0.95),
     );
