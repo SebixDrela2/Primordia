@@ -79,14 +79,17 @@
   world on the card in several places and in several weathers, reads
   the picture back, writes it to `gpu.png` and says how long the card
   took. It is the check that the picture is not black and not flat.
-- `primordia --learn [--file model.bin] [--generations 8] [--ticks 2400]
+- `primordia --learn [--file model.bin] [--generations 0] [--ticks 2400]
   [--pop 48] [--seed 20240501]` is the **learner**: it is a console and
   nothing else. No window is made and the card is never touched, so
   all the time goes into the work of the network. It makes a world,
   puts a colony in it, lets the minds learn and the colony breed, keeps
   the best mind of the generation, and writes the weights and the
   biases to the file. It prints the generation, how many of the colony
-  there were and how well the best of them fitted.
+  there were and how well the best of them fitted. With no
+  `--generations` it works **for ever**, and it writes the file every
+  time the colony does better than it has ever done, so the learner
+  can be stopped at any moment and the work is still there.
 - `primordia --run [--file model.bin]` is the **run**: the game itself,
   with the colony given the mind that was learned. The minds do not
   learn anything new, so what is seen is the doing of the weights that

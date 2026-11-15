@@ -22,6 +22,7 @@ const DEFAULT_FILE: &str = "model.bin";
 /// What the learner was asked to do.
 struct Ask {
     file: String,
+    /// How many generations to work through. Zero means for ever.
     generations: u32,
     ticks: u32,
     pop: usize,
@@ -33,7 +34,8 @@ struct Ask {
 fn read_ask(args: &[String]) -> Ask {
     let mut ask = Ask {
         file: DEFAULT_FILE.to_owned(),
-        generations: 8,
+        // For ever, unless the ask says otherwise.
+        generations: 0,
         ticks: 2400,
         pop: 48,
         seed: 20_240_501,
@@ -106,21 +108,50 @@ pub fn run(args: &[String]) -> i32 {
     let mut best_model: Option<Model> = None;
     // The mind the next generation starts from: the best one so far.
     let mut carried = best;
+    let mut generation: u64 = 0;
 
-    for generation in 0..ask.generations {
-        let seed = ask.seed.wrapping_add(generation as u64 * 0x9E37_79B9);
+    // The learner works for ever unless it is told how many
+    // generations to do. Every time the colony does better than it has
+    // ever done, the model is written out, so that stopping the
+    // learner at any moment loses nothing.
+    loop {
+        let seed = ask.seed.wrapping_add(generation * 0x9E37_79B9);
         let (model, fitness, pop) = one_generation(seed, ask.ticks, ask.pop, carried.as_ref());
+        generation += 1;
+
         if fitness > best_fitness {
             best_fitness = fitness;
+            let mut model = model;
+            // How many generations of learning it took.
+            model.generation = generation as u32;
             best_model = Some(model.clone());
-        }
-        // The best mind so far is the one the next generation starts
-        // from, so that the work is never thrown away.
-        carried.clone_from(&best_model);
-        if !ask.quiet {
+            // The best mind so far is the one the next generation
+            // starts from, so that the work is never thrown away.
+            carried.clone_from(&best_model);
+            // It is written out now, so that the learner can be
+            // stopped at any moment and the work is still there.
+            if let Some(best) = &best_model {
+                if let Err(err) = best.save(&ask.file) {
+                    eprintln!("cannot write {}: {err}", ask.file);
+                    return 1;
+                }
+            }
+            if !ask.quiet {
+                println!(
+                    "generation {:>3}: the best of {pop} fitted {fitness:.3} - written to {}",
+                    generation - 1,
+                    ask.file
+                );
+            }
+        } else if !ask.quiet {
             println!(
-                "generation {generation:>3}: the best of {pop} fitted {fitness:.3} (the best so far {best_fitness:.3})",
+                "generation {:>3}: the best of {pop} fitted {fitness:.3} (the best so far {best_fitness:.3})",
+                generation - 1,
             );
+        }
+
+        if ask.generations != 0 && generation >= ask.generations as u64 {
+            break;
         }
     }
 
