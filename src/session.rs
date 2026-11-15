@@ -197,5 +197,56 @@ mod tests {
         let carried = session.carried().expect("the best is carried");
         assert_eq!(carried.generation, 2);
     }
+
+    /// The sum of the weights of a mind, so that it can be compared.
+    fn weight_sum(session: &Session) -> f64 {
+        let mut sum = 0.0f64;
+        for c in &session.creatures.list {
+            if c.faction != Faction::Player {
+                continue;
+            }
+            let (weights, biases) = c.net.parts();
+            for layer in weights.iter().chain(biases.iter()) {
+                for value in layer {
+                    sum += f64::from(*value);
+                }
+            }
+        }
+        sum
+    }
+
+    /// A colony that is told not to learn must not have its weights
+    /// touched: the run is on the weights that were saved.
+    #[test]
+    fn a_colony_that_does_not_learn_keeps_its_weights() {
+        let mut session = Session::new(11, 16);
+        session.creatures.learn = false;
+        let before = weight_sum(&session);
+        for _ in 0..600 {
+            session.step();
+        }
+        let after = weight_sum(&session);
+        assert!(
+            (after - before).abs() < 0.0001,
+            "the weights moved: {before} became {after}"
+        );
+    }
+
+    /// A colony that is allowed to learn must have its weights moved,
+    /// or the flag would be doing nothing.
+    #[test]
+    fn a_colony_that_may_learn_does_learn() {
+        let mut session = Session::new(11, 16);
+        session.creatures.learn = true;
+        let before = weight_sum(&session);
+        for _ in 0..600 {
+            session.step();
+        }
+        let after = weight_sum(&session);
+        assert!(
+            (after - before).abs() > 0.0001,
+            "the weights did not move: {before} stayed {after}"
+        );
+    }
 }
 

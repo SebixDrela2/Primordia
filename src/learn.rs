@@ -100,6 +100,7 @@ fn write_model(
         genome.culture,
         genome.size,
         genome.color,
+        genome.personality,
     );
     model.fitness = genome.fitness;
     model.revival = session.revival;
@@ -188,6 +189,9 @@ pub fn run(args: &[String]) -> i32 {
         // The world turns and the colony lives. This is the whole
         // game, with nothing drawn.
         session.step();
+        // The things that happened are for the picture, and there is no
+        // picture here, so they are thrown away.
+        session.creatures.events.clear();
 
         // A word now and then, so that it is clear the learner is
         // working and not stuck. And the best mind so far is written
@@ -227,6 +231,7 @@ pub fn run(args: &[String]) -> i32 {
                 genome.culture,
                 genome.size,
                 genome.color,
+                genome.personality,
             );
             model.fitness = genome.fitness;
             model.revival = session.revival;

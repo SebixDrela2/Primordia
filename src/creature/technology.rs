@@ -686,6 +686,11 @@ impl CreatureSystem {
     }
 
     pub fn grow_brains(&mut self, species: u32, d: Discovery) {
+        // A brain that is given does not grow: the run is on the
+        // weights that were saved, and nothing is learned there.
+        if !self.learn {
+            return;
+        }
         let target = match d {
             Discovery::Cognition => 1,
             Discovery::GrandCognition => MAX_ARCH,

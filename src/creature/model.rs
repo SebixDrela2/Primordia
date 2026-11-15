@@ -20,13 +20,13 @@
 use std::io::{Read, Write};
 use std::path::Path;
 
-use super::Net;
+use super::{Net, Personality};
 
 /// The head of every model file.
 const MAGIC: &[u8; 8] = b"PRIMMOD1";
 
 /// The version of the format this code writes.
-const VERSION: u32 = 2;
+const VERSION: u32 = 3;
 
 /// A model of a mind.
 #[derive(Clone, Debug)]
@@ -49,6 +49,8 @@ pub struct Model {
     pub genes: [f32; 32],
     /// The traits that go with the genes.
     pub traits: u32,
+    /// The temperament of the creature.
+    pub personality: Personality,
     /// What the creature had learnt.
     pub culture: u16,
     /// The size of the body.
@@ -66,7 +68,15 @@ pub struct Model {
 impl Model {
     /// A model of a net, with the genes that go with it.
     #[must_use]
-    pub fn from_net(net: &Net, genes: [f32; 32], traits: u32, culture: u16, size: f32, color: [u8; 3]) -> Self {
+    pub fn from_net(
+        net: &Net,
+        genes: [f32; 32],
+        traits: u32,
+        culture: u16,
+        size: f32,
+        color: [u8; 3],
+        personality: Personality,
+    ) -> Self {
         let (weights, biases) = net.parts();
         Model {
             sizes: net.sizes().to_vec(),
@@ -78,6 +88,7 @@ impl Model {
             skip_up: net.skip_up,
             genes,
             traits,
+            personality,
             culture,
             size,
             color,
@@ -149,6 +160,15 @@ impl Model {
             bytes.extend_from_slice(&value.to_le_bytes());
         }
         bytes.extend_from_slice(&self.traits.to_le_bytes());
+        for value in [
+            self.personality.aggression,
+            self.personality.curiosity,
+            self.personality.sociability,
+            self.personality.greed,
+            self.personality.caution,
+        ] {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
         bytes.extend_from_slice(&self.culture.to_le_bytes());
         bytes.extend_from_slice(&self.size.to_le_bytes());
         bytes.extend_from_slice(&self.color);
@@ -221,6 +241,13 @@ impl Model {
             *gene = reader.decimal()?;
         }
         let traits = reader.number()?;
+        let personality = Personality {
+            aggression: reader.decimal()?,
+            curiosity: reader.decimal()?,
+            sociability: reader.decimal()?,
+            greed: reader.decimal()?,
+            caution: reader.decimal()?,
+        };
         let culture = reader.short()?;
         let size = reader.decimal()?;
         let mut color = [0u8; 3];
@@ -239,6 +266,7 @@ impl Model {
             skip_up,
             genes,
             traits,
+            personality,
             culture,
             size,
             color,
@@ -309,7 +337,15 @@ mod tests {
     fn a_model_survives_the_trip() {
         let mut rng = Rng::new(7);
         let net = Net::random(&brain_sizes(), &mut rng);
-        let model = Model::from_net(&net, [0.25; 32], 3, 9, 1.1, [10, 20, 30]);
+        let model = Model::from_net(
+            &net,
+            [0.25; 32],
+            3,
+            9,
+            1.1,
+            [10, 20, 30],
+            Personality::default(),
+        );
         let path = std::env::temp_dir().join("primordia_model_test.bin");
         let path = path.to_string_lossy().to_string();
         model.save(&path).expect("the model should save");

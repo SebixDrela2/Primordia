@@ -136,6 +136,7 @@ fn apply_model(creatures: &mut CreatureSystem, model: &Model) {
         c.traits = model.traits;
         c.culture = model.culture;
         c.size = model.size;
+        c.personality = model.personality;
     }
 }
 
