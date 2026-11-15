@@ -5,6 +5,17 @@
 //! game draws it when the camera is close. The atlas of the creatures
 //! is drawn four times as big.
 
+// The picture is put together by hand, so the casts are the ones the
+// game does on purpose.
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_lossless,
+    clippy::unnecessary_cast
+)]
+
 use primordia::render::{sprites, textures};
 
 fn write_png(bytes: &[u8], w: usize, h: usize, path: &str) {
@@ -21,6 +32,20 @@ fn write_png(bytes: &[u8], w: usize, h: usize, path: &str) {
 fn main() {
     // The atlas of the elements: the shade is shown as it is, and the
     // highlight is put on top of it so that both can be seen.
+    let bytes = textures::atlas();
+    let mut lo = 255u8;
+    let mut hi = 0u8;
+    let mut sum = 0u64;
+    for i in (0..bytes.len()).step_by(4) {
+        lo = lo.min(bytes[i]);
+        hi = hi.max(bytes[i]);
+        sum += bytes[i] as u64;
+    }
+    let count = (bytes.len() / 4) as u64;
+    println!(
+        "the atlas: the shade runs from {lo} to {hi}, the mean is {}",
+        sum / count
+    );
     let scale = 6;
     let bytes = textures::atlas();
     let w = textures::ATLAS_W * scale;
@@ -32,7 +57,8 @@ fn main() {
             let dst = (y * w + x) * 4;
             let shade = bytes[src] as f32 / 255.0;
             let hl = bytes[src + 1] as f32 / 255.0;
-            let base = (shade * 1.3 + 0.45).min(1.0);
+            // The shade runs from 0.45 to 1.75: show that whole range.
+            let base = ((shade * 1.3 + 0.45) - 0.45) / 1.3;
             let v = (base * 255.0).min(255.0);
             out[dst] = v as u8;
             out[dst + 1] = (v as f32 + hl * 120.0).min(255.0) as u8;

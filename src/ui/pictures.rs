@@ -27,7 +27,7 @@ pub fn atlas_texture() -> &'static Texture2D {
 /// Draw one picture of the atlas, in the middle of the given place.
 pub fn draw_sprite(tile: usize, sx: f32, sy: f32, size: f32, rot: f32, tint: Color) {
     let (tx, ty) = sprites::tile_origin(tile);
-    let side = sprites::SPRITE as f32;
+    let pic = sprites::SPRITE as f32;
     draw_texture_ex(
         atlas_texture(),
         sx - size * 0.5,
@@ -37,12 +37,12 @@ pub fn draw_sprite(tile: usize, sx: f32, sy: f32, size: f32, rot: f32, tint: Col
             source: Some(Rect {
                 x: tx,
                 y: ty,
-                w: side,
-                h: side,
+                w: pic,
+                h: pic,
             }),
             dest_size: Some(vec2(size, size)),
             rotation: rot,
             ..Default::default()
         },
-    )
+    );
 }

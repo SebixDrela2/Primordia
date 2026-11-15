@@ -18,7 +18,7 @@ use crate::elements::Elem;
 use super::hash2;
 
 /// How big one tile is, in texels.
-pub const TILE: usize = 16;
+pub const TILE: usize = 32;
 /// How many tiles are in a row of the atlas.
 pub const COLS: usize = 12;
 /// How many rows of tiles the atlas has.
@@ -27,6 +27,12 @@ pub const ROWS: usize = 8;
 pub const ATLAS_W: usize = COLS * TILE;
 /// The size of the whole atlas, in texels.
 pub const ATLAS_H: usize = ROWS * TILE;
+
+/// How many cells of the world one tile covers. The picture of an
+/// element runs through the whole field and does not begin again in
+/// every cell, so that a wall of stone does not look like a wall of
+/// squares.
+pub const TILE_CELLS: f32 = 3.0;
 
 /// The darkest a tile may make a cell.
 pub const SHADE_LO: f32 = 0.45;
@@ -115,12 +121,14 @@ pub(crate) fn fbm(seed: u32, x: f32, y: f32, period: i32, octaves: u32) -> f32 {
     sum / norm
 }
 
-/// A speck of grit: a single point of the lattice, taken hard.
+/// A speck of grit: a single point of the lattice, taken hard. The
+/// lattice wraps, so that the tile has no seam in it.
 fn speck(seed: u32, u: f32, v: f32, scale: f32) -> f32 {
+    let wrap = |i: i32, n: i32| ((i % n) + n) % n;
     hash01(
         seed,
-        (u * scale) as i32,
-        (v * scale) as i32,
+        wrap((u * scale) as i32, scale as i32),
+        wrap((v * scale) as i32, scale as i32),
     )
 }
 
@@ -235,37 +243,39 @@ fn tile_value(pattern: Pattern, seed: u32, u: f32, v: f32) -> (f32, f32) {
         Pattern::Plain => (1.0, 0.0),
 
         Pattern::Rock => {
-            let broad = fbm(seed, u * 3.0, v * 3.0, 3, 3);
-            let fine = noise(seed ^ 0x07, u * 16.0, v * 16.0, 16);
+            let broad = fbm(seed, u * 2.0, v * 2.0, 2, 3);
+            let fine = noise(seed ^ 0x07, u * 8.0, v * 8.0, 8);
             let band = ((v * 2.0 + broad * 0.7).sin() + 1.0) * 0.5;
-            let mut shade = 0.92 + (broad - 0.5) * 0.55 + (fine - 0.5) * 0.28 + (band - 0.5) * 0.20;
-            let grit = speck(seed ^ 0x51, u, v, 16.0);
-            if grit > 0.94 {
-                shade += 0.28 * (grit - 0.94) / 0.06;
-            } else if grit < 0.06 {
-                shade -= 0.24 * (0.06 - grit) / 0.06;
+            let mut shade = 0.90 + (broad - 0.5) * 0.80 + (fine - 0.5) * 0.45 + (band - 0.5) * 0.30;
+            let grit = speck(seed ^ 0x51, u, v, 8.0);
+            if grit > 0.90 {
+                shade += 0.40 * (grit - 0.90) / 0.10;
+            } else if grit < 0.10 {
+                shade -= 0.40 * (0.10 - grit) / 0.10;
             }
             (shade, 0.0)
         }
 
         Pattern::Grit => {
-            let fine = noise(seed ^ 0x03, u * 16.0, v * 16.0, 16);
-            let grit = speck(seed ^ 0x09, u, v, 16.0);
-            let shade = 0.95 + (fine - 0.5) * 0.22 + (grit - 0.5) * 0.38;
+            let fine = noise(seed ^ 0x03, u * 8.0, v * 8.0, 8);
+            let grit = speck(seed ^ 0x09, u, v, 8.0);
+            let shade = 0.95 + (fine - 0.5) * 0.40 + (grit - 0.5) * 0.55;
             (shade, 0.0)
         }
 
         Pattern::Metal => {
-            let streak = noise(seed ^ 0x05, u * 16.0, v * 3.0, 16);
-            let broad = fbm(seed ^ 0x06, u * 3.0, v * 3.0, 3, 2);
-            let shade = 0.84 + (streak - 0.5) * 0.55 + (broad - 0.5) * 0.22;
+            let streak = noise(seed ^ 0x05, u * 8.0, v * 2.0, 8);
+            let broad = fbm(seed ^ 0x06, u * 2.0, v * 2.0, 2, 2);
+            let shade = 0.82 + (streak - 0.5) * 0.85 + (broad - 0.5) * 0.35;
             let highlight = smoothstep(0.74, 0.96, streak) * 0.35;
             (shade, highlight)
         }
 
         Pattern::Liquid => {
             let n = fbm(seed ^ 0x0b, u * 3.0, v * 3.0, 3, 2);
-            let wave = (u * 2.0 + v * 1.2 + n * 1.6).sin();
+            // The wave runs right across the tile, so it has to end
+            // where it begins.
+            let wave = ((u * 2.0 + v) * std::f32::consts::TAU + n * 1.6).sin();
             let shade = 0.95 + wave * 0.10 + (n - 0.5) * 0.16;
             let highlight = smoothstep(0.88, 1.0, wave) * 0.28;
             (shade, highlight)
@@ -295,15 +305,21 @@ fn tile_value(pattern: Pattern, seed: u32, u: f32, v: f32) -> (f32, f32) {
 
         Pattern::Crystal => {
             // Four points, and the cell of the tile belongs to the
-            // nearest of them. The facets are the cells.
+            // nearest of them. The facets are the cells. The distance
+            // is taken around the tile as well, so that the facets run
+            // over the edge without a break.
             let points = [(0.22f32, 0.30f32), (0.72, 0.24), (0.34, 0.74), (0.76, 0.68)];
             let mut best = 1.0f32;
             for (px, py) in points {
-                let dx = u - px;
-                let dy = v - py;
-                let d = (dx * dx + dy * dy).sqrt();
-                if d < best {
-                    best = d;
+                for wrap_x in [-1.0f32, 0.0, 1.0] {
+                    for wrap_y in [-1.0f32, 0.0, 1.0] {
+                        let dx = u - (px + wrap_x);
+                        let dy = v - (py + wrap_y);
+                        let d = (dx * dx + dy * dy).sqrt();
+                        if d < best {
+                            best = d;
+                        }
+                    }
                 }
             }
             let shade = 0.86 + (0.34 - best).clamp(0.0, 0.34);

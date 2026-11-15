@@ -150,7 +150,7 @@ fn draw_campfire_glow(creatures: &CreatureSystem, frame: &ActorFrame, now: f32) 
 
         // The flame itself, which dances.
         let frame_index = ((now * 9.0).floor() as usize) % 4;
-        let flame = match frame_index {
+        let flame_pic = match frame_index {
             0 => Effect::Flame0,
             1 => Effect::Flame1,
             2 => Effect::Flame2,
@@ -158,7 +158,7 @@ fn draw_campfire_glow(creatures: &CreatureSystem, frame: &ActorFrame, now: f32) 
         };
         let flame_size = 13.0 * frame.scale_x.min(1.6) * (0.9 + 0.2 * flicker);
         draw_sprite(
-            sprites::effect_tile(flame),
+            sprites::effect_tile(flame_pic),
             sx,
             sy - flame_size * 0.18,
             flame_size,
@@ -193,7 +193,7 @@ fn draw_night_fireflies(creatures: &CreatureSystem, frame: &ActorFrame, now: f32
             sprites::effect_tile(Effect::Ember),
             sx,
             sy,
-            6.0,
+            3.5,
             0.0,
             Color::new(0.95, 1.0, 0.6, 0.55 * blink),
         );
@@ -201,9 +201,9 @@ fn draw_night_fireflies(creatures: &CreatureSystem, frame: &ActorFrame, now: f32
             sprites::effect_tile(Effect::Glow),
             sx,
             sy,
-            9.0,
+            7.0,
             0.0,
-            Color::new(0.9, 1.0, 0.5, 0.10 * blink),
+            Color::new(0.9, 1.0, 0.5, 0.12 * blink),
         );
     }
 }
@@ -555,22 +555,23 @@ fn draw_projectiles(creatures: &CreatureSystem, frame: &ActorFrame) {
             Color::new(c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, 0.4),
         );
         // The spark of the shot: a soft halo and the bright heart of
-        // it.
-        draw_sprite(
-            sprites::effect_tile(Effect::Spark),
-            sx,
-            sy,
-            16.0,
-            0.0,
-            Color::new(glow.r, glow.g, glow.b, 0.28),
-        );
+        // it. There are a lot of shots in the air at once, so they are
+        // kept small.
         draw_sprite(
             sprites::effect_tile(Effect::Spark),
             sx,
             sy,
             7.0,
             0.0,
-            Color::new(glow.r, glow.g, glow.b, 0.95),
+            Color::new(glow.r, glow.g, glow.b, 0.16),
+        );
+        draw_sprite(
+            sprites::effect_tile(Effect::Spark),
+            sx,
+            sy,
+            3.4,
+            0.0,
+            Color::new(glow.r, glow.g, glow.b, 0.85),
         );
     }
 }
@@ -646,7 +647,7 @@ fn draw_weather_particles(
             sprites::effect_tile(Effect::Ember),
             px + sway,
             py,
-            4.0 + (i % 2) as f32 * 2.0,
+            2.4 + (i % 2) as f32 * 1.2,
             0.0,
             Color::new(1.0, 0.96, 0.85, alpha),
         );

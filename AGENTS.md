@@ -71,16 +71,14 @@
 - `PRIMORDIA_SEED=12345 primordia` fixes the seed of the world, so the
   same run can be repeated and compared with another. The game takes it
   too; `bench` takes it as well.
-- The game paints its picture on the **graphics card** by default. The
-  renderer on the processor is the reference the card is checked
-  against, so it can be asked for instead with `PRIMORDIA_BACKEND=cpu`.
-- `cargo run --release --bin primordia -- rendertest [seed]` checks the
-  card against the processor: both render the same world at the same
-  clock, and the two pictures are compared pixel by pixel. It also
-  writes `cpu.png` and `gpu.png` when they differ, so the difference
-  can be looked at, and it prints how long each way of painting takes.
-  The two renderers are the same picture to within a handful of
-  pixels by one unit, in the Strata and Vein effects.
+- The game paints its picture on the **graphics card**. There is no
+  renderer on the processor any more: the card paints the world, the
+  sky, the light and the creatures, and the shader is the only
+  painter.
+- `cargo run --release --bin primordia -- rendertest [seed]` paints the
+  world on the card in several places and in several weathers, reads
+  the picture back, writes it to `gpu.png` and says how long the card
+  took. It is the check that the picture is not black and not flat.
 
 ## Code size rules
 - **No file may exceed ~1000 lines.** A file may run slightly over that
@@ -106,9 +104,9 @@
   - `src/ui/`      effects, hud, knowledge, minimap, victory, actors,
                    atmosphere, diplomacy, tech
   - `src/render/`  mod.rs (the renderer and the tables it builds),
-                   paint.rs (the pixel loop), fx.rs (element effects),
-                   light.rs (dynamic light field),
-                   textures.rs (the tile of every element)
+                   fx.rs (element effects), light.rs (dynamic light
+                   field), textures.rs (the tile of every element),
+                   sprites.rs (the picture of every creature)
 - `src/main.rs` is the game itself: the window, the camera and the
   loop. The loop lives in a `Game` struct, one method to a phase
   (the keys, the simulation, the victory, the picture), so that no
@@ -147,17 +145,32 @@
   pass over the whole picture would cost twice as much.
 - Every **element has a texture of its own**: a small tile in one atlas
   (`src/render/textures.rs`) that says how much darker or brighter the
-  cell is and how much light glints off it. Every cell takes a
-  different bite out of the tile of its element, so a field of stone
-  is not a wall of one colour. The card reads the tile of the element
-  with `texelFetch`, and steps over it a texel at a time when the cell
-  is smaller on the screen than the tile is. The processor, which
-  paints one pixel to a cell, reads the middle of the bite, which is
-  what the card reads as well when the cell is one pixel big: the two
-  pictures stay the same.
+  cell is and how much light glints off it. The card reads the tile at
+  the **place of the fragment** and not at the place of the cell, so the
+  picture runs through the whole field: a wall of stone is one surface
+  and not a wall of squares. The tile of a neighbour bleeds over the
+  edge, so the picture fades into the picture next to it. The tiles are
+  seamless, so that the picture does not break where the tile ends.
+- Every **creature has a picture of its own**: a sprite in one atlas
+  (`src/render/sprites.rs`) with the body, the fur on it and the gear
+  of its role. The sprite is in grey and the colour of the species is
+  put over it, and every role has a few looks, so a colony of one kind
+  does not look like a photocopy of a colony of another. The ZORGs have
+  their own pictures: they are hulking, chitinous and spiny.
+- A cell of the world is a **little surface**: it faces the open air,
+  and the sun and the nearest lamp fall on the side that faces them.
+  The direction of the lamp and how much of the sky the cell can see
+  are worked out on the processor and put in the texture of the cells,
+  so the light of a cave is soft and the light of the open is hard.
 - The card has room for **ten textures** in a material, so the sine of
   the heatwave's shimmer rides in the third column of the texture of
   the sines. A new texture has to take the room of an old one.
+- The sky is painted by the **shader**: the gradient, the horizon, the
+  stars and the band of the milky way, the sun with its corona, the
+  moon with its craters and its phase, the clouds with their bellies
+  and the aurora. The hash of the sky is done with whole numbers,
+  because the sine of a hash is slow on a card and the sky is a lot of
+  pixels.
 - The world step keeps a byte per cell to say whether the cell is
   already on the next active list. A `bool` would be a bitfield, and
   the flag is read once per active cell per tick.

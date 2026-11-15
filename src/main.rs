@@ -113,15 +113,6 @@ fn get_random_seed() -> u64 {
     seed
 }
 
-/// Should the picture be painted on the graphics card?
-///
-/// The card is the one that paints the picture in the game. The
-/// renderer on the processor is the reference it is checked against,
-/// so it can be asked for instead with `PRIMORDIA_BACKEND=cpu`.
-fn gpu_enabled() -> bool {
-    std::env::var("PRIMORDIA_BACKEND").map_or(true, |v| !v.eq_ignore_ascii_case("cpu"))
-}
-
 /// Where the camera starts, from `PRIMORDIA_CAM`. It is either a pair
 /// of numbers, or the word `zorg`, which is dealt with later, when the
 /// world knows where its cave is.
@@ -166,10 +157,8 @@ struct Game {
     seed: u64,
     world: World,
     creatures: CreatureSystem,
-    renderer: render::CpuRenderer,
-    /// The renderer on the graphics card. It is only there when the
-    /// game was asked to paint the picture on the card.
-    gpu: Option<render::GpuRenderer>,
+    /// The renderer on the graphics card. It paints the picture.
+    gpu: render::GpuRenderer,
     /// The window of the world that is on the screen.
     region: render::Region,
 
@@ -194,9 +183,6 @@ struct Game {
     last_diplo_tick: u64,
     force_render: bool,
 
-    region_pixels: Vec<u8>,
-    region_image: Image,
-    region_texture: Texture2D,
     region_w: i32,
     region_h: i32,
 
@@ -269,20 +255,11 @@ impl Game {
         let mini_texture = Texture2D::from_image(&mini_image);
         mini_texture.set_filter(FilterMode::Linear);
 
-        let region_image = Image::gen_image_color(1, 1, WHITE);
-        let region_texture = Texture2D::from_image(&region_image);
-        region_texture.set_filter(FilterMode::Nearest);
-
         Game {
             seed,
             world,
             creatures,
-            renderer: render::CpuRenderer::new(),
-            gpu: if gpu_enabled() {
-                Some(render::GpuRenderer::new())
-            } else {
-                None
-            },
+            gpu: render::GpuRenderer::new(),
             region: render::Region {
                 x: 0,
                 y: 0,
@@ -307,9 +284,6 @@ impl Game {
             last_species: None,
             last_diplo_tick: 0,
             force_render: true,
-            region_pixels: Vec::new(),
-            region_image,
-            region_texture,
             region_w: 0,
             region_h: 0,
             mini_image,
@@ -722,7 +696,7 @@ self.paused = true;
 
     fn render_region(
         &mut self,
-        now: f32,
+        _now: f32,
         steps_taken: u32,
         view_w: f32,
         view_h: f32,
@@ -737,12 +711,6 @@ self.paused = true;
         if self.region_w != vis_width || self.region_h != vis_height {
             self.region_w = vis_width;
             self.region_h = vis_height;
-            self.region_pixels = vec![0u8; (self.region_w * self.region_h * 4) as usize];
-
-            self.region_image = Image::gen_image_color(self.region_w as u16, self.region_h as u16, Color::new(0.0, 0.0, 0.0, 0.0));
-            self.region_texture = Texture2D::from_image(&self.region_image);
-            self.region_texture.set_filter(FilterMode::Nearest);
-
             self.force_render = true;
         }
 
@@ -757,29 +725,11 @@ self.paused = true;
         };
 
         if steps_taken > 0 || self.force_render {
-            if self.gpu.is_none() {
-                self.renderer.render_region(
-                    &self.world,
-                    &self.creatures,
-                    &mut self.region_pixels,
-                    self.region,
-                    crate::render::Clock {
-                        time: now,
-                        day_night: self.creatures.day_night,
-                        season: self.creatures.season,
-                        weather: self.world.weather,
-                    },
-                );
-                self.region_image
-                    .bytes
-                    .copy_from_slice(&self.region_pixels);
-                self.region_texture.update(&self.region_image);
-            }
             self.force_render = false;
             self.mini_dirty = true;
         }
 
-(vis_left, vis_top)
+        (vis_left, vis_top)
     }
 
     fn draw_minimap(&mut self) {
@@ -827,36 +777,20 @@ self.paused = true;
             w: self.region_w as f32 * reg_scale_x,
             h: self.region_h as f32 * reg_scale_y,
         };
-        match self.gpu.as_mut() {
-            // The renderer on the card paints the picture straight onto
-            // the screen, so it is asked to do it where the picture goes.
-            Some(gpu) => {
-                gpu.render_region(
-                    &self.world,
-                    &self.creatures,
-                    self.region,
-                    crate::render::Clock {
-                        time: now,
-                        day_night: self.creatures.day_night,
-                        season: self.creatures.season,
-                        weather: self.world.weather,
-                    },
-                    place,
-                );
-            }
-            None => {
-                draw_texture_ex(
-                    &self.region_texture,
-                    place.x,
-                    place.y,
-                    WHITE,
-                    DrawTextureParams {
-                        dest_size: Some(vec2(place.w, place.h)),
-                        ..Default::default()
-                    },
-                );
-            }
-        }
+        // The renderer on the card paints the picture straight onto
+        // the screen, so it is asked to do it where the picture goes.
+        self.gpu.render_region(
+            &self.world,
+            &self.creatures,
+            self.region,
+            crate::render::Clock {
+                time: now,
+                day_night: self.creatures.day_night,
+                season: self.creatures.season,
+                weather: self.world.weather,
+            },
+            place,
+        );
 
         draw_vignette();
 
@@ -955,10 +889,7 @@ async fn main() {
         }
     }
     let seed = get_random_seed();
-    eprintln!(
-        "backend: {}",
-        if gpu_enabled() { "gpu" } else { "cpu" }
-    );
+    eprintln!("backend: gpu");
     let mut game = Game::new(seed);
 
     loop {

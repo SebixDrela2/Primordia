@@ -3,10 +3,8 @@ pub mod fx;
 pub mod light;
 pub mod sprites;
 pub mod textures;
-mod cpu;
 mod gpu;
 
-pub use cpu::CpuRenderer;
 pub use gpu::{GpuRenderer, Place};
 
 use crate::world::{World, Weather};
@@ -65,6 +63,19 @@ pub struct Tables {
     pub vig_col: Vec<f32>,
 
     pub bloom: Bloom,
+
+    /// The lamps of the region: where they are and how bright they
+    /// are. The card uses them to light the face of a cell from the
+    /// side the nearest lamp is on.
+    pub emitters: Vec<Emitter>,
+}
+
+/// A lamp in the world.
+#[derive(Clone, Copy)]
+pub struct Emitter {
+    pub x: i32,
+    pub y: i32,
+    pub power: f32,
 }
 
 /// The state of the sky while a picture is painted: how much light
@@ -84,7 +95,14 @@ pub(crate) struct SkyState {
     pub aurora: bool,
     pub sun_x: i32,
     pub sun_y: i32,
-    pub is_day: bool,
+    /// Where the moon is, how much of it is lit and how much of it is
+    /// in the sky.
+    pub moon_x: i32,
+    pub moon_y: i32,
+    pub moon_phase: f32,
+    /// How much of the sun is in the sky, and how much of the moon.
+    pub sun_seen: f32,
+    pub moon_seen: f32,
     pub gw: usize,
     pub gh: usize,
     /// How much cloud there is, and the colour of it. These are the same
@@ -147,6 +165,21 @@ pub(crate) fn sky_state(world_w: usize, world_h: usize, clock: &Clock) -> SkySta
 
     let sun_height = (1.0 - (day_night - 0.5).abs() * 2.0).max(0.0);
 
+    // The moon travels on the same road as the sun, half a day behind
+    // it, so the two of them cross the sky in the same direction. One
+    // of them is up and the other is down, so they are never seen
+    // together.
+    let moon_t = (day_night + 0.5).rem_euclid(1.0);
+    let moon_height = (1.0 - (moon_t - 0.5).abs() * 2.0).max(0.0);
+    let moon_x = (moon_t * world_w as f32) as i32;
+    let moon_y = (world_h as f32 * (0.62 - 0.55 * moon_height)) as i32;
+    let sun_seen = smoothstep(0.52, 0.70, sun_height);
+    let moon_seen = smoothstep(0.52, 0.70, moon_height);
+
+    // The moon turns over the month. It starts as a full moon, so
+    // that there is something to look at in the first night.
+    let moon_phase = (clock.time / (120.0 * 29.0) + 0.36).fract();
+
     SkyState {
         day,
         light_f: 0.62 + 0.38 * light_level,
@@ -161,7 +194,11 @@ pub(crate) fn sky_state(world_w: usize, world_h: usize, clock: &Clock) -> SkySta
         aurora: day < 0.32,
         sun_x: (day_night * world_w as f32) as i32,
         sun_y: (world_h as f32 * (0.62 - 0.55 * sun_height)) as i32,
-        is_day: day > 0.25,
+        moon_x,
+        moon_y,
+        moon_phase,
+        sun_seen,
+        moon_seen,
         gw: (world_w as f32 / GSX) as usize + 2,
         gh: (world_h as f32 / GSY) as usize + 2,
         cloud_cover: 0.20 + 0.32 * day + weather_dim * 0.9,
@@ -169,33 +206,6 @@ pub(crate) fn sky_state(world_w: usize, world_h: usize, clock: &Clock) -> SkySta
         cloud_cg: 214.0 - weather_dim * 90.0,
         cloud_cb: 232.0 - weather_dim * 60.0,
     }
-}
-
-/// The tables the pixel loop reads while it paints: the per-element
-/// effects, the light field, the sky and the weather's veils. They are
-/// the renderer's own tables, so they travel together.
-pub(crate) struct PaintTables<'a> {
-    pub cloud_row: &'a [f32],
-    pub fx: &'a [FxEntry; fx::FX_TABLE_LEN],
-    pub light_rows: &'a [[f32; 3]],
-    pub aurora_col: &'a [f32],
-    pub biome_delta: &'a [[f32; 3]],
-    pub cloud_shadow: &'a [f32],
-    pub sun_shaft: &'a [f32],
-    pub vig_col: &'a [f32],
-    pub bloom: &'a Bloom,
-    pub sky_base: &'a [[f32; 3]],
-    pub sky_slope: &'a [[f32; 3]],
-}
-
-/// The geometry of the picture: the window of the world, the size of the
-/// light grid and where that grid starts in the world.
-pub(crate) struct PaintGeometry {
-    pub region: Region,
-    pub light_w: usize,
-    pub light_h: usize,
-    pub light_x: i32,
-    pub light_y: i32,
 }
 
 /// The window of the light grid: where it starts in the world and how
@@ -246,6 +256,7 @@ impl Tables {
             sun_shaft: Vec::new(),
             vig_col: Vec::new(),
             bloom: Bloom::new(),
+            emitters: Vec::new(),
         }
     }
 
@@ -289,6 +300,10 @@ impl Tables {
 
     /// Walk the window of the world and put the light and the bloom of
     /// every cell that gives off light into the two fields.
+    ///
+    /// The lamps are also put in a list, so that every cell can be
+    /// told which lamp is the nearest one to it. That is the light
+    /// that falls on the face of the cell.
     fn scan_lights(&mut self, world: &World, region: Region, grid: &LightGrid) {
         let w = world.w;
         let h = world.h;
@@ -296,6 +311,7 @@ impl Tables {
         let sy0 = (grid.gy0 * SCALE).max(0);
         let sx1 = ((grid.gx1 + 1) * SCALE).min(w as i32);
         let sy1 = ((grid.gy1 + 1) * SCALE).min(h as i32);
+        self.emitters.clear();
         for y in sy0..sy1 {
             let row = y as usize * w;
             let ly = (y.div_euclid(SCALE) - grid.gy0) as usize;
@@ -313,6 +329,15 @@ impl Tables {
                         e[1],
                         e[2],
                     );
+
+                    let power = e[0].max(e[1]).max(e[2]);
+                    if power > 0.0 {
+                        self.emitters.push(Emitter {
+                            x,
+                            y,
+                            power,
+                        });
+                    }
                 }
             }
         }
@@ -499,28 +524,6 @@ impl Default for Tables {
 }
 
 #[inline]
-pub(crate) fn is_shore(
-    kind: &[u8],
-    w: usize,
-    h: usize,
-    x: i32,
-    y: i32,
-    empty: u8,
-    water: u8,
-) -> bool {
-    let xi = x as usize;
-    let yi = y as usize;
-    let row = yi * w;
-
-    let land = |k: u8| k != empty && k != water;
-    let left = xi > 0 && land(kind[row + xi - 1]);
-    let right = xi + 1 < w && land(kind[row + xi + 1]);
-    let up = yi > 0 && land(kind[row - w + xi]);
-    let down = yi + 1 < h && land(kind[row + w + xi]);
-    left || right || up || down
-}
-
-#[inline]
 pub(crate) fn hash2(x: i32, y: i32) -> u32 {
     let mut h = (x as u32).wrapping_mul(0x9E37_79B1) ^ (y as u32).wrapping_mul(0x85EB_CA77);
     h ^= h >> 15;
@@ -566,14 +569,6 @@ fn cloud_density(x: f32, y: f32) -> f32 {
 pub(crate) fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
     let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
-}
-
-#[inline]
-pub(crate) fn clamp_u8(v: f32) -> u8 {
-    // A float to u8 cast in Rust saturates, so it already clamps to
-    // 0..=255. The explicit clamp was a second pair of comparisons on
-    // every channel of every pixel.
-    v as u8
 }
 
 pub(crate) const SCALE: i32 = light::LIGHT_SCALE as i32;

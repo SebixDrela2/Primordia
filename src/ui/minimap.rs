@@ -1,8 +1,11 @@
 use crate::creature::CreatureSystem;
+use crate::render::sprites::{self, Effect};
 use crate::world;
 use crate::world::World;
 use crate::{H, W};
 use macroquad::prelude::*;
+
+use super::pictures::draw_sprite;
 
 pub fn draw_vignette() {
     let width = screen_width();
@@ -50,8 +53,15 @@ pub fn draw_weather(weather: world::Weather, time: f32) {
                 let ii = i as u32;
                 let x = ((fi * 71.9 + time * 26.0 + (ii % 7) as f32 * 13.0) % width as f32).max(0.0);
                 let y = ((fi * 41.3 + time * (55.0 + (ii % 9) as f32 * 4.0)) % height as f32).max(0.0);
-                let flake = 1.0 + (ii % 3) as f32 * 0.5;
-                draw_circle(x, y, flake, Color::new(0.95, 0.97, 1.0, 0.5));
+                let flake = 5.0 + (ii % 3) as f32 * 3.0;
+                draw_sprite(
+                    sprites::effect_tile(Effect::Flake),
+                    x,
+                    y,
+                    flake,
+                    time * 0.7 + fi,
+                    Color::new(0.95, 0.97, 1.0, 0.55),
+                );
             }
         }
         world::Weather::Sandstorm => {

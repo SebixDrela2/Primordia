@@ -301,20 +301,17 @@ fn report_elements_present(element_counts: &[u32; ELEM_SLOTS]) {
     }
 }
 
-fn write_png(world: &World, creatures: &CreatureSystem, out: &str) -> i32 {
+fn write_png(world: &World, _creatures: &CreatureSystem, out: &str) -> i32 {
+    // A flat picture of the world: the colour of every cell as it is.
+    // It is only a record of what the world looked like.
     let mut buf = vec![0u8; W * H * 4];
-    let mut renderer = crate::render::CpuRenderer::new();
-    renderer.render_world(
-        world,
-        creatures,
-        &mut buf,
-        crate::render::Clock {
-            time: 0.0,
-            day_night: 0.25,
-            season: 0,
-            weather: world.weather,
-        },
-    );
+    for i in 0..W * H {
+        let c = world.col[i];
+        buf[i * 4] = c[0];
+        buf[i * 4 + 1] = c[1];
+        buf[i * 4 + 2] = c[2];
+        buf[i * 4 + 3] = 255;
+    }
 
     let Ok(file) = std::fs::File::create(out) else {
         println!("FAIL: cannot write {}", out);

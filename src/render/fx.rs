@@ -86,6 +86,24 @@ pub fn shimmer_sin(time: f32, x: i32, y: i32) -> f32 {
     (time * 3.2 + x as f32 * 0.21 + y as f32 * 0.13).sin()
 }
 
+/// The wind in the leaves.
+#[must_use]
+pub fn sway_sin(time: f32, x: i32, y: i32) -> f32 {
+    (time * 1.7 + x as f32 * 0.31 + y as f32 * 0.19).sin()
+}
+
+/// The smoke that drifts.
+#[must_use]
+pub fn smoke_sin(time: f32, x: i32, y: i32) -> f32 {
+    (time * 0.9 + x as f32 * 0.23 + y as f32 * 0.41).sin()
+}
+
+/// The pulse of the things that glow.
+#[must_use]
+pub fn glow_sin(time: f32, speed: f32, noise: f32) -> f32 {
+    (time * speed + noise * TAU).sin()
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Fx {
 
@@ -120,6 +138,15 @@ pub enum Fx {
     Strata,
 
     Vein,
+
+    /// The leaves in the wind.
+    Sway,
+
+    /// The smoke that rises and thins out.
+    Smoke,
+
+    /// The soft light of the things that glow.
+    Glow,
 }
 
 #[derive(Clone, Copy)]
@@ -201,6 +228,26 @@ pub fn fx_table() -> [FxEntry; FX_TABLE_LEN] {
     set(Elem::Gold, Fx::Vein, [34.0, 26.0, 6.0], 0.0, 1.0);
     set(Elem::Silver, Fx::Vein, [28.0, 30.0, 32.0], 0.0, 1.0);
     set(Elem::Rust, Fx::Vein, [26.0, 12.0, 5.0], 0.0, 1.0);
+
+    // The leaves in the wind, the smoke that rises, and the things
+    // that give off a soft light.
+    set(Elem::Plant, Fx::Sway, [-10.0, 22.0, -4.0], 0.0, 1.0);
+    set(Elem::Moss, Fx::Foliage, [-13.0, 26.0, -5.2], 0.0, 1.0);
+    set(Elem::Fungus, Fx::Foliage, [-13.0, 26.0, -5.2], 0.0, 1.0);
+    set(Elem::Roots, Fx::Foliage, [-13.0, 26.0, -5.2], 0.0, 1.0);
+    set(Elem::Crop, Fx::Sway, [16.0, 18.0, -6.0], 0.0, 1.0);
+    set(Elem::Farm, Fx::Sway, [14.0, 20.0, -5.0], 0.0, 1.0);
+    set(Elem::Spore, Fx::Smoke, [26.0, 14.0, 40.0], 0.8, 1.0);
+    set(Elem::Fungus, Fx::Smoke, [30.0, 16.0, 34.0], 0.8, 1.0);
+    set(Elem::Smoke, Fx::Smoke, [24.0, 26.0, 32.0], 1.1, 1.0);
+    set(Elem::Steam, Fx::Smoke, [34.0, 40.0, 48.0], 1.3, 1.0);
+    set(Elem::Gas, Fx::Smoke, [26.0, 40.0, 30.0], 0.9, 1.0);
+    set(Elem::Chlorine, Fx::Smoke, [20.0, 44.0, 26.0], 0.7, 1.0);
+    set(Elem::Circuit, Fx::Glow, [14.0, 34.0, 52.0], 1.6, 1.0);
+    set(Elem::Beacon, Fx::Glow, [46.0, 28.0, 10.0], 1.4, 1.0);
+    set(Elem::Hearth, Fx::Glow, [52.0, 24.0, 8.0], 1.8, 1.0);
+    set(Elem::Totem, Fx::Glow, [30.0, 18.0, 44.0], 1.2, 1.0);
+    set(Elem::Portal, Fx::Glow, [40.0, 26.0, 44.0], 1.2, 1.0);
 
     t
 }

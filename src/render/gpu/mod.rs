@@ -58,6 +58,8 @@ pub struct GpuRenderer {
     tex: Tex,
     /// The amount of cloud at every anchor of every row.
     cloud_amt: Vec<f32>,
+    /// The lamps of the region, gathered into blocks of cells.
+    blocks: Vec<Option<(i32, i32, f32)>>,
     /// The cells whose sine was written last time, so that it can be
     /// cleared again without wiping the whole texture.
     dirty: Vec<usize>,
@@ -123,6 +125,56 @@ fn put_float(bytes: &mut [u8], at: usize, value: f32) {
     bytes[at..at + 4].copy_from_slice(&value.to_bits().to_le_bytes());
 }
 
+/// How many cells go in a block of lamps.
+const BLOCK: usize = 16;
+
+/// The nearest lamp to a cell: which way it is, and how much of its
+/// light reaches here.
+fn nearest_lamp(
+    blocks: &[Option<(i32, i32, f32)>],
+    wx: i32,
+    wy: i32,
+) -> (f32, f32, f32) {
+    let bw = (blocks.len() as f32).sqrt() as i32;
+    if bw <= 0 {
+        return (0.0, 0.0, 0.0);
+    }
+    let bx = (wx.max(0) as usize) / BLOCK;
+    let by = (wy.max(0) as usize) / BLOCK;
+    let mut best_d = f32::MAX;
+    let mut best: Option<(i32, i32, f32)> = None;
+    for oy in -1..=1 {
+        for ox in -1..=1 {
+            let x = bx as i32 + ox;
+            let y = by as i32 + oy;
+            if x < 0 || y < 0 {
+                continue;
+            }
+            let Some(lamp) = blocks[y as usize * bw as usize + x as usize] else {
+                continue;
+            };
+            let d = ((lamp.0 - wx) * (lamp.0 - wx) + (lamp.1 - wy) * (lamp.1 - wy)) as f32;
+            if d < best_d {
+                best_d = d;
+                best = Some(lamp);
+            }
+        }
+    }
+    let Some((lx, ly, power)) = best else {
+        return (0.0, 0.0, 0.0);
+    };
+    let dist = best_d.sqrt();
+    if dist < 0.001 {
+        return (0.0, -1.0, power.min(1.0));
+    }
+    let reach = (power * 6.0 / (1.0 + dist * dist * 0.05)).min(1.0);
+    (
+        (lx - wx) as f32 / dist,
+        (ly - wy) as f32 / dist,
+        reach,
+    )
+}
+
 impl GpuRenderer {
     /// Make the renderer and load its shader.
     ///
@@ -150,6 +202,8 @@ impl GpuRenderer {
                     UniformDesc::new("u_place", UniformType::Float4),
                     UniformDesc::new("u_counts", UniformType::Float4),
                     UniformDesc::new("u_sun", UniformType::Float4),
+                    UniformDesc::new("u_moon", UniformType::Float4),
+                    UniformDesc::new("u_horizon", UniformType::Float4),
                     UniformDesc::new("u_bloom", UniformType::Float4),
                 ],
                 textures: vec![
@@ -190,6 +244,7 @@ impl GpuRenderer {
                 texture: None,
             },
             cloud_amt: Vec::new(),
+            blocks: Vec::new(),
             dirty: Vec::new(),
         }
     }
@@ -233,14 +288,28 @@ impl GpuRenderer {
 
     /// The cells of the region, with a border of one cell around them
     /// so that the shader can see the neighbours.
+    ///
+    /// Every cell has three texels: what is in it, the colour of it,
+    /// and the nearest lamp to it.
     fn put_cells(&mut self, world: &World, region: Region) {
         let rw = region.w as usize;
         let rh = region.h as usize;
-        self.cell.fit((rw + 2) * 2, rh + 2);
+        self.cell.fit((rw + 2) * 3, rh + 2);
 
         let w = world.w;
         let h = world.h;
+
+        // The lamps, gathered into blocks of sixteen cells, so that
+        // every cell can find the nearest one without looking at them
+        // all.
+        let lamps = self.lamp_blocks(world);
+
+        // How much of the sky each cell can see: the number of the
+        // open cells above it. It is what tells a cell in the open
+        // from one under a roof.
+        let mut open_above = vec![0u16; rw + 2];
         let bytes = &mut self.cell.image.bytes;
+
         for cy in 0..rh + 2 {
             let wy = region.y - 1 + cy as i32;
             let row = if wy < 0 || wy >= h as i32 {
@@ -248,9 +317,9 @@ impl GpuRenderer {
             } else {
                 Some(wy as usize * w)
             };
-            for cx in 0..rw + 2 {
+            for (cx, seen) in open_above.iter_mut().enumerate() {
                 let wx = region.x - 1 + cx as i32;
-                let at = (cy * (rw + 2) * 2 + cx * 2) * 4;
+                let at = (cy * (rw + 2) * 3 + cx * 3) * 4;
                 if row.is_none() || wx < 0 || wx >= w as i32 {
                     bytes[at] = 0;
                     bytes[at + 1] = 0;
@@ -260,9 +329,24 @@ impl GpuRenderer {
                     bytes[at + 5] = 0;
                     bytes[at + 6] = 0;
                     bytes[at + 7] = 0;
+                    bytes[at + 8] = 0;
+                    bytes[at + 9] = 0;
+                    bytes[at + 10] = 0;
+                    bytes[at + 11] = 0;
                     continue;
                 }
                 let index = row.unwrap() + wx as usize;
+                let empty = world.kind[index] == crate::elements::Elem::Empty as u8;
+                let exposure = if empty {
+                    255
+                } else {
+                    let above = (*seen).min(48);
+                    *seen = 0;
+                    (above * 255) / 48
+                };
+                if empty {
+                    *seen = seen.saturating_add(1);
+                }
                 bytes[at] = world.kind[index];
                 bytes[at + 1] = world.heat[index];
                 bytes[at + 2] = 0;
@@ -272,8 +356,53 @@ impl GpuRenderer {
                 bytes[at + 5] = colour[1];
                 bytes[at + 6] = colour[2];
                 bytes[at + 7] = 0;
+
+                // The nearest lamp: which way it is and how much of
+                // its light reaches here.
+                let (dx, dy, power) = nearest_lamp(&lamps, wx, wy);
+                bytes[at + 8] = ((dx * 0.5 + 0.5) * 255.0).clamp(0.0, 255.0) as u8;
+                bytes[at + 9] = ((dy * 0.5 + 0.5) * 255.0).clamp(0.0, 255.0) as u8;
+                bytes[at + 10] = (power * 255.0).clamp(0.0, 255.0) as u8;
+                bytes[at + 11] = exposure as u8;
             }
         }
+    }
+
+    /// The lamps of the region, gathered into blocks of sixteen cells.
+    /// Each block keeps the lamp that is nearest to its middle.
+    fn lamp_blocks(&mut self, world: &World) -> Vec<Option<(i32, i32, f32)>> {
+        let w = world.w as i32;
+        let h = world.h as i32;
+        let bw = (w as usize).div_ceil(BLOCK) + 1;
+        let bh = (h as usize).div_ceil(BLOCK) + 1;
+        if self.blocks.len() == bw * bh {
+            self.blocks.fill(None);
+        } else {
+            self.blocks.clear();
+            self.blocks.resize(bw * bh, None);
+        }
+        for e in &self.tables.emitters {
+            let bx = (e.x.max(0) as usize) / BLOCK;
+            let by = (e.y.max(0) as usize) / BLOCK;
+            if bx >= bw || by >= bh {
+                continue;
+            }
+            let cx = (bx * BLOCK + BLOCK / 2) as i32;
+            let cy = (by * BLOCK + BLOCK / 2) as i32;
+            let d = ((e.x - cx) * (e.x - cx) + (e.y - cy) * (e.y - cy)) as f32;
+            let slot = &mut self.blocks[by * bw + bx];
+            let better = match *slot {
+                None => true,
+                Some((ox, oy, op)) => {
+                    let od = ((ox - cx) * (ox - cx) + (oy - cy) * (oy - cy)) as f32;
+                    d < od || ((d - od).abs() < 0.5 && e.power > op)
+                }
+            };
+            if better {
+                *slot = Some((e.x, e.y, e.power));
+            }
+        }
+        self.blocks.clone()
     }
 
     /// The tables of every column of the region.
@@ -505,6 +634,9 @@ impl GpuRenderer {
                     Fx::Rot => Some(fx::rot_sin(time, entry.speed, noise_value)),
                     Fx::Foul => Some(fx::foul_sin(time, entry.speed, wx, wy)),
                     Fx::Vein => Some(fx::vein_sin(time, noise_value)),
+                    Fx::Sway => Some(fx::sway_sin(time, wx, wy)),
+                    Fx::Smoke => Some(fx::smoke_sin(time, wx, wy)),
+                    Fx::Glow => Some(fx::glow_sin(time, entry.speed, noise_value)),
                     _ => None,
                 };
                 let foam = if entry.kind == Fx::Wave {
@@ -535,6 +667,22 @@ impl GpuRenderer {
 
     /// Draw the picture.
     #[allow(clippy::too_many_arguments)]
+    /// Put the textures on the card.
+    fn bind_textures(&self) {
+        self.material.set_texture("t_cell", self.cell.texture.clone().unwrap());
+        self.material.set_texture("t_cols", self.cols.texture.clone().unwrap());
+        self.material.set_texture("t_light", self.light.texture.clone().unwrap());
+        self.material.set_texture("t_bloom", self.bloom.texture.clone().unwrap());
+        self.material.set_texture("t_cloudamt", self.cloudamt.texture.clone().unwrap());
+        self.material.set_texture("t_rows", self.rows.texture.clone().unwrap());
+        self.material.set_texture("t_fx", self.fx.texture.clone().unwrap());
+        self.material.set_texture("t_depth", self.depth.texture.clone().unwrap());
+        self.material.set_texture("t_sin", self.sins.texture.clone().unwrap());
+        self.material.set_texture("t_tex", self.tex.texture.clone().unwrap());
+    }
+
+    /// Draw the picture.
+    #[allow(clippy::too_many_arguments)]
     fn draw(
         &mut self,
         world: &World,
@@ -547,17 +695,7 @@ impl GpuRenderer {
         clock: &Clock,
         place: Place,
     ) {
-        self.material.set_texture("t_cell", self.cell.texture.clone().unwrap());
-        self.material.set_texture("t_cols", self.cols.texture.clone().unwrap());
-        self.material.set_texture("t_light", self.light.texture.clone().unwrap());
-        self.material.set_texture("t_bloom", self.bloom.texture.clone().unwrap());
-        self.material.set_texture("t_cloudamt", self.cloudamt.texture.clone().unwrap());
-        self.material.set_texture("t_rows", self.rows.texture.clone().unwrap());
-        self.material.set_texture("t_fx", self.fx.texture.clone().unwrap());
-        self.material.set_texture("t_depth", self.depth.texture.clone().unwrap());
-        self.material.set_texture("t_sin", self.sins.texture.clone().unwrap());
-        self.material.set_texture("t_tex", self.tex.texture.clone().unwrap());
-
+        self.bind_textures();
         self.material.set_uniform(
             "u_region",
             [
@@ -633,6 +771,19 @@ impl GpuRenderer {
             ],
         );
         self.material.set_uniform(
+            "u_moon",
+            [
+                sky.moon_x as f32,
+                sky.moon_y as f32,
+                sky.moon_phase,
+                0.0,
+            ],
+        );
+        self.material.set_uniform(
+            "u_horizon",
+            [sky.sun_seen, sky.moon_seen, 0.0, 0.0],
+        );
+        self.material.set_uniform(
             "u_bloom",
             [
                 self.tables.bloom.w as f32,
@@ -641,7 +792,6 @@ impl GpuRenderer {
                 0.0,
             ],
         );
-
         gl_use_material(&self.material);
         draw_rectangle(place.x, place.y, place.w, place.h, WHITE);
         gl_use_default_material();

@@ -114,15 +114,15 @@ pub fn draw_atmosphere(
             sprites::effect_tile(Effect::Glow),
             sx,
             sy,
-            size * 6.0,
+            size * 3.0,
             0.0,
-            Color::new(r, g, b, a * 0.35),
+            Color::new(r, g, b, a * 0.30),
         );
         draw_sprite(
             sprites::effect_tile(Effect::Ember),
             sx,
             sy,
-            size * 3.4,
+            size * 1.9,
             0.0,
             Color::new(r, g, b, a),
         );
