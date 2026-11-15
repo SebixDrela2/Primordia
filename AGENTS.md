@@ -91,8 +91,10 @@
   (`src/session.rs`), so the two cannot drift apart.
   The learner writes out **the mind that survives** - the best of the
   colony, which is the one the revival would carry on with - every
-  time that lineage becomes another one, so the learner can be stopped
-  at any moment and the work is still there.
+  time that lineage becomes another one, and it also writes the best of
+  the colony out every 50 000 ticks, so that a long run in which
+  nobody wins is not wasted either. The learner can be stopped at any
+  moment and the work is still there.
 - `primordia --run [--file model.bin]` is the **run**: the game itself,
   with the colony given the mind that was learned. The minds do not
   learn anything new, so what is seen is the doing of the weights that

@@ -13,7 +13,7 @@
 //! moment and the work is still there, and so that the game can be run
 //! on it afterwards.
 
-use crate::creature::Model;
+use crate::creature::{Model, RevivalGenome};
 use crate::session::{Outcome, Session};
 use crate::rng::Rng;
 
@@ -78,24 +78,11 @@ fn read_ask(args: &[String]) -> Ask {
 }
 
 /// Write the best mind of the run out, if it is better than the one
-/// Write the lineage that would survive out of the world: the best of
-/// the colony, which is what the revival carries on with. It is written
-/// out when that lineage becomes another one, so the file always holds
-/// the mind that is alive right now.
-fn keep_the_best(session: &Session, ask: &Ask, seen: &mut u64) {
-    if session.champion_version == *seen {
-        return;
-    }
-    *seen = session.champion_version;
+/// How many ticks go by between the times the model is written out.
+const SAVE_EVERY: u64 = 50_000;
 
-    let genome = session
-        .champion
-        .as_ref()
-        .or(session.fallback_champion.as_ref());
-    let Some(genome) = genome else {
-        return;
-    };
-
+/// Write a mind out to the file.
+fn write_model(genome: &RevivalGenome, session: &Session, ask: &Ask, note: &str) {
     let mut model = Model::from_net(
         &genome.net,
         genome.genes,
@@ -113,10 +100,50 @@ fn keep_the_best(session: &Session, ask: &Ask, seen: &mut u64) {
     }
     if !ask.quiet {
         println!(
-            "  the mind that survives fitted {:.3} - written to {}",
+            "  {note} fitted {:.3} - written to {}",
             model.fitness, ask.file
         );
     }
+}
+
+/// Write the lineage that would survive out of the world: the best of
+/// the colony, which is what the revival carries on with. It is written
+/// out when that lineage becomes another one, so the file always holds
+/// the mind that is alive right now.
+fn keep_the_best(session: &Session, ask: &Ask, seen: &mut u64) {
+    if session.champion_version == *seen {
+        return;
+    }
+    *seen = session.champion_version;
+
+    let genome = session
+        .champion
+        .as_ref()
+        .or(session.fallback_champion.as_ref());
+    let Some(genome) = genome else {
+        return;
+    };
+    write_model(genome, session, ask, "the mind that survives");
+}
+
+/// Write the best of the colony out every so many ticks, so that the
+/// work of a long run is not lost when nobody wins.
+fn keep_it_safe(session: &Session, ask: &Ask, last: &mut u64) {
+    let tick = session.creatures.tick;
+    if tick < *last {
+        // A new run: the clock starts again.
+        *last = tick;
+    }
+    if tick - *last < SAVE_EVERY {
+        return;
+    }
+    *last = tick;
+    // The best of the colony as it is right now: the latest generation
+    // that survives in the world.
+    let Some(genome) = session.creatures.champion_overall() else {
+        return;
+    };
+    write_model(&genome, session, ask, "the best of the colony");
 }
 /// The learner. It ends the process when it is done.
 #[must_use]
@@ -142,6 +169,8 @@ pub fn run(args: &[String]) -> i32 {
     let mut last_beat: u64 = 0;
     // How many times the mind that would survive has changed.
     let mut seen: u64 = 0;
+    // When the model was last written out.
+    let mut last_save: u64 = 0;
 
     // The learner works for ever unless it is told how many
     // generations to do.
@@ -168,6 +197,9 @@ pub fn run(args: &[String]) -> i32 {
             );
         }
         keep_the_best(&session, &ask, &mut seen);
+        // And every so many ticks the best of the colony is written
+        // out, so that a long run without a winner is not wasted.
+        keep_it_safe(&session, &ask, &mut last_save);
 
         let Some(outcome) = session.check_victory() else {
             continue;
@@ -194,8 +226,7 @@ pub fn run(args: &[String]) -> i32 {
                 return 1;
             }
             saved = true;
-        }
-        generation += 1;
+        }        generation += 1;
         if !ask.quiet {
             let what = match outcome {
                 Outcome::Won { species, zorgs } => {
