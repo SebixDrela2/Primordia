@@ -746,13 +746,17 @@ self.paused = true;
             self.force_render = true;
         }
 
+        // The window of the world that is on the screen. It follows the
+        // camera every frame, because the picture on the card is drawn
+        // where the window says it is.
+        self.region = crate::render::Region {
+            x: vis_left,
+            y: vis_top,
+            w: vis_width,
+            h: vis_height,
+        };
+
         if steps_taken > 0 || self.force_render {
-            self.region = crate::render::Region {
-                x: vis_left,
-                y: vis_top,
-                w: vis_width,
-                h: vis_height,
-            };
             if self.gpu.is_none() {
                 self.renderer.render_region(
                     &self.world,
@@ -951,6 +955,10 @@ async fn main() {
         }
     }
     let seed = get_random_seed();
+    eprintln!(
+        "backend: {}",
+        if gpu_enabled() { "gpu" } else { "cpu" }
+    );
     let mut game = Game::new(seed);
 
     loop {

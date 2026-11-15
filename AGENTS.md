@@ -71,6 +71,16 @@
 - `PRIMORDIA_SEED=12345 primordia` fixes the seed of the world, so the
   same run can be repeated and compared with another. The game takes it
   too; `bench` takes it as well.
+- The game paints its picture on the **graphics card** by default. The
+  renderer on the processor is the reference the card is checked
+  against, so it can be asked for instead with `PRIMORDIA_BACKEND=cpu`.
+- `cargo run --release --bin primordia -- rendertest [seed]` checks the
+  card against the processor: both render the same world at the same
+  clock, and the two pictures are compared pixel by pixel. It also
+  writes `cpu.png` and `gpu.png` when they differ, so the difference
+  can be looked at, and it prints how long each way of painting takes.
+  The two renderers are the same picture to within a handful of
+  pixels by one unit, in the Strata and Vein effects.
 
 ## Code size rules
 - **No file may exceed ~1000 lines.** A file may run slightly over that
