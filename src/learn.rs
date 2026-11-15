@@ -1,19 +1,21 @@
-//! The learner: the work of the network, with no window and no card.
+//! The learner: the whole game, with no picture at all.
 //!
-//! This is the headless half of the game. It makes a world, puts a
-//! colony in it, and lets the minds work: every creature learns from
-//! what happens to it, the colony breeds, and the best of the colony
-//! is kept. Generation after generation the colony is given the mind
-//! of the best creature of the generation before, so that the network
-//! gets better and better, and at the end the best mind is written to
-//! a file.
+//! This is the game itself, worked in the console. There is no window
+//! and the card is never touched, so all the time goes into the
+//! simulation: the world turns, the colony lives, the creatures learn
+//! from what happens to them, the colony breeds, and when a species is
+//! the last one standing the run ends and the **revival** begins - a
+//! new world, and a new colony that carries the champion of the last
+//! run, its mind and its genes and what it had learnt.
 //!
-//! Nothing is drawn and nothing is painted on the card: the learner
-//! is only the work of the network.
+//! Every revival is a generation of learning. The mind of the champion
+//! is written to a file, so that the learner can be stopped at any
+//! moment and the work is still there, and so that the game can be run
+//! on it afterwards.
 
-use crate::creature::{CreatureSystem, Faction, Model};
-use crate::world::World;
-use crate::{H, W};
+use crate::creature::Model;
+use crate::session::{Outcome, Session};
+use crate::rng::Rng;
 
 /// The name of the file the model is written to, when nothing else is
 /// asked for.
@@ -22,9 +24,8 @@ const DEFAULT_FILE: &str = "model.bin";
 /// What the learner was asked to do.
 struct Ask {
     file: String,
-    /// How many generations to work through. Zero means for ever.
+    /// How many revivals to work through. Zero means for ever.
     generations: u32,
-    ticks: u32,
     pop: usize,
     seed: u64,
     quiet: bool,
@@ -36,8 +37,7 @@ fn read_ask(args: &[String]) -> Ask {
         file: DEFAULT_FILE.to_owned(),
         // For ever, unless the ask says otherwise.
         generations: 0,
-        ticks: 2400,
-        pop: 48,
+        pop: 64,
         seed: 20_240_501,
         quiet: false,
     };
@@ -52,11 +52,6 @@ fn read_ask(args: &[String]) -> Ask {
             "--generations" => {
                 if let Some(v) = value(&mut i) {
                     ask.generations = v.parse().unwrap_or(ask.generations);
-                }
-            }
-            "--ticks" => {
-                if let Some(v) = value(&mut i) {
-                    ask.ticks = v.parse().unwrap_or(ask.ticks);
                 }
             }
             "--pop" => {
@@ -82,176 +77,156 @@ fn read_ask(args: &[String]) -> Ask {
     ask
 }
 
+/// Write the best mind of the run out, if it is better than the one
+/// that is already in the file. It returns the fitness of the best
+/// mind there is.
+fn keep_the_best(session: &Session, ask: &Ask, best_fitness: f32) -> f32 {
+    let genome = session
+        .champion
+        .as_ref()
+        .or(session.fallback_champion.as_ref());
+    let Some(genome) = genome else {
+        return best_fitness;
+    };
+    if genome.fitness <= best_fitness {
+        return best_fitness;
+    }
+
+    let mut model = Model::from_net(
+        &genome.net,
+        genome.genes,
+        crate::creature::decode_traits(&genome.genes),
+        genome.culture,
+        genome.size,
+        genome.color,
+    );
+    model.fitness = genome.fitness;
+    model.generation = session.revival;
+    if let Err(err) = model.save(&ask.file) {
+        eprintln!("cannot write {}: {err}", ask.file);
+        return best_fitness;
+    }
+    if !ask.quiet {
+        println!("  the best mind fitted {:.3} - written to {}", model.fitness, ask.file);
+    }
+    model.fitness
+}
+
 /// The learner. It ends the process when it is done.
 #[must_use]
 pub fn run(args: &[String]) -> i32 {
     let ask = read_ask(args);
 
     // The mind the learning starts from: the one that is in the file,
-    // if there is one, or a fresh one.
-    let best: Option<Model> = match Model::load(&ask.file) {
-        Ok(model) => {
-            if !ask.quiet {
-                println!(
-                    "starting from the model in {} ({} weights, fitness {:.3})",
-                    ask.file,
-                    model.weight_count(),
-                    model.fitness
-                );
-            }
-            Some(model)
-        }
-        Err(_) => None,
-    };
-
+    // if there is one.
     let mut best_fitness = f32::MIN;
-    let mut best_model: Option<Model> = None;
-    // The mind the next generation starts from: the best one so far.
-    let mut carried = best;
+    if let Ok(model) = Model::load(&ask.file) {
+        best_fitness = model.fitness;
+        if !ask.quiet {
+            println!(
+                "starting from the model in {} ({} weights, fitness {:.3})",
+                ask.file,
+                model.weight_count(),
+                model.fitness
+            );
+        }
+    }
+
+    let mut session = Session::new(ask.seed, ask.pop);
+    let mut rng = Rng::new(ask.seed);
     let mut generation: u64 = 0;
+    let mut last_beat: u64 = 0;
 
     // The learner works for ever unless it is told how many
-    // generations to do. Every time the colony does better than it has
-    // ever done, the model is written out, so that stopping the
-    // learner at any moment loses nothing.
+    // generations to do.
     loop {
-        let seed = ask.seed.wrapping_add(generation * 0x9E37_79B9);
-        let (model, fitness, pop) = one_generation(seed, ask.ticks, ask.pop, carried.as_ref());
-        generation += 1;
+        // The world turns and the colony lives. This is the whole
+        // game, with nothing drawn.
+        session.step();
 
-        if fitness > best_fitness {
-            best_fitness = fitness;
-            let mut model = model;
-            // How many generations of learning it took.
-            model.generation = generation as u32;
-            best_model = Some(model.clone());
-            // The best mind so far is the one the next generation
-            // starts from, so that the work is never thrown away.
-            carried.clone_from(&best_model);
-            // It is written out now, so that the learner can be
-            // stopped at any moment and the work is still there.
-            if let Some(best) = &best_model {
-                if let Err(err) = best.save(&ask.file) {
+        // A word now and then, so that it is clear the learner is
+        // working and not stuck. And the best mind so far is written
+        // out, so that the learner can be stopped at any moment.
+        if !ask.quiet && session.creatures.tick - last_beat >= 1200 {
+            last_beat = session.creatures.tick;
+            println!(
+                "  tick {}: {} alive, the best {:.3}",
+                session.creatures.tick,
+                session.creatures.list.len(),
+                session
+                    .creatures
+                    .list
+                    .iter()
+                    .map(|c| c.fitness)
+                    .fold(0.0f32, f32::max)
+            );
+        }
+        best_fitness = keep_the_best(&session, &ask, best_fitness);
+
+        let Some(outcome) = session.check_victory() else {
+            continue;
+        };
+
+        // The run is over. The lineage that is carried into the next
+        // one is the mind that is written out.
+        let carried = session.carried();
+        let mut saved = false;
+        if let Some(genome) = &carried {
+            let mut model = Model::from_net(
+                &genome.net,
+                genome.genes,
+                crate::creature::decode_traits(&genome.genes),
+                genome.culture,
+                genome.size,
+                genome.color,
+            );
+            model.fitness = genome.fitness;
+            if model.fitness > best_fitness {
+                best_fitness = model.fitness;
+                model.generation = generation as u32 + 1;
+                if let Err(err) = model.save(&ask.file) {
                     eprintln!("cannot write {}: {err}", ask.file);
                     return 1;
                 }
+                saved = true;
             }
-            if !ask.quiet {
-                println!(
-                    "generation {:>3}: the best of {pop} fitted {fitness:.3} - written to {}",
-                    generation - 1,
-                    ask.file
-                );
-            }
-        } else if !ask.quiet {
+        }
+
+        generation += 1;
+        if !ask.quiet {
+            let what = match outcome {
+                Outcome::Won { species, zorgs } => {
+                    format!("{species} won with {zorgs} ZORGs left")
+                }
+                Outcome::Lost { zorgs } => format!("the colony was lost to {zorgs} ZORGs"),
+                Outcome::Extinct => "nothing was left".to_owned(),
+            };
             println!(
-                "generation {:>3}: the best of {pop} fitted {fitness:.3} (the best so far {best_fitness:.3})",
-                generation - 1,
+                "generation {generation:>3}: {what} - {} alive, the best fitted {:.3}{}",
+                session.creatures.list.len(),
+                carried.as_ref().map_or(0.0, |g| g.fitness),
+                if saved {
+                    " - written to the file"
+                } else {
+                    ""
+                }
             );
         }
+
+        // The next run: a new world, and a colony that carries the
+        // lineage of the last one.
+        let next_seed = rng.next_u32() as u64;
+        let carried_ref = carried.as_ref();
+        session.revive(next_seed, carried_ref);
 
         if ask.generations != 0 && generation >= ask.generations as u64 {
             break;
         }
     }
 
-    let Some(model) = best_model else {
-        eprintln!("the learner found nothing worth keeping");
-        return 1;
-    };
-
-    if let Err(err) = model.save(&ask.file) {
-        eprintln!("cannot write {}: {err}", ask.file);
-        return 1;
-    }
     println!(
-        "wrote {} ({} weights, fitness {:.3})",
-        ask.file,
-        model.weight_count(),
-        best_fitness
+        "the learner worked through {generation} generations; the best mind fitted {best_fitness:.3} and is in {}",
+        ask.file
     );
     0
-}
-
-/// One generation: a world, a colony, and the ticks they live through.
-///
-/// The colony starts from the mind that was given, so that the
-/// generation after this one starts where this one ended.
-fn one_generation(
-    seed: u64,
-    ticks: u32,
-    pop: usize,
-    start: Option<&Model>,
-) -> (Model, f32, usize) {
-    let mut world = World::new(W, H, seed);
-    world.seed();
-
-    let mut creatures = CreatureSystem::new(seed);
-    creatures.populate(&world, pop);
-
-    // Give the colony the mind it is to work with.
-    if let Some(model) = start {
-        for c in &mut creatures.list {
-            if c.faction != Faction::Player {
-                continue;
-            }
-            c.net = model.to_net();
-            c.genes = model.genes;
-            c.traits = model.traits;
-            c.culture = model.culture;
-            c.size = model.size;
-        }
-    }
-
-    for _ in 0..ticks {
-        world.step();
-        creatures.step(&mut world);
-    }
-
-    // The best of the colony is the mind that is kept.
-    let best = creatures
-        .list
-        .iter()
-        .filter(|c| c.faction == Faction::Player)
-        .max_by(|a, b| {
-            a.fitness
-                .partial_cmp(&b.fitness)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-
-    let pop = creatures
-        .list
-        .iter()
-        .filter(|c| c.faction == Faction::Player)
-        .count();
-
-    let Some(best) = best else {
-        // Nothing was left alive: keep what we had.
-        let model = if let Some(model) = start {
-            model.clone()
-        } else {
-            let mut rng = crate::rng::Rng::new(seed);
-            Model::from_net(
-                &crate::creature::Net::random(&crate::creature::brain_sizes(), &mut rng),
-                [0.0; 32],
-                0,
-                0,
-                1.0,
-                [200, 200, 200],
-            )
-        };
-        return (model, 0.0, pop);
-    };
-
-    let mut model = Model::from_net(
-        &best.net,
-        best.genes,
-        best.traits,
-        best.culture,
-        best.size,
-        best.color,
-    );
-    model.generation = best.generation;
-    model.fitness = best.fitness;
-    (model, best.fitness, pop)
 }

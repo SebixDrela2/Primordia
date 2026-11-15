@@ -439,6 +439,10 @@ pub struct RevivalGenome {
     pub culture: u16,
 
     pub personality: Personality,
+
+    /// How well it did, so that the learner can tell whether the mind
+    /// it is given is better than the one it has.
+    pub fitness: f32,
 }
 
 use actions::{act_steer, act_move, act_eat, act_mine, act_craft, act_combat};

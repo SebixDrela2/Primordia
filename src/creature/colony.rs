@@ -204,6 +204,7 @@ impl CreatureSystem {
 
                 culture: c.culture,
                 personality: c.personality,
+                fitness: c.fitness,
             })
     }
 
@@ -225,6 +226,7 @@ impl CreatureSystem {
                 generation: c.generation,
                 culture: c.culture,
                 personality: c.personality,
+                fitness: c.fitness,
             })
     }
 

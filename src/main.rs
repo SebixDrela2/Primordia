@@ -9,11 +9,12 @@
 //! PRIMORDIA - the game itself: the window, the camera and the loop.
 
 use primordia::checks;
-use primordia::creature::{CreatureSystem, Model, RevivalGenome, SimEvent};
+use primordia::creature::{CreatureSystem, Model, SimEvent};
 use primordia::elements::Elem;
 use primordia::render;
+use primordia::session::{Outcome as RunOutcome, Session};
 use primordia::ui::{
-    apply_event, dominant_player_species, draw_actors, draw_atmosphere, draw_diplomacy_panel,
+    apply_event, draw_actors, draw_atmosphere, draw_diplomacy_panel,
     draw_hud, draw_knowledge_window, draw_minds, draw_minimap, draw_tech_panel, draw_tech_tree,
     draw_telemetry, draw_tooltip, draw_victory, draw_vignette, tech_tree_under_pointer, Effects,
     HoverTarget, Outcome, Panel, Telemetry, UiState, VictoryScreen,
@@ -210,8 +211,9 @@ fn run_check(name: &str, args: &[String]) -> Option<i32> {
 /// Everything the game needs while it runs.
 struct Game {
     seed: u64,
-    world: World,
-    creatures: CreatureSystem,
+    /// The simulation: the world, the colony, the victory and the
+    /// revival. The learner works the same one, with no drawing.
+    session: Session,
     /// The model the colony is running on, when the game is run on one
     /// that was learned.
     model: Option<Model>,
@@ -235,11 +237,7 @@ struct Game {
     telemetry: Telemetry,
     effects: Effects,
 
-    revival: u32,
-    champion: Option<RevivalGenome>,
-    fallback_champion: Option<RevivalGenome>,
     victory: Option<VictoryScreen>,
-    last_species: Option<u32>,
     last_diplo_tick: u64,
     force_render: bool,
 
@@ -258,18 +256,16 @@ struct Game {
 
 impl Game {
     fn new(seed: u64) -> Self {
-        let mut world = World::new(W, H, seed);
-        world.seed();
-
-        let mut creatures = CreatureSystem::new(seed.wrapping_add(0x1234_5678_9ABC_DEF0));
-        creatures.populate(&world, 64);
+        // The simulation: the world, the colony, the victory and the
+        // revival. The learner works the same one, with no drawing.
+        let mut session = Session::new(seed, 64);
 
         // The model of a run: the colony is given the mind that was
         // learned, and the minds do not learn anything new, so that
         // what is seen is the doing of the weights that were saved.
         let model = model_from_env();
         if let Some(model) = &model {
-            apply_model(&mut creatures, model);
+            apply_model(&mut session.creatures, model);
         }
 
         let cam_env = std::env::var("PRIMORDIA_CAM").ok();
@@ -310,7 +306,7 @@ impl Game {
             .as_deref()
             .is_some_and(|c| c.eq_ignore_ascii_case("zorg"))
         {
-            if let Some((cx, cy)) = world.zorg_cave_center() {
+            if let Some((cx, cy)) = session.world.zorg_cave_center() {
                 cam_x = cx as f32 - (VIEW_W as f32 / zoom) * 0.5;
                 cam_y = cy as f32 - (VIEW_H as f32 / zoom) * 0.5;
             }
@@ -325,8 +321,7 @@ impl Game {
 
         Game {
             seed,
-            world,
-            creatures,
+            session,
             model,
             story: primordia::ui::report::Story::new(),
             gpu: render::GpuRenderer::new(),
@@ -347,11 +342,7 @@ impl Game {
             ui,
             telemetry,
             effects: Effects::new(),
-            revival: 1,
-            champion: None,
-            fallback_champion: None,
             victory: None,
-            last_species: None,
             last_diplo_tick: 0,
             force_render: true,
             region_w: 0,
@@ -379,7 +370,7 @@ impl Game {
         self.observe(now, dt);
         self.check_victory();
         self.advance_victory(dt);
-        self.story.note(&self.creatures);
+        self.story.note(&self.session.creatures);
 
         let view_w = VIEW_W as f32 / self.zoom;
         let view_h = VIEW_H as f32 / self.zoom;
@@ -399,18 +390,18 @@ impl Game {
     fn handle_input(&mut self) -> f32 {
         if is_key_pressed(KeyCode::R) && self.victory.is_none() {
             let new_seed = get_random_seed();
-            self.world = World::new(W, H, new_seed);
-            self.world.seed();
-            self.creatures = CreatureSystem::new(new_seed.wrapping_add(0x1234_5678_9ABC_DEF0));
-            self.creatures.populate(&self.world, 64);
+            self.session.world = World::new(W, H, new_seed);
+            self.session.world.seed();
+            self.session.creatures = CreatureSystem::new(new_seed.wrapping_add(0x1234_5678_9ABC_DEF0));
+            self.session.creatures.populate(&self.session.world, 64);
             self.cam_x = 0.0;
             self.cam_y = 0.0;
             self.view_x = 0.0;
             self.view_y = 0.0;
             self.zoom = MIN_ZOOM;
 
-            self.revival = 1;
-            self.champion = None;
+            self.session.revival = 1;
+            self.session.champion = None;
             self.force_render = true;
             self.telemetry.reset(1);
         }
@@ -513,8 +504,9 @@ let dt = get_frame_time();
                 ACCUM += sim_dt;
                 let mut steps = 0;
                 while ACCUM >= fixed_step && steps < max_steps {
-                    self.world.step();
-                    self.creatures.step(&mut self.world);
+                    // The session turns the world and the colony. The
+                    // learner works the same one.
+                    self.session.step();
                     ACCUM -= fixed_step;
                     steps += 1;
                 }
@@ -530,18 +522,18 @@ let dt = get_frame_time();
 
     fn observe(&mut self, now: f32, dt: f32) {
         if self.victory.is_none() {
-            self.telemetry.observe(now, &self.creatures);
+            self.telemetry.observe(now, &self.session.creatures);
 
-            for e in &self.creatures.diplomacy.log {
+            for e in &self.session.creatures.diplomacy.log {
                 if e.tick > self.last_diplo_tick {
                     self.telemetry.push(e.text.clone());
                 }
             }
-            self.last_diplo_tick = self.creatures.tick;
+            self.last_diplo_tick = self.session.creatures.tick;
         }
         self.telemetry.tick(dt);
 
-        for ev in self.creatures.events.drain(..) {
+        for ev in self.session.creatures.events.drain(..) {
             if matches!(ev, SimEvent::Speciation { .. }) {
                 self.telemetry.push("A NEW SPECIES HAS ARISEN".to_string());
             }
@@ -551,44 +543,24 @@ let dt = get_frame_time();
     }
 
     fn check_victory(&mut self) {
-if self.victory.is_some() {
-    return;
-}
-
-
-if let Some(sp) = dominant_player_species(&self.creatures) {
-if self.last_species != Some(sp) || self.fallback_champion.is_none() {
-    self.last_species = Some(sp);
-    self.fallback_champion = self.creatures.champion_overall();
-}
-}
-
-let mut players: Vec<u32> = self.creatures
-.list
-.iter()
-.filter(|c| c.faction == primordia::creature::Faction::Player)
-.map(|c| c.species)
-.collect();
-players.sort_unstable();
-players.dedup();
-let zorgs = self.creatures.zorg_count();
-
-if self.creatures.list.is_empty() {
-    self.extinction_screen();
-} else if players.is_empty() {
-    self.lost_screen(zorgs);
-} else if players.len() == 1 && (zorgs == 0 || self.world.zorg_cave_sealed) {
-    self.won_screen(players[0], zorgs);
-}
+        // The session says how the run ended: the learner works the
+        // same one, so the two cannot drift apart.
+        let Some(outcome) = self.session.check_victory() else {
+            return;
+        };
+        match outcome {
+            RunOutcome::Won { species, zorgs } => self.won_screen(species, zorgs),
+            RunOutcome::Lost { zorgs } => self.lost_screen(zorgs),
+            RunOutcome::Extinct => self.extinction_screen(),
+        }
     }
-
     fn extinction_screen(&mut self) {
 self.victory = Some(VictoryScreen {
 winner: "NO SURVIVORS".to_string(),
 color: [90, 100, 110],
 survivors: 0,
-generation: self.creatures.stats.max_generation,
-revival: self.revival,
+generation: self.session.creatures.stats.max_generation,
+revival: self.session.revival,
 timer: 1.0,
 outcome: Outcome::Extinct,
 zorgs: 0,
@@ -598,9 +570,9 @@ treaties: 0,
 truces: 0,
 traits: Vec::new(),
 discoveries: Vec::new(),
-deep_sealed: self.world.zorg_cave_sealed,
+deep_sealed: self.session.world.zorg_cave_sealed,
 
-lineage_carried: self.fallback_champion.is_some() || self.champion.is_some(),
+lineage_carried: self.session.fallback_champion.is_some() || self.session.champion.is_some(),
 });
 self.paused = true;
     }
@@ -610,8 +582,8 @@ self.victory = Some(VictoryScreen {
 winner: "LOST".to_string(),
 color: primordia::creature::ZORG_COLOR,
 survivors: 0,
-generation: self.creatures.stats.max_generation,
-revival: self.revival,
+generation: self.session.creatures.stats.max_generation,
+revival: self.session.revival,
 timer: 1.0,
 outcome: Outcome::Lost,
 zorgs,
@@ -621,16 +593,16 @@ treaties: 0,
 truces: 0,
 traits: Vec::new(),
 discoveries: Vec::new(),
-deep_sealed: self.world.zorg_cave_sealed,
+deep_sealed: self.session.world.zorg_cave_sealed,
 
-lineage_carried: self.fallback_champion.is_some() || self.champion.is_some(),
+lineage_carried: self.session.fallback_champion.is_some() || self.session.champion.is_some(),
 });
 self.paused = true;
     }
 
     fn won_screen(&mut self, winner: u32, zorgs: u32) {
-self.champion = self.creatures.champion_from(winner);
-let rep = self.creatures
+self.session.champion = self.session.creatures.champion_from(winner);
+let rep = self.session.creatures
 .list
 .iter()
 .find(|c| c.species == winner)
@@ -645,7 +617,7 @@ let name = String::from_utf8_lossy(&rep.name[..end]).to_string();
 let mut alliances = 0u32;
 let mut wars = 0u32;
 let mut treaties = 0u32;
-for r in &self.creatures.diplomacy.relations {
+for r in &self.session.creatures.diplomacy.relations {
 if r.a == winner || r.b == winner {
 if r.state == primordia::creature::RelationState::Allied {
 alliances += 1;
@@ -662,26 +634,26 @@ let traits: Vec<&'static str> = primordia::creature::trait_list(rep.traits)
 .map(|t| t.name())
 .collect();
 let discoveries: Vec<&'static str> =
-primordia::creature::discovery_list(self.creatures.species_discoveries(winner))
+primordia::creature::discovery_list(self.session.creatures.species_discoveries(winner))
 .iter()
 .map(|d| d.name())
 .collect();
 self.victory = Some(VictoryScreen {
 winner: name,
 color: rep.team_color,
-survivors: self.creatures.list.len() as u32,
-generation: self.creatures.stats.max_generation,
-revival: self.revival,
+survivors: self.session.creatures.list.len() as u32,
+generation: self.session.creatures.stats.max_generation,
+revival: self.session.revival,
 timer: 1.0,
 outcome: Outcome::Won,
 zorgs,
 alliances,
 wars,
 treaties,
-truces: self.creatures.diplomacy.stats.truces,
+truces: self.session.creatures.diplomacy.stats.truces,
 traits,
 discoveries,
-deep_sealed: self.world.zorg_cave_sealed,
+deep_sealed: self.session.world.zorg_cave_sealed,
 
 lineage_carried: true,
 });
@@ -692,31 +664,12 @@ self.paused = true;
         if let Some(v) = self.victory.as_mut() {
             v.timer -= dt;
             if v.timer <= 0.0 {
-
-                let won = v.outcome.is_won();
-
-                let carried: Option<RevivalGenome> = if won {
-
-                    self.champion.take()
-                } else {
-
-                    self.fallback_champion.take().or_else(|| self.champion.take())
-                };
-
+                // The session carries the lineage into the next run and
+                // makes the new world. The learner does the same.
+                let carried = self.session.carried();
                 let next_seed = get_random_seed();
-                self.world = World::new(W, H, next_seed);
-                self.world.seed();
-                self.creatures = CreatureSystem::new(next_seed.wrapping_add(0x1234_5678_9ABC_DEF0));
-                match carried.as_ref() {
-                    Some(genome) => self.creatures.populate_revival(&self.world, 36, genome),
-                    None => self.creatures.populate(&self.world, 64),
-                }
+                self.session.revive(next_seed, carried.as_ref());
 
-                self.revival += 1;
-
-                self.champion = carried;
-                self.last_species = None;
-                self.fallback_champion = None;
                 self.cam_x = 0.0;
                 self.cam_y = 0.0;
                 self.view_x = 0.0;
@@ -724,7 +677,7 @@ self.paused = true;
                 self.zoom = MIN_ZOOM;
                 self.paused = false;
                 self.force_render = true;
-                self.telemetry.reset(self.revival);
+                self.telemetry.reset(self.session.revival);
                 unsafe {
                     ACCUM = 0.0;
                 }
@@ -732,7 +685,6 @@ self.paused = true;
             }
         }
     }
-
     fn update_hover(&mut self, view_w: f32, view_h: f32) -> (f32, f32) {
         let (mx, my) = mouse_position();
         let scale_x = screen_width() / view_w;
@@ -744,14 +696,14 @@ self.paused = true;
 
         self.ui.hover = HoverTarget::None;
         if cell_x >= 0 && cell_y >= 0 && cell_x < W as i32 && cell_y < H as i32 {
-            let elem = self.world.get(cell_x, cell_y);
+            let elem = self.session.world.get(cell_x, cell_y);
             if elem != Elem::Empty {
                 self.ui.discover_element(elem);
                 self.ui.hover = HoverTarget::Element { x: cell_x, y: cell_y, elem };
             }
         }
 
-        for c in &self.creatures.list {
+        for c in &self.session.creatures.list {
             let dx = world_x - c.x;
             let dy = world_y - c.y;
             let dist = (dx * dx + dy * dy).sqrt();
@@ -812,13 +764,13 @@ self.paused = true;
                     let sy = (my * MINI_STEP).min(H - 1);
                     let cell = sy * W + sx;
                     let d = (my * MINI_W + mx) * 4;
-                    let k = self.world.kind[cell];
+                    let k = self.session.world.kind[cell];
                     if k == Elem::Empty as u8 {
                         self.mini_image.bytes[d] = 12;
                         self.mini_image.bytes[d + 1] = 18;
                         self.mini_image.bytes[d + 2] = 30;
                     } else {
-                        let c = self.world.col[cell];
+                        let c = self.session.world.col[cell];
                         self.mini_image.bytes[d] = (c[0] as u32 * 3 / 4) as u8;
                         self.mini_image.bytes[d + 1] = (c[1] as u32 * 3 / 4) as u8;
                         self.mini_image.bytes[d + 2] = (c[2] as u32 * 3 / 4) as u8;
@@ -851,24 +803,24 @@ self.paused = true;
         // The renderer on the card paints the picture straight onto
         // the screen, so it is asked to do it where the picture goes.
         self.gpu.render_region(
-            &self.world,
-            &self.creatures,
+            &self.session.world,
+            &self.session.creatures,
             self.region,
             crate::render::Clock {
                 time: now,
-                day_night: self.creatures.day_night,
-                season: self.creatures.season,
-                weather: self.world.weather,
+                day_night: self.session.creatures.day_night,
+                season: self.session.creatures.season,
+                weather: self.session.world.weather,
             },
             place,
         );
 
         draw_vignette();
 
-        draw_atmosphere(&self.world, self.view_x, self.view_y, view_w, view_h, now, self.creatures.day_night);
+        draw_atmosphere(&self.session.world, self.view_x, self.view_y, view_w, view_h, now, self.session.creatures.day_night);
         draw_actors(
-            &self.creatures,
-            &mut self.world,
+            &self.session.creatures,
+            &mut self.session.world,
             &self.ui.hover,
             &primordia::ui::actors::ActorView {
                 x: self.view_x,
@@ -892,8 +844,8 @@ self.paused = true;
         }
 
         draw_minimap(
-            &self.creatures,
-            &self.world,
+            &self.session.creatures,
+            &self.session.world,
             self.view_x,
             self.view_y,
             view_w,
@@ -901,8 +853,8 @@ self.paused = true;
             &self.mini_texture,
         );
         draw_hud(
-            &self.world,
-            &self.creatures,
+            &self.session.world,
+            &self.session.creatures,
             &primordia::ui::hud::HudState {
                 cam_x: self.view_x,
                 cam_y: self.view_y,
@@ -910,7 +862,7 @@ self.paused = true;
                 sim_speed: self.sim_speed,
                 paused: self.paused,
                 zoom: self.zoom,
-                revival: self.revival,
+                revival: self.session.revival,
             },
         );
         if screen_width() >= 1080.0 {
@@ -918,22 +870,22 @@ self.paused = true;
         }
 
         if self.ui.panels.has(Panel::Diplomacy) {
-            draw_diplomacy_panel(&self.creatures, 18.0, 248.0);
+            draw_diplomacy_panel(&self.session.creatures, 18.0, 248.0);
         }
 
-        draw_tooltip(&self.world, &self.creatures, &self.ui, mx, my);
+        draw_tooltip(&self.session.world, &self.session.creatures, &self.ui, mx, my);
 
         if self.ui.panels.has(Panel::Knowledge) {
-            draw_knowledge_window(&self.world, &self.creatures, &self.ui);
+            draw_knowledge_window(&self.session.world, &self.session.creatures, &self.ui);
         }
 
         if self.ui.panels.has(Panel::Tech) {
-            draw_tech_tree(&self.creatures, &mut self.ui);
+            draw_tech_tree(&self.session.creatures, &mut self.ui);
         }
-        draw_tech_panel(&self.creatures);
+        draw_tech_panel(&self.session.creatures);
 
         if self.ui.panels.has(Panel::Minds) {
-            draw_minds(&self.creatures, self.ui.minds_index);
+            draw_minds(&self.session.creatures, self.ui.minds_index);
         }
 
         if let Some(v) = &self.victory {

@@ -52,6 +52,7 @@ pub mod elements;
 pub mod learn;
 pub mod render;
 pub mod rng;
+pub mod session;
 pub mod ui;
 pub mod world;
 
