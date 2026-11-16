@@ -14,8 +14,8 @@ use primordia::elements::Elem;
 use primordia::render;
 use primordia::session::{Outcome as RunOutcome, Session};
 use primordia::ui::{
-    apply_event, draw_actors, draw_atmosphere, draw_diplomacy_panel,
-    draw_hud, draw_knowledge_window, draw_minds, draw_minimap, draw_tech_panel, draw_tech_tree,
+    apply_event, draw_actors, draw_atmosphere, draw_diplomacy_panel, draw_hud,
+    draw_knowledge_window, draw_minds, draw_minimap, draw_tech_panel, draw_tech_tree,
     draw_telemetry, draw_tooltip, draw_victory, draw_vignette, tech_tree_under_pointer, Effects,
     HoverTarget, Outcome, Panel, Telemetry, UiState, VictoryScreen,
 };
@@ -155,8 +155,12 @@ fn get_random_seed() -> u64 {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
     let nanos = now.as_nanos() as u64;
     let mut seed = nanos;
-    seed = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(std::process::id() as u64);
-    seed = seed.wrapping_mul(0xBF58_476D_1CE4_E5B9).wrapping_add(now.as_secs());
+    seed = seed
+        .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        .wrapping_add(std::process::id() as u64);
+    seed = seed
+        .wrapping_mul(0xBF58_476D_1CE4_E5B9)
+        .wrapping_add(now.as_secs());
     eprintln!("SEED: {seed}");
     seed
 }
@@ -164,7 +168,7 @@ fn get_random_seed() -> u64 {
 /// Where the camera starts, from `PRIMORDIA_CAM`. It is either a pair
 /// of numbers, or the word `zorg`, which is dealt with later, when the
 /// world knows where its cave is.
-fn camera_from_env(value: Option<&str>) -> (f32, f32) {
+fn camera_from_env(value: Option<&str>) -> Pos2d {
     let mut cam_x: f32 = 0.0;
     let mut cam_y: f32 = 0.0;
     if let Some(v) = value {
@@ -178,7 +182,7 @@ fn camera_from_env(value: Option<&str>) -> (f32, f32) {
             }
         }
     }
-    (cam_x, cam_y)
+    Pos2d::new(cam_x, cam_y)
 }
 
 fn run_check(name: &str, args: &[String]) -> Option<i32> {
@@ -200,6 +204,18 @@ fn run_check(name: &str, args: &[String]) -> Option<i32> {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy)]
+struct Pos2d {
+    pub x: f32,
+    pub y: f32,
+}
+
+impl Pos2d {
+    pub fn new(x: f32, y: f32) -> Self {
+        Self { x, y }
+    }
+}
+
 /// Everything the game needs while it runs.
 struct Game {
     seed: u64,
@@ -214,11 +230,9 @@ struct Game {
     /// The window of the world that is on the screen.
     region: render::Region,
 
-    cam_x: f32,
-    cam_y: f32,
+    cam: Pos2d,
     cam_speed: f32,
-    view_x: f32,
-    view_y: f32,
+    view: Pos2d,
     zoom: f32,
     sim_speed: f32,
     paused: bool,
@@ -259,7 +273,7 @@ impl Game {
         }
 
         let cam_env = std::env::var("PRIMORDIA_CAM").ok();
-        let (mut cam_x, mut cam_y) = camera_from_env(cam_env.as_deref());
+        let mut cam = camera_from_env(cam_env.as_deref());
 
         let wanted = std::env::var("PRIMORDIA_PANEL").ok();
         let mut ui = UiState::new();
@@ -268,7 +282,10 @@ impl Game {
             (Panel::Tech, "tech"),
             (Panel::Minds, "minds"),
         ] {
-            if wanted.as_deref().is_some_and(|p| p.eq_ignore_ascii_case(name)) {
+            if wanted
+                .as_deref()
+                .is_some_and(|p| p.eq_ignore_ascii_case(name))
+            {
                 ui.panels.open(panel);
             }
         }
@@ -297,8 +314,8 @@ impl Game {
             .is_some_and(|c| c.eq_ignore_ascii_case("zorg"))
         {
             if let Some((cx, cy)) = session.world.zorg_cave_center() {
-                cam_x = cx as f32 - (VIEW_W as f32 / zoom) * 0.5;
-                cam_y = cy as f32 - (VIEW_H as f32 / zoom) * 0.5;
+                cam.x = cx as f32 - (VIEW_W as f32 / zoom) * 0.5;
+                cam.y = cy as f32 - (VIEW_H as f32 / zoom) * 0.5;
             }
         }
 
@@ -320,11 +337,9 @@ impl Game {
                 w: 0,
                 h: 0,
             },
-            cam_x,
-            cam_y,
+            cam,
             cam_speed: 300.0,
-            view_x: cam_x,
-            view_y: cam_y,
+            view: cam,
             zoom,
             sim_speed,
             paused: false,
@@ -380,12 +395,11 @@ impl Game {
             let new_seed = get_random_seed();
             self.session.world = World::new(W, H, new_seed);
             self.session.world.seed();
-            self.session.creatures = CreatureSystem::new(new_seed.wrapping_add(0x1234_5678_9ABC_DEF0));
+            self.session.creatures =
+                CreatureSystem::new(new_seed.wrapping_add(0x1234_5678_9ABC_DEF0));
             self.session.creatures.populate(&self.session.world, 64);
-            self.cam_x = 0.0;
-            self.cam_y = 0.0;
-            self.view_x = 0.0;
-            self.view_y = 0.0;
+            self.cam = Default::default();
+            self.view = Default::default();
             self.zoom = MIN_ZOOM;
 
             self.session.revival = 1;
@@ -434,8 +448,8 @@ impl Game {
             let direction = wheel_y.signum();
             let old_wide = screen_width() / view_w;
             let old_tall = screen_height() / view_h;
-            let anchor_x = self.cam_x + mx / old_wide;
-            let anchor_y = self.cam_y + my / old_tall;
+            let anchor_x = self.cam.x + mx / old_wide;
+            let anchor_y = self.cam.y + my / old_tall;
 
             self.zoom = (self.zoom * 1.12f32.powf(direction)).clamp(MIN_ZOOM, MAX_ZOOM);
             view_w = VIEW_W as f32 / self.zoom;
@@ -443,37 +457,41 @@ impl Game {
 
             let new_wide = screen_width() / view_w;
             let new_tall = screen_height() / view_h;
-            self.cam_x = anchor_x - mx / new_wide;
-            self.cam_y = anchor_y - my / new_tall;
+            self.cam.x = anchor_x - mx / new_wide;
+            self.cam.y = anchor_y - my / new_tall;
+
+            self.view.x = self.cam.x;
+            self.view.y = self.cam.y;
         }
 
-let dt = get_frame_time();
+        let dt = get_frame_time();
         let cam_speed = self.cam_speed * (view_w / VIEW_W as f32);
         let max_cam_x = (W as f32 - view_w).max(0.0);
         let max_cam_y = (H as f32 - view_h).max(0.0);
         if is_key_down(KeyCode::Left) || is_key_down(KeyCode::A) {
-            self.cam_x -= cam_speed * dt;
+            self.cam.x -= cam_speed * dt;
         }
         if is_key_down(KeyCode::Right) || is_key_down(KeyCode::D) {
-            self.cam_x += cam_speed * dt;
+            self.cam.x += cam_speed * dt;
         }
         if is_key_down(KeyCode::Up) || is_key_down(KeyCode::W) {
-            self.cam_y -= cam_speed * dt;
+            self.cam.y -= cam_speed * dt;
         }
         if is_key_down(KeyCode::Down) || is_key_down(KeyCode::S) {
-            self.cam_y += cam_speed * dt;
+            self.cam.y += cam_speed * dt;
         }
-        self.cam_x = self.cam_x.clamp(0.0, max_cam_x);
-        self.cam_y = self.cam_y.clamp(0.0, max_cam_y);
+
+        self.cam.x = self.cam.x.clamp(0.0, max_cam_x);
+        self.cam.y = self.cam.y.clamp(0.0, max_cam_y);
 
         let ease = 1.0 - (-9.0 * dt).exp();
-        self.view_x += (self.cam_x - self.view_x) * ease;
-        self.view_y += (self.cam_y - self.view_y) * ease;
-        if (self.cam_x - self.view_x).abs() < 0.05 {
-            self.view_x = self.cam_x;
+        self.view.x += (self.cam.x - self.view.x) * ease;
+        self.view.y += (self.cam.y - self.view.y) * ease;
+        if (self.cam.x - self.view.x).abs() < 0.05 {
+            self.view.x = self.cam.x;
         }
-        if (self.cam_y - self.view_y).abs() < 0.05 {
-            self.view_y = self.cam_y;
+        if (self.cam.y - self.view.y).abs() < 0.05 {
+            self.view.y = self.cam.y;
         }
 
         dt
@@ -547,109 +565,113 @@ let dt = get_frame_time();
         }
     }
     fn extinction_screen(&mut self) {
-self.victory = Some(VictoryScreen {
-winner: "NO SURVIVORS".to_string(),
-color: [90, 100, 110],
-survivors: 0,
-generation: self.session.creatures.stats.max_generation,
-revival: self.session.revival,
-timer: 1.0,
-outcome: Outcome::Extinct,
-zorgs: 0,
-alliances: 0,
-wars: 0,
-treaties: 0,
-truces: 0,
-traits: Vec::new(),
-discoveries: Vec::new(),
-deep_sealed: self.session.world.zorg_cave_sealed,
+        self.victory = Some(VictoryScreen {
+            winner: "NO SURVIVORS".to_string(),
+            color: [90, 100, 110],
+            survivors: 0,
+            generation: self.session.creatures.stats.max_generation,
+            revival: self.session.revival,
+            timer: 1.0,
+            outcome: Outcome::Extinct,
+            zorgs: 0,
+            alliances: 0,
+            wars: 0,
+            treaties: 0,
+            truces: 0,
+            traits: Vec::new(),
+            discoveries: Vec::new(),
+            deep_sealed: self.session.world.zorg_cave_sealed,
 
-lineage_carried: self.session.fallback_champion.is_some() || self.session.champion.is_some(),
-});
-self.paused = true;
+            lineage_carried: self.session.fallback_champion.is_some()
+                || self.session.champion.is_some(),
+        });
+        self.paused = true;
     }
 
     fn lost_screen(&mut self, zorgs: u32) {
-self.victory = Some(VictoryScreen {
-winner: "LOST".to_string(),
-color: primordia::creature::ZORG_COLOR,
-survivors: 0,
-generation: self.session.creatures.stats.max_generation,
-revival: self.session.revival,
-timer: 1.0,
-outcome: Outcome::Lost,
-zorgs,
-alliances: 0,
-wars: 0,
-treaties: 0,
-truces: 0,
-traits: Vec::new(),
-discoveries: Vec::new(),
-deep_sealed: self.session.world.zorg_cave_sealed,
+        self.victory = Some(VictoryScreen {
+            winner: "LOST".to_string(),
+            color: primordia::creature::ZORG_COLOR,
+            survivors: 0,
+            generation: self.session.creatures.stats.max_generation,
+            revival: self.session.revival,
+            timer: 1.0,
+            outcome: Outcome::Lost,
+            zorgs,
+            alliances: 0,
+            wars: 0,
+            treaties: 0,
+            truces: 0,
+            traits: Vec::new(),
+            discoveries: Vec::new(),
+            deep_sealed: self.session.world.zorg_cave_sealed,
 
-lineage_carried: self.session.fallback_champion.is_some() || self.session.champion.is_some(),
-});
-self.paused = true;
+            lineage_carried: self.session.fallback_champion.is_some()
+                || self.session.champion.is_some(),
+        });
+        self.paused = true;
     }
 
     fn won_screen(&mut self, winner: u32, zorgs: u32) {
-self.session.champion = self.session.creatures.champion_from(winner);
-let rep = self.session.creatures
-.list
-.iter()
-.find(|c| c.species == winner)
-.unwrap();
-let end = rep
-.name
-.iter()
-.position(|&b| b == 0)
-.unwrap_or(rep.name.len());
-let name = String::from_utf8_lossy(&rep.name[..end]).to_string();
+        self.session.champion = self.session.creatures.champion_from(winner);
+        let rep = self
+            .session
+            .creatures
+            .list
+            .iter()
+            .find(|c| c.species == winner)
+            .unwrap();
+        let end = rep
+            .name
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(rep.name.len());
+        let name = String::from_utf8_lossy(&rep.name[..end]).to_string();
 
-let mut alliances = 0u32;
-let mut wars = 0u32;
-let mut treaties = 0u32;
-for r in &self.session.creatures.diplomacy.relations {
-if r.a == winner || r.b == winner {
-if r.state == primordia::creature::RelationState::Allied {
-alliances += 1;
-}
-if r.state == primordia::creature::RelationState::War {
-wars += 1;
-}
-treaties += r.treaties.len() as u32;
-}
-}
+        let mut alliances = 0u32;
+        let mut wars = 0u32;
+        let mut treaties = 0u32;
+        for r in &self.session.creatures.diplomacy.relations {
+            if r.a == winner || r.b == winner {
+                if r.state == primordia::creature::RelationState::Allied {
+                    alliances += 1;
+                }
+                if r.state == primordia::creature::RelationState::War {
+                    wars += 1;
+                }
+                treaties += r.treaties.len() as u32;
+            }
+        }
 
-let traits: Vec<&'static str> = primordia::creature::trait_list(rep.traits)
-.iter()
-.map(|t| t.name())
-.collect();
-let discoveries: Vec<&'static str> =
-primordia::creature::discovery_list(self.session.creatures.species_discoveries(winner))
-.iter()
-.map(|d| d.name())
-.collect();
-self.victory = Some(VictoryScreen {
-winner: name,
-color: rep.team_color,
-survivors: self.session.creatures.list.len() as u32,
-generation: self.session.creatures.stats.max_generation,
-revival: self.session.revival,
-timer: 1.0,
-outcome: Outcome::Won,
-zorgs,
-alliances,
-wars,
-treaties,
-truces: self.session.creatures.diplomacy.stats.truces,
-traits,
-discoveries,
-deep_sealed: self.session.world.zorg_cave_sealed,
+        let traits: Vec<&'static str> = primordia::creature::trait_list(rep.traits)
+            .iter()
+            .map(|t| t.name())
+            .collect();
+        let discoveries: Vec<&'static str> =
+            primordia::creature::discovery_list(self.session.creatures.species_discoveries(winner))
+                .iter()
+                .map(|d| d.name())
+                .collect();
+        self.victory = Some(VictoryScreen {
+            winner: name,
+            color: rep.team_color,
+            survivors: self.session.creatures.list.len() as u32,
+            generation: self.session.creatures.stats.max_generation,
+            revival: self.session.revival,
+            timer: 1.0,
+            outcome: Outcome::Won,
+            zorgs,
+            alliances,
+            wars,
+            treaties,
+            truces: self.session.creatures.diplomacy.stats.truces,
+            traits,
+            discoveries,
+            deep_sealed: self.session.world.zorg_cave_sealed,
 
-lineage_carried: true,
-});
-self.paused = true;
+            lineage_carried: true,
+        });
+        self.paused = true;
     }
 
     fn advance_victory(&mut self, dt: f32) {
@@ -662,10 +684,8 @@ self.paused = true;
                 let next_seed = get_random_seed();
                 self.session.revive(next_seed, carried.as_ref());
 
-                self.cam_x = 0.0;
-                self.cam_y = 0.0;
-                self.view_x = 0.0;
-                self.view_y = 0.0;
+                self.cam = Default::default();
+                self.view = Default::default();
                 self.zoom = MIN_ZOOM;
                 self.paused = false;
                 self.force_render = true;
@@ -681,8 +701,8 @@ self.paused = true;
         let (mx, my) = mouse_position();
         let scale_x = screen_width() / view_w;
         let scale_y = screen_height() / view_h;
-        let world_x = self.view_x + mx / scale_x;
-        let world_y = self.view_y + my / scale_y;
+        let world_x = self.view.x + mx / scale_x;
+        let world_y = self.view.y + my / scale_y;
         let cell_x = world_x as i32;
         let cell_y = world_y as i32;
 
@@ -691,7 +711,11 @@ self.paused = true;
             let elem = self.session.world.get(cell_x, cell_y);
             if elem != Elem::Empty {
                 self.ui.discover_element(elem);
-                self.ui.hover = HoverTarget::Element { x: cell_x, y: cell_y, elem };
+                self.ui.hover = HoverTarget::Element {
+                    x: cell_x,
+                    y: cell_y,
+                    elem,
+                };
             }
         }
 
@@ -716,10 +740,10 @@ self.paused = true;
         view_w: f32,
         view_h: f32,
     ) -> (i32, i32) {
-        let vis_left = (self.view_x.floor() as i32).max(0);
-        let vis_top = (self.view_y.floor() as i32).max(0);
-        let vis_right = ((self.view_x + view_w).ceil() as i32).min(W as i32);
-        let vis_bottom = ((self.view_y + view_h).ceil() as i32).min(H as i32);
+        let vis_left = (self.view.x.floor() as i32).max(0);
+        let vis_top = (self.view.y.floor() as i32).max(0);
+        let vis_right = ((self.view.x + view_w).ceil() as i32).min(W as i32);
+        let vis_bottom = ((self.view.y + view_h).ceil() as i32).min(H as i32);
         let vis_width = (vis_right - vis_left).max(1);
         let vis_height = (vis_bottom - vis_top).max(1);
 
@@ -787,8 +811,8 @@ self.paused = true;
         let reg_scale_x = screen_width() / view_w;
         let reg_scale_y = screen_height() / view_h;
         let place = render::Place {
-            x: (corner.0 as f32 - self.view_x) * reg_scale_x,
-            y: (corner.1 as f32 - self.view_y) * reg_scale_y,
+            x: (corner.0 as f32 - self.view.x) * reg_scale_x,
+            y: (corner.1 as f32 - self.view.y) * reg_scale_y,
             w: self.region_w as f32 * reg_scale_x,
             h: self.region_h as f32 * reg_scale_y,
         };
@@ -809,27 +833,40 @@ self.paused = true;
 
         draw_vignette();
 
-        draw_atmosphere(&self.session.world, self.view_x, self.view_y, view_w, view_h, now, self.session.creatures.day_night);
+        draw_atmosphere(
+            &self.session.world,
+            self.view.x,
+            self.view.y,
+            view_w,
+            view_h,
+            now,
+            self.session.creatures.day_night,
+        );
         draw_actors(
             &self.session.creatures,
             &mut self.session.world,
             &self.ui.hover,
             &primordia::ui::actors::ActorView {
-                x: self.view_x,
-                y: self.view_y,
+                x: self.view.x,
+                y: self.view.y,
                 w: view_w,
                 h: view_h,
                 zoom: self.zoom,
             },
             now,
         );
-        self.effects.draw(self.view_x, self.view_y, screen_width() / view_w, screen_height() / view_h);
+        self.effects.draw(
+            self.view.x,
+            self.view.y,
+            screen_width() / view_w,
+            screen_height() / view_h,
+        );
 
         draw_minimap(
             &self.session.creatures,
             &self.session.world,
-            self.view_x,
-            self.view_y,
+            self.view.x,
+            self.view.y,
             view_w,
             view_h,
             &self.mini_texture,
@@ -838,8 +875,8 @@ self.paused = true;
             &self.session.world,
             &self.session.creatures,
             &primordia::ui::hud::HudState {
-                cam_x: self.view_x,
-                cam_y: self.view_y,
+                cam_x: self.view.x,
+                cam_y: self.view.y,
                 seed: self.seed,
                 sim_speed: self.sim_speed,
                 paused: self.paused,
@@ -860,7 +897,13 @@ self.paused = true;
             draw_diplomacy_panel(&self.session.creatures, 18.0, 248.0);
         }
 
-        draw_tooltip(&self.session.world, &self.session.creatures, &self.ui, mx, my);
+        draw_tooltip(
+            &self.session.world,
+            &self.session.creatures,
+            &self.ui,
+            mx,
+            my,
+        );
 
         if self.ui.panels.has(Panel::Knowledge) {
             draw_knowledge_window(&self.session.world, &self.session.creatures, &self.ui);
